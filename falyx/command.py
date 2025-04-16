@@ -16,12 +16,12 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 from rich.console import Console
 from rich.tree import Tree
 
-from falyx.action import BaseAction
+from falyx.action import Action, BaseAction
 from falyx.context import ExecutionContext
 from falyx.debug import register_debug_hooks
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
-from falyx.retry import RetryHandler, RetryPolicy
+from falyx.retry import RetryPolicy
 from falyx.themes.colors import OneColors
 from falyx.utils import _noop, ensure_async, logger
 
@@ -47,6 +47,8 @@ class Command(BaseModel):
     spinner_style: str = OneColors.CYAN
     spinner_kwargs: dict[str, Any] = Field(default_factory=dict)
     hooks: "HookManager" = Field(default_factory=HookManager)
+    retry: bool = False
+    retry_all: bool = False
     retry_policy: RetryPolicy = Field(default_factory=RetryPolicy)
     tags: list[str] = Field(default_factory=list)
     logging_hooks: bool = False
@@ -57,25 +59,17 @@ class Command(BaseModel):
 
     def model_post_init(self, __context: Any) -> None:
         """Post-initialization to set up the action and hooks."""
-        self._auto_register_retry_hook()
+        if self.retry and isinstance(self.action, Action):
+            self.action.enable_retry()
+        elif self.retry_policy and isinstance(self.action, Action):
+            self.action.set_retry_policy(self.retry_policy)
+        elif self.retry:
+            logger.warning(f"[Command:{self.key}] Retry requested, but action is not an Action instance.")
+        if self.retry_all:
+            self.action.enable_retries_recursively(self.action, self.retry_policy)
+
         if self.logging_hooks and isinstance(self.action, BaseAction):
             register_debug_hooks(self.action.hooks)
-
-    def _auto_register_retry_hook(self):
-        if (
-            self.retry_policy.is_active() and
-            isinstance(self.action, BaseAction) and
-            self.action.is_retryable
-        ):
-            logger.debug(f"Auto-registering retry handler for action: {self.key}")
-            retry_handler = RetryHandler(self.retry_policy)
-            self.action.hooks.register(HookType.ON_ERROR, retry_handler.retry_on_error)
-        elif self.retry_policy.is_active():
-            logger.debug(f"Retry policy is active but action is not retryable: {self.key}")
-
-    def update_retry_policy(self, policy: RetryPolicy):
-        self.retry_policy = policy
-        self._auto_register_retry_hook()
 
     @field_validator("action", mode="before")
     @classmethod

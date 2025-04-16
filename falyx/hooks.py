@@ -41,3 +41,4 @@ class CircuitBreaker:
         self.failures = 0
         self.open_until = None
         logger.info("🔄 Circuit reset.")
+
