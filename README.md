@@ -1,6 +1,9 @@
 # ⚔️ Falyx
+![Python](https://img.shields.io/badge/Python-3.10+-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Async-Ready](https://img.shields.io/badge/asyncio-ready-purple)
 
-**Falyx** is a resilient, introspectable CLI framework for building robust, asynchronous command-line workflows with:
+**Falyx** is a battle-ready, introspectable CLI framework for building resilient, asynchronous workflows with:
 
 - ✅ Modular action chaining and rollback
 - 🔁 Built-in retry handling
@@ -22,7 +25,7 @@ Modern CLI tools deserve the same resilience as production systems. Falyx makes 
 - Handle flaky operations with retries and exponential backoff
 - Roll back safely on failure with structured undo logic
 - Add observability with execution timing, result tracking, and hooks
-- Run in both interactive or headless (scriptable) modes
+- Run in both interactive *and* headless (scriptable) modes
 - Customize output with Rich `Table`s (grouping, theming, etc.)
 
 ---
@@ -46,33 +49,63 @@ poetry install
 ## ⚡ Quick Example
 
 ```python
-from falyx import Action, ChainedAction, Menu
-from falyx.hooks import RetryHandler, log_success
+import asyncio
+import random
 
+from falyx import Falyx, Action, ChainedAction
+
+# A flaky async step that fails randomly
 async def flaky_step():
-    import random, asyncio
     await asyncio.sleep(0.2)
-    if random.random() < 0.8:
+    if random.random() < 0.5:
         raise RuntimeError("Random failure!")
     return "ok"
 
-retry = RetryHandler()
+# Create the actions
+step1 = Action(name="step_1", action=flaky_step, retry=True)
+step2 = Action(name="step_2", action=flaky_step, retry=True)
 
-step1 = Action("Step 1", flaky_step)
-step1.hooks.register("on_error", retry.retry_on_error)
+# Chain the actions
+chain = ChainedAction(name="my_pipeline", actions=[step1, step2])
 
-step2 = Action("Step 2", flaky_step)
-step2.hooks.register("on_error", retry.retry_on_error)
+# Create the CLI menu
+falyx = Falyx("🚀 Falyx Demo")
+falyx.add_command(
+    key="R",
+    description="Run My Pipeline",
+    action=chain,
+    logging_hooks=True,
+    # shows preview before confirmation
+    preview_before_confirm=True,
+    confirm=True,
+)
 
-chain = ChainedAction("My Pipeline", [step1, step2])
-chain.hooks.register("on_success", log_success)
-
-menu = Menu(title="🚀 Falyx Demo")
-menu.add_command("R", "Run My Pipeline", chain)
-
+# Entry point
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(menu.run())
+    asyncio.run(falyx.run())
+```
+
+```bash
+❯ python simple.py
+                                🚀 Falyx Demo
+
+  [R] Run My Pipeline
+  [Y] History                                         [Q] Exit
+
+>
+```
+
+```bash
+❯ python simple.py run R
+Command: 'R' — Run My Pipeline
+└── ⛓ ChainedAction 'my_pipeline'
+    ├── ⚙ Action 'step_1'
+    │   ↻ Retries: 3x, delay 1.0s, backoff 2.0x
+    └── ⚙ Action 'step_2'
+        ↻ Retries: 3x, delay 1.0s, backoff 2.0x
+Confirm execution of R — Run My Pipeline (calls `my_pipeline`)  [Y/n] y
+[2025-04-15 22:03:57] WARNING   ⚠️ Retry attempt 1/3 failed due to 'Random failure!'.
+✅ Result: ['ok', 'ok']
 ```
 
 ---
@@ -101,17 +134,28 @@ if __name__ == "__main__":
 
 ---
 
-## 🧩 Components
+### 🧱 Core Building Blocks
 
-| Component         | Purpose                                                |
-|------------------|--------------------------------------------------------|
-| `Action`          | Single async task with hook + result injection support |
-| `ChainedAction`   | Sequential task runner with rollback                   |
-| `ActionGroup`     | Parallel runner for independent tasks                  |
-| `ProcessAction`   | CPU-bound task in a separate process (multiprocessing) |
-| `Menu`            | CLI runner with toggleable prompt or headless mode     |
-| `ExecutionContext`| Captures metadata per execution                        |
-| `HookManager`     | Lifecycle hook registration engine                     |
+#### `Action`
+A single async unit of work. Can retry, roll back, or inject prior results.
+
+#### `ChainedAction`
+Run tasks in sequence. Supports rollback on failure and context propagation.
+
+#### `ActionGroup`
+Run tasks in parallel. Useful for fan-out operations like batch API calls.
+
+#### `ProcessAction`
+Offload CPU-bound work to another process — no extra code needed.
+
+#### `Falyx`
+Your CLI controller — powers menus, subcommands, history, bottom bars, and more.
+
+#### `ExecutionContext`
+Tracks metadata, arguments, timing, and results for each action execution.
+
+#### `HookManager`
+Registers and triggers lifecycle hooks (`before`, `after`, `on_error`, etc.) for actions and commands.
 
 ---
 
@@ -125,7 +169,6 @@ Falyx is designed for developers who don’t just want CLI tools to run — they
 
 ## 🛣️ Roadmap
 
-- [ ] Retry policy DSL (e.g., `max_retries=3, backoff="exponential"`)
 - [ ] Metrics export (Prometheus-style)
 - [ ] Plugin system for menu extensions
 - [ ] Native support for structured logs + log forwarding
@@ -142,4 +185,3 @@ MIT — use it, fork it, improve it. Attribution appreciated!
 ## 🌐 falyx.dev — **reliable actions, resilient flows**
 
 ---
-

@@ -1,8 +1,8 @@
 """retry.py"""
 import asyncio
+
 from pydantic import BaseModel, Field
 
-from falyx.action import Action
 from falyx.context import ExecutionContext
 from falyx.utils import logger
 
@@ -33,6 +33,7 @@ class RetryHandler:
         logger.info(f"🔄 Retry policy enabled: {self.policy}")
 
     async def retry_on_error(self, context: ExecutionContext):
+        from falyx.action import Action
         name = context.name
         error = context.exception
         target = context.action

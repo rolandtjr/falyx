@@ -23,7 +23,8 @@ from rich.tree import Tree
 from falyx.context import ExecutionContext, ResultsContext
 from falyx.debug import register_debug_hooks
 from falyx.execution_registry import ExecutionRegistry as er
-from falyx.hook_manager import HookManager, HookType
+from falyx.hook_manager import Hook, HookManager, HookType
+from falyx.retry import RetryHandler, RetryPolicy
 from falyx.themes.colors import OneColors
 from falyx.utils import ensure_async, logger
 
@@ -107,6 +108,19 @@ class BaseAction(ABC):
     def __repr__(self):
         return str(self)
 
+    @classmethod
+    def enable_retries_recursively(cls, action: BaseAction, policy: RetryPolicy | None):
+        if not policy:
+            policy = RetryPolicy(enabled=True)
+        if isinstance(action, Action):
+            action.retry_policy = policy
+            action.retry_policy.enabled = True
+            action.hooks.register("on_error", RetryHandler(policy).retry_on_error)
+
+        if hasattr(action, "actions"):
+            for sub in action.actions:
+                cls.enable_retries_recursively(sub, policy)
+
 
 class Action(BaseAction):
     """A simple action that runs a callable. It can be a function or a coroutine."""
@@ -120,6 +134,8 @@ class Action(BaseAction):
             hooks: HookManager | None = None,
             inject_last_result: bool = False,
             inject_last_result_as: str = "last_result",
+            retry: bool = False,
+            retry_policy: RetryPolicy | None = None,
     ) -> None:
         super().__init__(name, hooks, inject_last_result, inject_last_result_as)
         self.action = ensure_async(action)
@@ -127,6 +143,21 @@ class Action(BaseAction):
         self.args = args
         self.kwargs = kwargs or {}
         self.is_retryable = True
+        self.retry_policy = retry_policy or RetryPolicy()
+        if retry or (retry_policy and retry_policy.enabled):
+            self.enable_retry()
+
+    def enable_retry(self):
+        """Enable retry with the existing retry policy."""
+        self.retry_policy.enabled = True
+        logger.debug(f"[Action:{self.name}] Registering retry handler")
+        handler = RetryHandler(self.retry_policy)
+        self.hooks.register(HookType.ON_ERROR, handler.retry_on_error)
+
+    def set_retry_policy(self, policy: RetryPolicy):
+        """Set a new retry policy and re-register the handler."""
+        self.retry_policy = policy
+        self.enable_retry()
 
     async def _run(self, *args, **kwargs) -> Any:
         combined_args = args + self.args
@@ -159,13 +190,19 @@ class Action(BaseAction):
             er.record(context)
 
     async def preview(self, parent: Tree | None = None):
-        label = f"[{OneColors.GREEN_b}]⚙ Action[/] '{self.name}'"
+        label = [f"[{OneColors.GREEN_b}]⚙ Action[/] '{self.name}'"]
         if self.inject_last_result:
-            label += f" [dim](injects '{self.inject_last_result_as}')[/dim]"
+            label.append(f" [dim](injects '{self.inject_last_result_as}')[/dim]")
+        if self.retry_policy.enabled:
+            label.append(
+                f"\n[dim]↻ Retries:[/] {self.retry_policy.max_retries}x, "
+                f"delay {self.retry_policy.delay}s, backoff {self.retry_policy.backoff}x"
+            )
+
         if parent:
-            parent.add(label)
+            parent.add("".join(label))
         else:
-            console.print(Tree(label))
+            console.print(Tree("".join(label)))
 
 
 class ActionListMixin:
@@ -267,8 +304,8 @@ class ChainedAction(BaseAction, ActionListMixin):
     async def preview(self, parent: Tree | None = None):
         label = f"[{OneColors.CYAN_b}]⛓ ChainedAction[/] '{self.name}'"
         if self.inject_last_result:
-            label += f" [dim](injects '{self.inject_last_result_as}')[/dim]"
-        tree = parent.add(label) if parent else Tree(label)
+            label.append(f" [dim](injects '{self.inject_last_result_as}')[/dim]")
+        tree = parent.add("".join(label)) if parent else Tree("".join(label))
         for action in self.actions:
             await action.preview(parent=tree)
         if not parent:
@@ -345,10 +382,10 @@ class ActionGroup(BaseAction, ActionListMixin):
             er.record(context)
 
     async def preview(self, parent: Tree | None = None):
-        label = f"[{OneColors.MAGENTA_b}]⏩ ActionGroup (parallel)[/] '{self.name}'"
+        label = [f"[{OneColors.MAGENTA_b}]⏩ ActionGroup (parallel)[/] '{self.name}'"]
         if self.inject_last_result:
-            label += f" [dim](receives '{self.inject_last_result_as}')[/dim]"
-        tree = parent.add(label) if parent else Tree(label)
+            label.append(f" [dim](receives '{self.inject_last_result_as}')[/dim]")
+        tree = parent.add("".join(label)) if parent else Tree("".join(label))
         actions = self.actions.copy()
         random.shuffle(actions)
         await asyncio.gather(*(action.preview(parent=tree) for action in actions))
@@ -422,13 +459,13 @@ class ProcessAction(BaseAction):
             er.record(context)
 
     async def preview(self, parent: Tree | None = None):
-        label = f"[{OneColors.DARK_YELLOW_b}]🧠 ProcessAction (new process)[/] '{self.name}'"
+        label = [f"[{OneColors.DARK_YELLOW_b}]🧠 ProcessAction (new process)[/] '{self.name}'"]
         if self.inject_last_result:
-            label += f" [dim](injects '{self.inject_last_result_as}')[/dim]"
+            label.append(f" [dim](injects '{self.inject_last_result_as}')[/dim]")
         if parent:
-            parent.add(label)
+            parent.add("".join(label))
         else:
-            console.print(Tree(label))
+            console.print(Tree("".join(label)))
 
     def _validate_pickleable(self, obj: Any) -> bool:
         try:

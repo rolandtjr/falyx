@@ -34,11 +34,11 @@ from falyx.action import BaseAction
 from falyx.bottom_bar import BottomBar
 from falyx.command import Command
 from falyx.context import ExecutionContext
-from falyx.debug import register_debug_hooks, log_before, log_success, log_error, log_after
+from falyx.debug import log_after, log_before, log_error, log_success
 from falyx.exceptions import (CommandAlreadyExistsError, FalyxError,
                               InvalidActionError, NotAFalyxError)
 from falyx.execution_registry import ExecutionRegistry as er
-from falyx.hook_manager import HookManager, HookType, Hook
+from falyx.hook_manager import Hook, HookManager, HookType
 from falyx.retry import RetryPolicy
 from falyx.themes.colors import OneColors, get_nord_theme
 from falyx.utils import CaseInsensitiveDict, async_confirm, chunks, logger
@@ -462,6 +462,9 @@ class Falyx:
         error_hooks: list[Callable] | None = None,
         teardown_hooks: list[Callable] | None = None,
         tags: list[str] | None = None,
+        logging_hooks: bool = False,
+        retry: bool = False,
+        retry_all: bool = False,
         retry_policy: RetryPolicy | None = None,
     ) -> Command:
         """Adds an command to the menu, preventing duplicates."""
@@ -484,7 +487,10 @@ class Falyx:
             spinner_style=spinner_style,
             spinner_kwargs=spinner_kwargs or {},
             tags=tags if tags else [],
-            retry_policy=retry_policy if retry_policy else RetryPolicy(),
+            logging_hooks=logging_hooks,
+            retry=retry,
+            retry_all=retry_all,
+            retry_policy=retry_policy or RetryPolicy(),
         )
 
         if hooks:
@@ -749,8 +755,27 @@ class Falyx:
 
         return parser
 
+    async def menu(self) -> None:
+        """Runs the menu and handles user input."""
+        logger.info(f"Running menu: {self.get_title()}")
+        self.debug_hooks()
+        if self.welcome_message:
+            self.console.print(self.welcome_message)
+        while True:
+            self.console.print(self.table)
+            try:
+                task = asyncio.create_task(self.process_command())
+                should_continue = await task
+                if not should_continue:
+                    break
+            except (EOFError, KeyboardInterrupt):
+                logger.info(f"[{OneColors.DARK_RED}]EOF or KeyboardInterrupt. Exiting menu.")
+                break
+        logger.info(f"Exiting menu: {self.get_title()}")
+        if self.exit_message:
+            self.console.print(self.exit_message)
 
-    async def cli(self, parser: ArgumentParser | None = None) -> None:
+    async def run(self, parser: ArgumentParser | None = None) -> None:
         """Run Falyx CLI with structured subcommands."""
         parser = parser or self.get_arg_parser()
         self.cli_args = parser.parse_args()
@@ -809,23 +834,3 @@ class Falyx:
             sys.exit(0)
 
         await self.menu()
-
-    async def menu(self) -> None:
-        """Runs the menu and handles user input."""
-        logger.info(f"Running menu: {self.get_title()}")
-        self.debug_hooks()
-        if self.welcome_message:
-            self.console.print(self.welcome_message)
-        while True:
-            self.console.print(self.table)
-            try:
-                task = asyncio.create_task(self.process_command())
-                should_continue = await task
-                if not should_continue:
-                    break
-            except (EOFError, KeyboardInterrupt):
-                logger.info(f"[{OneColors.DARK_RED}]EOF or KeyboardInterrupt. Exiting menu.")
-                break
-        logger.info(f"Exiting menu: {self.get_title()}")
-        if self.exit_message:
-            self.console.print(self.exit_message)
