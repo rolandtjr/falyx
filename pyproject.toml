@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "falyx"
-version = "0.1.0"
+version = "0.1.2"
 description = "Reliable and introspectable async CLI action framework."
 authors = ["Roland Thomas Jr <roland@rtj.dev>"]
 license = "MIT"
@@ -17,6 +17,7 @@ pydantic = "^2.0"
 pytest = "^7.0"
 pytest-asyncio = "^0.20"
 ruff = "^0.3"
+python-json-logger = "^3.3.0"
 
 [tool.poetry.scripts]
 falyx = "falyx.cli.main:main"

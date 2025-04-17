@@ -15,7 +15,7 @@ def log_success(context: ExecutionContext):
     """Log the successful completion of an action."""
     result_str = repr(context.result)
     if len(result_str) > 100:
-        result_str = result_str[:100] + "..."
+        result_str = f"{result_str[:100]} ..."
     logger.debug("[%s] ✅ Success → Result: %s", context.name, result_str)
 
 
@@ -40,4 +40,3 @@ def register_debug_hooks(hooks: HookManager):
     hooks.register(HookType.AFTER, log_after)
     hooks.register(HookType.ON_SUCCESS, log_success)
     hooks.register(HookType.ON_ERROR, log_error)
-
