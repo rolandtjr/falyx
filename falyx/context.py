@@ -1,9 +1,12 @@
 """context.py"""
 import time
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
+from rich.console import Console
+
+console = Console(color_system="auto")
 
 
 class ExecutionContext(BaseModel):
@@ -13,23 +16,31 @@ class ExecutionContext(BaseModel):
     action: Any
     result: Any | None = None
     exception: Exception | None = None
+
     start_time: float | None = None
     end_time: float | None = None
+    start_wall: datetime | None = None
+    end_wall: datetime | None = None
+
     extra: dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def start_timer(self):
+        self.start_wall = datetime.now()
         self.start_time = time.perf_counter()
 
     def stop_timer(self):
         self.end_time = time.perf_counter()
+        self.end_wall = datetime.now()
 
     @property
-    def duration(self) -> Optional[float]:
-        if self.start_time is not None and self.end_time is not None:
-            return self.end_time - self.start_time
-        return None
+    def duration(self) -> float | None:
+        if self.start_time is None:
+            return None
+        if self.end_time is None:
+            return time.perf_counter() - self.start_time
+        return self.end_time - self.start_time
 
     @property
     def success(self) -> bool:
@@ -50,23 +61,21 @@ class ExecutionContext(BaseModel):
 
     def log_summary(self, logger=None):
         summary = self.as_dict()
-        msg = f"[SUMMARY] {summary['name']} | "
+        message = [f"[SUMMARY] {summary['name']} | "]
 
-        if self.start_time:
-            start_str = datetime.fromtimestamp(self.start_time).strftime("%H:%M:%S")
-            msg += f"Start: {start_str} | "
+        if self.start_wall:
+            message.append(f"Start: {self.start_wall.strftime('%H:%M:%S')} | ")
 
         if self.end_time:
-            end_str = datetime.fromtimestamp(self.end_time).strftime("%H:%M:%S")
-            msg += f"End: {end_str} | "
+            message.append(f"End: {self.end_wall.strftime('%H:%M:%S')} | ")
 
-        msg += f"Duration: {summary['duration']:.3f}s | "
+        message.append(f"Duration: {summary['duration']:.3f}s | ")
 
         if summary["exception"]:
-            msg += f"❌ Exception: {summary['exception']}"
+            message.append(f"❌ Exception: {summary['exception']}")
         else:
-            msg += f"✅ Result: {summary['result']}"
-        (logger or print)(msg)
+            message.append(f"✅ Result: {summary['result']}")
+        (logger or console.print)("".join(message))
 
     def to_log_line(self) -> str:
         """Structured flat-line format for logging and metrics."""
@@ -125,3 +134,16 @@ class ResultsContext(BaseModel):
             f"Results: {self.results} | "
             f"Errors: {self.errors}>"
         )
+
+if __name__ == "__main__":
+    import asyncio
+
+    async def demo():
+        ctx = ExecutionContext(name="test", action="demo")
+        ctx.start_timer()
+        await asyncio.sleep(0.2)
+        ctx.stop_timer()
+        ctx.result = "done"
+        ctx.log_summary()
+
+    asyncio.run(demo())

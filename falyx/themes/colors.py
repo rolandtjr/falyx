@@ -89,7 +89,7 @@ class ColorsMeta(type):
             if suggestions:
                 error_msg.append(f"Did you mean '{suggestions[0]}'?")
             if valid_bases:
-                error_msg.append("Valid base color names include: " + ", ".join(valid_bases))
+                error_msg.append(f"Valid base color names include: {', '.join(valid_bases)}")
             raise AttributeError(" ".join(error_msg)) from None
 
         if not isinstance(color_value, str):

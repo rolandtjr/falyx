@@ -78,8 +78,8 @@ class Falyx:
         prompt: str | AnyFormattedText = "> ",
         columns: int = 3,
         bottom_bar: BottomBar | str | Callable[[], None] | None = None,
-        welcome_message: str | Markdown = "",
-        exit_message: str | Markdown = "",
+        welcome_message: str | Markdown | dict[str, Any] = "",
+        exit_message: str | Markdown | dict[str, Any] = "",
         key_bindings: KeyBindings | None = None,
         include_history_command: bool = True,
         include_help_command: bool = False,
@@ -98,8 +98,8 @@ class Falyx:
         self.history_command: Command | None = self._get_history_command() if include_history_command else None
         self.help_command: Command | None = self._get_help_command() if include_help_command else None
         self.console: Console = Console(color_system="truecolor", theme=get_nord_theme())
-        self.welcome_message: str | Markdown = welcome_message
-        self.exit_message: str | Markdown = exit_message
+        self.welcome_message: str | Markdown | dict[str, Any] = welcome_message
+        self.exit_message: str | Markdown | dict[str, Any] = exit_message
         self.hooks: HookManager = HookManager()
         self.last_run_command: Command | None = None
         self.key_bindings: KeyBindings = key_bindings or KeyBindings()
@@ -755,12 +755,26 @@ class Falyx:
 
         return parser
 
+    def print_message(self, message: str | Markdown | dict[str, Any]) -> None:
+        """Prints a message to the console."""
+        if isinstance(message, (str, Markdown)):
+            self.console.print(message)
+        elif isinstance(message, dict):
+            self.console.print(
+                *message.get("args", tuple()),
+                **message.get("kwargs", {}),
+            )
+        else:
+            raise TypeError(
+                "Message must be a string, Markdown, or dictionary with args and kwargs."
+            )
+
     async def menu(self) -> None:
         """Runs the menu and handles user input."""
         logger.info(f"Running menu: {self.get_title()}")
         self.debug_hooks()
         if self.welcome_message:
-            self.console.print(self.welcome_message)
+            self.print_message(self.welcome_message)
         while True:
             self.console.print(self.table)
             try:
@@ -773,7 +787,7 @@ class Falyx:
                 break
         logger.info(f"Exiting menu: {self.get_title()}")
         if self.exit_message:
-            self.console.print(self.exit_message)
+            self.print_message(self.exit_message)
 
     async def run(self, parser: ArgumentParser | None = None) -> None:
         """Run Falyx CLI with structured subcommands."""

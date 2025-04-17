@@ -75,7 +75,6 @@ falyx.add_command(
     description="Run My Pipeline",
     action=chain,
     logging_hooks=True,
-    # shows preview before confirmation
     preview_before_confirm=True,
     confirm=True,
 )
@@ -137,7 +136,7 @@ Confirm execution of R — Run My Pipeline (calls `my_pipeline`)  [Y/n] y
 ### 🧱 Core Building Blocks
 
 #### `Action`
-A single async unit of work. Can retry, roll back, or inject prior results.
+A single async unit of work. Painless retry support.
 
 #### `ChainedAction`
 Run tasks in sequence. Supports rollback on failure and context propagation.
@@ -164,24 +163,5 @@ Registers and triggers lifecycle hooks (`before`, `after`, `on_error`, etc.) for
 > “Like a phalanx: organized, resilient, and reliable.”
 
 Falyx is designed for developers who don’t just want CLI tools to run — they want them to **fail meaningfully**, **recover gracefully**, and **log clearly**.
-
----
-
-## 🛣️ Roadmap
-
-- [ ] Metrics export (Prometheus-style)
-- [ ] Plugin system for menu extensions
-- [ ] Native support for structured logs + log forwarding
-- [ ] Web UI for interactive execution history (maybe!)
-
----
-
-## 🧑‍💼 License
-
-MIT — use it, fork it, improve it. Attribution appreciated!
-
----
-
-## 🌐 falyx.dev — **reliable actions, resilient flows**
 
 ---
