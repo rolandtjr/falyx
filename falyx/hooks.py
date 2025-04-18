@@ -3,7 +3,27 @@ import time
 
 from falyx.context import ExecutionContext
 from falyx.exceptions import CircuitBreakerOpen
+from falyx.themes.colors import OneColors
 from falyx.utils import logger
+
+
+class ResultReporter:
+    def __init__(self, formatter: callable = None):
+        """
+        Optional result formatter. If not provided, uses repr(result).
+        """
+        self.formatter = formatter or (lambda r: repr(r))
+
+    @property
+    def __name__(self):
+        return "ResultReporter"
+
+    async def report(self, context: ExecutionContext):
+        if context.result is not None:
+            result_text = self.formatter(context.result)
+            duration = f"{context.duration:.3f}s" if context.duration is not None else "n/a"
+            context.console.print(f"[{OneColors.GREEN}]✅ '{context.name}' "
+                  f"completed:[/] {result_text} in {duration}.")
 
 
 class CircuitBreaker:
@@ -41,4 +61,3 @@ class CircuitBreaker:
         self.failures = 0
         self.open_until = None
         logger.info("🔄 Circuit reset.")
-

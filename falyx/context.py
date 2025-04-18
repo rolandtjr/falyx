@@ -6,8 +6,6 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 from rich.console import Console
 
-console = Console(color_system="auto")
-
 
 class ExecutionContext(BaseModel):
     name: str
@@ -23,6 +21,7 @@ class ExecutionContext(BaseModel):
     end_wall: datetime | None = None
 
     extra: dict[str, Any] = Field(default_factory=dict)
+    console: Console = Field(default_factory=lambda: Console(color_system="auto"))
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -75,7 +74,7 @@ class ExecutionContext(BaseModel):
             message.append(f"❌ Exception: {summary['exception']}")
         else:
             message.append(f"✅ Result: {summary['result']}")
-        (logger or console.print)("".join(message))
+        (logger or self.console.print)("".join(message))
 
     def to_log_line(self) -> str:
         """Structured flat-line format for logging and metrics."""

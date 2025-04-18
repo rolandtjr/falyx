@@ -791,11 +791,10 @@ class Falyx:
                 sys.exit(1)
             self._set_retry_policy(command)
             try:
-                result = await self.headless(self.cli_args.name)
+                await self.headless(self.cli_args.name)
             except FalyxError as error:
                 self.console.print(f"[{OneColors.DARK_RED}]❌ Error: {error}[/]")
                 sys.exit(1)
-            self.console.print(f"[{OneColors.GREEN}]✅ Result:[/] {result}")
             sys.exit(0)
 
         if self.cli_args.command == "run-all":
@@ -807,7 +806,7 @@ class Falyx:
                 self.console.print(f"[{OneColors.LIGHT_YELLOW}]⚠️ No commands found with tag: '{self.cli_args.tag}'[/]")
                 sys.exit(1)
 
-            self.console.print(f"[bold cyan]🚀 Running all commands with tag:[/] {self.cli_args.tag}")
+            self.console.print(f"[{OneColors.CYAN_b}]🚀 Running all commands with tag:[/] {self.cli_args.tag}")
             for cmd in matching:
                 self._set_retry_policy(cmd)
                 await self.headless(cmd.key)
