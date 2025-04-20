@@ -39,7 +39,8 @@ from falyx.exceptions import (CommandAlreadyExistsError, FalyxError,
                               InvalidActionError, NotAFalyxError)
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import Hook, HookManager, HookType
-from falyx.parsers import FalyxParsers, get_arg_parsers
+from falyx.options_manager import OptionsManager
+from falyx.parsers import get_arg_parsers
 from falyx.retry import RetryPolicy
 from falyx.themes.colors import OneColors, get_nord_theme
 from falyx.utils import CaseInsensitiveDict, async_confirm, chunks, logger
@@ -78,7 +79,7 @@ class Falyx:
         title: str | Markdown = "Menu",
         prompt: str | AnyFormattedText = "> ",
         columns: int = 3,
-        bottom_bar: BottomBar | str | Callable[[], None] | None = None,
+        bottom_bar: BottomBar | str | Callable[[], Any] | None = None,
         welcome_message: str | Markdown | dict[str, Any] = "",
         exit_message: str | Markdown | dict[str, Any] = "",
         key_bindings: KeyBindings | None = None,
@@ -88,6 +89,7 @@ class Falyx:
         never_confirm: bool = False,
         always_confirm: bool = False,
         cli_args: Namespace | None = None,
+        options: OptionsManager | None = None,
         custom_table: Callable[["Falyx"], Table] | Table | None = None,
     ) -> None:
         """Initializes the Falyx object."""
@@ -104,12 +106,35 @@ class Falyx:
         self.hooks: HookManager = HookManager()
         self.last_run_command: Command | None = None
         self.key_bindings: KeyBindings = key_bindings or KeyBindings()
-        self.bottom_bar: BottomBar | str | Callable[[], None] = bottom_bar or BottomBar(columns=columns, key_bindings=self.key_bindings)
+        self.bottom_bar: BottomBar | str | Callable[[], None] = bottom_bar
         self.confirm_on_error: bool = confirm_on_error
         self._never_confirm: bool = never_confirm
         self._always_confirm: bool = always_confirm
         self.cli_args: Namespace | None = cli_args
         self.custom_table: Callable[["Falyx"], Table] | Table | None = custom_table
+        self.set_options(cli_args, options)
+
+    def set_options(
+            self,
+            cli_args: Namespace | None,
+            options: OptionsManager | None = None,
+        ) -> None:
+        """Checks if the options are set correctly."""
+        self.options: OptionsManager = options or OptionsManager()
+        if not cli_args and not options:
+            return
+
+        if options and not cli_args:
+            raise FalyxError("Options are set, but CLI arguments are not.")
+
+        if options is None:
+            self.options.from_namespace(cli_args, "cli_args")
+
+        if not isinstance(self.options, OptionsManager):
+            raise FalyxError("Options must be an instance of OptionsManager.")
+
+        if not isinstance(self.cli_args, Namespace):
+            raise FalyxError("CLI arguments must be a Namespace object.")
 
     @property
     def _name_map(self) -> dict[str, Command]:
@@ -248,8 +273,8 @@ class Falyx:
             keys.add(cmd.key.upper())
             keys.update({alias.upper() for alias in cmd.aliases})
 
-        if isinstance(self.bottom_bar, BottomBar):
-            toggle_keys = {key.upper() for key in self.bottom_bar.toggles}
+        if isinstance(self._bottom_bar, BottomBar):
+            toggle_keys = {key.upper() for key in self._bottom_bar.toggle_keys}
         else:
             toggle_keys = set()
 
@@ -277,57 +302,47 @@ class Falyx:
         if hasattr(self, "session"):
             del self.session
 
-    def add_toggle(self, key: str, label: str, state: bool) -> None:
-        """Adds a toggle to the bottom bar."""
-        assert isinstance(self.bottom_bar, BottomBar), "Bottom bar must be an instance of BottomBar."
-        self.bottom_bar.add_toggle(key, label, state)
-        self._invalidate_session_cache()
-
-    def add_counter(self, name: str, label: str, current: int) -> None:
-        """Adds a counter to the bottom bar."""
-        assert isinstance(self.bottom_bar, BottomBar), "Bottom bar must be an instance of BottomBar."
-        self.bottom_bar.add_counter(name, label, current)
-        self._invalidate_session_cache()
-
-    def add_total_counter(self, name: str, label: str, current: int, total: int) -> None:
-        """Adds a counter to the bottom bar."""
-        assert isinstance(self.bottom_bar, BottomBar), "Bottom bar must be an instance of BottomBar."
-        self.bottom_bar.add_total_counter(name, label, current, total)
-        self._invalidate_session_cache()
-
-    def add_static(self, name: str, text: str) -> None:
-        """Adds a static element to the bottom bar."""
-        assert isinstance(self.bottom_bar, BottomBar), "Bottom bar must be an instance of BottomBar."
-        self.bottom_bar.add_static(name, text)
-        self._invalidate_session_cache
-
-    def get_toggle_state(self, key: str) -> bool | None:
-        assert isinstance(self.bottom_bar, BottomBar), "Bottom bar must be an instance of BottomBar."
-        if key.upper() in self.bottom_bar._states:
-            """Returns the state of a toggle."""
-            return self.bottom_bar._states[key.upper()][1]
-        return None
-
     def add_help_command(self):
         """Adds a help command to the menu if it doesn't already exist."""
         if not self.help_command:
             self.help_command = self._get_help_command()
-            self._invalidate_session_cache()
 
     def add_history_command(self):
         """Adds a history command to the menu if it doesn't already exist."""
         if not self.history_command:
             self.history_command = self._get_history_command()
-            self._invalidate_session_cache()
 
-    def _get_bottom_bar(self) -> Callable[[], Any] | str | None:
+    @property
+    def bottom_bar(self) -> BottomBar | str | Callable[[], Any] | None:
+        """Returns the bottom bar for the menu."""
+        return self._bottom_bar
+
+    @bottom_bar.setter
+    def bottom_bar(self, bottom_bar: BottomBar | str |  Callable[[], Any] | None) -> None:
+        """Sets the bottom bar for the menu."""
+        if bottom_bar is None:
+            self._bottom_bar = BottomBar(self.columns, self.key_bindings, key_validator=self.is_key_available)
+        elif isinstance(bottom_bar, BottomBar):
+            bottom_bar.key_validator = self.is_key_available
+            bottom_bar.key_bindings = self.key_bindings
+            self._bottom_bar = bottom_bar
+        elif (isinstance(bottom_bar, str) or
+            callable(bottom_bar)):
+            self._bottom_bar = bottom_bar
+        else:
+            raise FalyxError("Bottom bar must be a string, callable, or BottomBar instance.")
+        self._invalidate_session_cache()
+
+    def _get_bottom_bar_render(self) -> Callable[[], Any] | str | None:
         """Returns the bottom bar for the menu."""
         if isinstance(self.bottom_bar, BottomBar) and self.bottom_bar._items:
-            return self.bottom_bar.render
-        elif callable(self.bottom_bar):
-            return self.bottom_bar
-        elif isinstance(self.bottom_bar, str):
-            return self.bottom_bar
+            return self._bottom_bar.render
+        elif callable(self._bottom_bar):
+            return self._bottom_bar
+        elif isinstance(self._bottom_bar, str):
+            return self._bottom_bar
+        elif self._bottom_bar is None:
+            return None
         return None
 
     @cached_property
@@ -339,7 +354,7 @@ class Falyx:
             completer=self._get_completer(),
             reserve_space_for_menu=1,
             validator=self._get_validator(),
-            bottom_toolbar=self._get_bottom_bar(),
+            bottom_toolbar=self._get_bottom_bar_render(),
             key_bindings=self.key_bindings,
         )
 
@@ -382,10 +397,24 @@ class Falyx:
             logger.debug(f"[Command '{key}'] after: {hook_names(command.hooks._hooks[HookType.AFTER])}")
             logger.debug(f"[Command '{key}'] on_teardown: {hook_names(command.hooks._hooks[HookType.ON_TEARDOWN])}")
 
+    def is_key_available(self, key: str) -> bool:
+        key = key.upper()
+        toggles = self._bottom_bar.toggle_keys if isinstance(self._bottom_bar, BottomBar) else []
+
+        conflicts = (
+            key in self.commands,
+            key == self.exit_command.key.upper(),
+            self.history_command and key == self.history_command.key.upper(),
+            self.help_command and key == self.help_command.key.upper(),
+            key in toggles
+        )
+
+        return not any(conflicts)
+
     def _validate_command_key(self, key: str) -> None:
         """Validates the command key to ensure it is unique."""
         key = key.upper()
-        toggles = self.bottom_bar.toggles if isinstance(self.bottom_bar, BottomBar) else []
+        toggles = self._bottom_bar.toggle_keys if isinstance(self._bottom_bar, BottomBar) else []
         collisions = []
 
         if key in self.commands:
@@ -423,7 +452,6 @@ class Falyx:
             confirm=confirm,
             confirm_message=confirm_message,
         )
-        self._invalidate_session_cache()
 
     def add_submenu(self, key: str, description: str, submenu: "Falyx", color: str = OneColors.CYAN) -> None:
         """Adds a submenu to the menu."""
@@ -431,7 +459,6 @@ class Falyx:
             raise NotAFalyxError("submenu must be an instance of Falyx.")
         self._validate_command_key(key)
         self.add_command(key, description, submenu.menu, color=color)
-        self._invalidate_session_cache()
 
     def add_commands(self, commands: list[dict]) -> None:
         """Adds multiple commands to the menu."""
@@ -511,7 +538,6 @@ class Falyx:
             command.hooks.register(HookType.ON_TEARDOWN, hook)
 
         self.commands[key] = command
-        self._invalidate_session_cache()
         return command
 
     def get_bottom_row(self) -> list[str]:
@@ -755,10 +781,10 @@ class Falyx:
         if self.exit_message:
             self.print_message(self.exit_message)
 
-    async def run(self, parsers: FalyxParsers | None = None) -> None:
+    async def run(self) -> None:
         """Run Falyx CLI with structured subcommands."""
-        parsers = parsers or get_arg_parsers()
-        self.cli_args = parsers.root.parse_args()
+        if not self.cli_args:
+            self.cli_args = get_arg_parsers().root.parse_args()
 
         if self.cli_args.verbose:
             logging.getLogger("falyx").setLevel(logging.DEBUG)

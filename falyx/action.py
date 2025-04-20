@@ -471,8 +471,6 @@ class ProcessAction(BaseAction):
         try:
             import pickle
             pickle.dumps(obj)
-            print("YES")
             return True
         except (pickle.PicklingError, TypeError):
-            print("NO")
             return False

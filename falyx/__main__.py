@@ -38,4 +38,5 @@ def build_falyx() -> Falyx:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.WARNING)
     falyx = build_falyx()
-    asyncio.run(falyx.cli())
+    asyncio.run(falyx.run())
+

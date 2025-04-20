@@ -1,8 +1,9 @@
 """parsers.py
 This module contains the argument parsers used for the Falyx CLI.
 """
+from argparse import ArgumentParser, HelpFormatter, Namespace
 from dataclasses import asdict, dataclass
-from argparse import ArgumentParser
+from typing import Any, Sequence
 
 
 @dataclass
@@ -15,6 +16,10 @@ class FalyxParsers:
     list: ArgumentParser
     version: ArgumentParser
 
+    def parse_args(self, args: Sequence[str] | None = None) -> Namespace:
+        """Parse the command line arguments."""
+        return self.root.parse_args(args)
+
     def as_dict(self) -> dict[str, ArgumentParser]:
         """Convert the FalyxParsers instance to a dictionary."""
         return asdict(self)
@@ -24,9 +29,37 @@ class FalyxParsers:
         return self.as_dict().get(name)
 
 
-def get_arg_parsers() -> FalyxParsers:
+def get_arg_parsers(
+        prog: str |None = "falyx",
+        usage: str | None = None,
+        description: str | None = "Falyx CLI - Run structured async command workflows.",
+        epilog: str | None = None,
+        parents: Sequence[ArgumentParser] = [],
+        formatter_class: HelpFormatter = HelpFormatter,
+        prefix_chars: str = "-",
+        fromfile_prefix_chars: str | None = None,
+        argument_default: Any = None,
+        conflict_handler: str = "error",
+        add_help: bool = True,
+        allow_abbrev: bool = True,
+        exit_on_error: bool = True,
+    ) -> FalyxParsers:
     """Returns the argument parser for the CLI."""
-    parser = ArgumentParser(prog="falyx", description="Falyx CLI - Run structured async command workflows.")
+    parser = ArgumentParser(
+        prog=prog,
+        usage=usage,
+        description=description,
+        epilog=epilog,
+        parents=parents,
+        formatter_class=formatter_class,
+        prefix_chars=prefix_chars,
+        fromfile_prefix_chars=fromfile_prefix_chars,
+        argument_default=argument_default,
+        conflict_handler=conflict_handler,
+        add_help=add_help,
+        allow_abbrev=allow_abbrev,
+        exit_on_error=exit_on_error,
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging for Falyx.")
     parser.add_argument("--debug-hooks", action="store_true", help="Enable default lifecycle debug logging")
     parser.add_argument("--version", action="store_true", help="Show Falyx version")

@@ -2,8 +2,9 @@ import asyncio
 import logging
 from rich.markdown import Markdown
 
-from falyx import Action, Falyx, HookType
-from falyx.hooks import log_before, log_success, log_error, log_after
+from falyx import Action, Falyx
+from falyx.hook_manager import HookType
+from falyx.debug import log_before, log_success, log_error, log_after
 from falyx.themes.colors import OneColors
 from falyx.utils import setup_logging
 
@@ -76,7 +77,7 @@ def main():
         spinner=True,
     )
 
-    asyncio.run(menu.cli())
+    asyncio.run(menu.run())
 
 
 if __name__ == "__main__":
