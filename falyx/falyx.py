@@ -335,7 +335,7 @@ class Falyx:
 
     def _get_bottom_bar_render(self) -> Callable[[], Any] | str | None:
         """Returns the bottom bar for the menu."""
-        if isinstance(self.bottom_bar, BottomBar) and self.bottom_bar._items:
+        if isinstance(self.bottom_bar, BottomBar) and self.bottom_bar._named_items:
             return self._bottom_bar.render
         elif callable(self._bottom_bar):
             return self._bottom_bar

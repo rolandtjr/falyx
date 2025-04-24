@@ -159,7 +159,7 @@ class Command(BaseModel):
         elif callable(self.action):
             console.print(f"{label}")
             console.print(
-                f"[{OneColors.LIGHT_RED_b}]→ Would call:[/] {self.action.__name__} "
+                f"[{OneColors.LIGHT_RED_b}]→ Would call:[/] {self.action.__name__}"
                 f"[dim](args={self.args}, kwargs={self.kwargs})[/dim]"
             )
         else:

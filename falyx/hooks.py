@@ -19,6 +19,8 @@ class ResultReporter:
         return "ResultReporter"
 
     async def report(self, context: ExecutionContext):
+        if not callable(self.formatter):
+            raise TypeError("formatter must be callable")
         if context.result is not None:
             result_text = self.formatter(context.result)
             duration = f"{context.duration:.3f}s" if context.duration is not None else "n/a"

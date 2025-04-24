@@ -30,7 +30,6 @@ class BottomBar:
     ) -> None:
         self.columns = columns
         self.console = Console()
-        self._items: list[Callable[[], HTML]] = []
         self._named_items: dict[str, Callable[[], HTML]] = {}
         self._value_getters: dict[str, Callable[[], Any]] = CaseInsensitiveDict()
         self.toggle_keys: list[str] = []
@@ -99,6 +98,7 @@ class BottomBar:
         total: int,
         fg: str = OneColors.BLACK,
         bg: str = OneColors.WHITE,
+        enforce_total: bool = True,
     ) -> None:
         if not callable(get_current):
             raise ValueError("`get_current` must be a callable returning int")
@@ -108,7 +108,7 @@ class BottomBar:
         def render():
             get_current_ = self._value_getters[name]
             current_value = get_current_()
-            if current_value > total:
+            if current_value > total and enforce_total:
                 raise ValueError(
                     f"Current value {current_value} is greater than total value {total}"
                 )
@@ -169,6 +169,7 @@ class BottomBar:
         bg_on: str = OneColors.GREEN,
         bg_off: str = OneColors.DARK_RED,
     ) -> None:
+        """Add a toggle to the bottom bar based on an option from OptionsManager."""
         self.add_toggle(
             key=key,
             label=label,
@@ -185,15 +186,30 @@ class BottomBar:
         return {label: getter() for label, getter in self._value_getters.items()}
 
     def get_value(self, name: str) -> Any:
+        """Get the current value of a registered item."""
         if name not in self._value_getters:
             raise ValueError(f"No value getter registered under name: '{name}'")
         return self._value_getters[name]()
+
+    def remove_item(self, name: str) -> None:
+        """Remove an item from the bottom bar."""
+        self._named_items.pop(name, None)
+        self._value_getters.pop(name, None)
+        if name in self.toggle_keys:
+            self.toggle_keys.remove(name)
+
+    def clear(self) -> None:
+        """Clear all items from the bottom bar."""
+        self._value_getters.clear()
+        self._named_items.clear()
+        self.toggle_keys.clear()
 
     def _add_named(self, name: str, render_fn: Callable[[], HTML]) -> None:
         if name in self._named_items:
             raise ValueError(f"Bottom bar item '{name}' already exists")
         self._named_items[name] = render_fn
-        self._items = list(self._named_items.values())
 
     def render(self):
-        return merge_formatted_text([fn() for fn in self._items])
+        """Render the bottom bar."""
+        return merge_formatted_text([fn() for fn in self._named_items.values()])
+
