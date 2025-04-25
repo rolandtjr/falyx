@@ -12,6 +12,7 @@ from falyx.context import ExecutionContext
 from falyx.exceptions import FalyxError
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
+from falyx.utils import logger
 from falyx.themes.colors import OneColors
 
 console = Console()
@@ -33,6 +34,7 @@ class BaseIOAction(BaseAction):
             inject_last_result=inject_last_result,
         )
         self.mode = mode
+        self.requires_injection = True
 
     def from_input(self, raw: str | bytes) -> Any:
         raise NotImplementedError
@@ -53,6 +55,7 @@ class BaseIOAction(BaseAction):
         if self.inject_last_result and self.results_context:
             return self.results_context.last_result()
 
+        logger.debug("[%s] No input provided and no last result found for injection.", self.name)
         raise FalyxError("No input provided and no last result to inject.")
 
     async def __call__(self, *args, **kwargs):
@@ -75,7 +78,6 @@ class BaseIOAction(BaseAction):
             else:
                 parsed_input = await self._resolve_input(kwargs)
                 result = await self._run(parsed_input, *args, **kwargs)
-                result = await self._run(parsed_input)
                 output = self.to_output(result)
                 await self._write_stdout(output)
             context.result = result

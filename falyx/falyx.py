@@ -113,6 +113,7 @@ class Falyx:
         self.cli_args: Namespace | None = cli_args
         self.custom_table: Callable[["Falyx"], Table] | Table | None = custom_table
         self.set_options(cli_args, options)
+        self._session: PromptSession | None = None
 
     def set_options(
             self,
@@ -127,6 +128,7 @@ class Falyx:
         if options and not cli_args:
             raise FalyxError("Options are set, but CLI arguments are not.")
 
+        assert isinstance(cli_args, Namespace), "CLI arguments must be a Namespace object."
         if options is None:
             self.options.from_namespace(cli_args, "cli_args")
 
@@ -301,6 +303,7 @@ class Falyx:
         """Forces the session to be recreated on the next access."""
         if hasattr(self, "session"):
             del self.session
+        self._session = None
 
     def add_help_command(self):
         """Adds a help command to the menu if it doesn't already exist."""
@@ -348,15 +351,17 @@ class Falyx:
     @cached_property
     def session(self) -> PromptSession:
         """Returns the prompt session for the menu."""
-        return PromptSession(
-            message=self.prompt,
-            multiline=False,
-            completer=self._get_completer(),
-            reserve_space_for_menu=1,
-            validator=self._get_validator(),
-            bottom_toolbar=self._get_bottom_bar_render(),
-            key_bindings=self.key_bindings,
-        )
+        if self._session is None:
+            self._session = PromptSession(
+                                message=self.prompt,
+                                multiline=False,
+                                completer=self._get_completer(),
+                                reserve_space_for_menu=1,
+                                validator=self._get_validator(),
+                                bottom_toolbar=self._get_bottom_bar_render(),
+                                key_bindings=self.key_bindings,
+                            )
+        return self._session
 
     def register_all_hooks(self, hook_type: HookType, hooks: Hook | list[Hook]) -> None:
         """Registers hooks for all commands in the menu and actions recursively."""
@@ -745,7 +750,7 @@ class Falyx:
                 selected_command.retry_policy.delay = self.cli_args.retry_delay
             if self.cli_args.retry_backoff:
                 selected_command.retry_policy.backoff = self.cli_args.retry_backoff
-            selected_command.update_retry_policy(selected_command.retry_policy)
+            #selected_command.update_retry_policy(selected_command.retry_policy)
 
     def print_message(self, message: str | Markdown | dict[str, Any]) -> None:
         """Prints a message to the console."""
