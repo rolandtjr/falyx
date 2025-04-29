@@ -1,3 +1,4 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """bottom_bar.py"""
 
 from typing import Any, Callable
@@ -8,7 +9,7 @@ from rich.console import Console
 
 from falyx.options_manager import OptionsManager
 from falyx.themes.colors import OneColors
-from falyx.utils import CaseInsensitiveDict
+from falyx.utils import CaseInsensitiveDict, chunks
 
 
 class BottomBar:
@@ -211,5 +212,8 @@ class BottomBar:
 
     def render(self):
         """Render the bottom bar."""
-        return merge_formatted_text([fn() for fn in self._named_items.values()])
-
+        lines = []
+        for chunk in chunks(self._named_items.values(), self.columns):
+            lines.extend([fn for fn in chunk])
+            lines.append(lambda: HTML("\n"))
+        return merge_formatted_text([fn() for fn in lines[:-1]])

@@ -1,8 +1,11 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """utils.py"""
 import functools
 import inspect
 import logging
 import os
+import shutil
+import sys
 from itertools import islice
 from typing import Any, Awaitable, Callable, TypeVar
 
@@ -21,6 +24,20 @@ T = TypeVar("T")
 async def _noop(*args, **kwargs):
     pass
 
+
+def get_program_invocation() -> str:
+    """Returns the recommended program invocation prefix."""
+    script = sys.argv[0]
+    program = shutil.which(script)
+    if program:
+        return os.path.basename(program)
+
+    executable = sys.executable
+    if "python" in executable:
+        return f"python {script}"
+    return script
+
+
 def is_coroutine(function: Callable[..., Any]) -> bool:
     return inspect.iscoroutinefunction(function)
 
@@ -32,6 +49,9 @@ def ensure_async(function: Callable[..., T]) -> Callable[..., Awaitable[T]]:
     @functools.wraps(function)
     async def async_wrapper(*args, **kwargs) -> T:
         return function(*args, **kwargs)
+
+    if not callable(function):
+        raise TypeError(f"{function} is not callable")
     return async_wrapper
 
 

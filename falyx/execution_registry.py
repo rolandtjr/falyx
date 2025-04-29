@@ -1,3 +1,4 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """execution_registry.py"""
 from collections import defaultdict
 from datetime import datetime
@@ -62,6 +63,8 @@ class ExecutionRegistry:
             else:
                 status = "[green]✅ Success"
                 result = repr(ctx.result)
+                if len(result) > 1000:
+                    result = f"{result[:1000]}..."
 
             table.add_row(ctx.name, start, end, duration, status, result)
 

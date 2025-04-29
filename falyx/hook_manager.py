@@ -1,3 +1,4 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """hook_manager.py"""
 from __future__ import annotations
 
@@ -64,5 +65,6 @@ class HookManager:
                                f" for '{context.name}': {hook_error}")
 
                 if hook_type == HookType.ON_ERROR:
-                    assert isinstance(context.exception, BaseException)
+                    assert isinstance(context.exception, Exception), "Context exception should be set for ON_ERROR hook"
                     raise context.exception from hook_error
+

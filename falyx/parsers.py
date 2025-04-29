@@ -1,3 +1,4 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """parsers.py
 This module contains the argument parsers used for the Falyx CLI.
 """

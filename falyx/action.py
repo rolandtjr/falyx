@@ -1,12 +1,30 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """action.py
 
-Any Action or Command is callable and supports the signature:
-    result = thing(*args, **kwargs)
+Core action system for Falyx.
 
-This guarantees:
-- Hook lifecycle (before/after/error/teardown)
-- Timing
-- Consistent return values
+This module defines the building blocks for executable actions and workflows,
+providing a structured way to compose, execute, recover, and manage sequences of operations.
+
+All actions are callable and follow a unified signature:
+    result = action(*args, **kwargs)
+
+Core guarantees:
+- Full hook lifecycle support (before, on_success, on_error, after, on_teardown).
+- Consistent timing and execution context tracking for each run.
+- Unified, predictable result handling and error propagation.
+- Optional last_result injection to enable flexible, data-driven workflows.
+- Built-in support for retries, rollbacks, parallel groups, chaining, and fallback recovery.
+
+Key components:
+- Action: wraps a function or coroutine into a standard executable unit.
+- ChainedAction: runs actions sequentially, optionally injecting last results.
+- ActionGroup: runs actions in parallel and gathers results.
+- ProcessAction: executes CPU-bound functions in a separate process.
+- LiteralInputAction: injects static values into workflows.
+- FallbackAction: gracefully recovers from failures or missing data.
+
+This design promotes clean, fault-tolerant, modular CLI and automation systems.
 """
 from __future__ import annotations
 
@@ -14,7 +32,7 @@ import asyncio
 import random
 from abc import ABC, abstractmethod
 from concurrent.futures import ProcessPoolExecutor
-from functools import partial
+from functools import cached_property, partial
 from typing import Any, Callable
 
 from rich.console import Console
@@ -22,6 +40,7 @@ from rich.tree import Tree
 
 from falyx.context import ExecutionContext, ResultsContext
 from falyx.debug import register_debug_hooks
+from falyx.exceptions import EmptyChainError
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import Hook, HookManager, HookType
 from falyx.retry import RetryHandler, RetryPolicy
@@ -35,11 +54,12 @@ class BaseAction(ABC):
     """
     Base class for actions. Actions can be simple functions or more
     complex actions like `ChainedAction` or `ActionGroup`. They can also
-    be run independently or as part of Menu.
+    be run independently or as part of Falyx.
 
     inject_last_result (bool): Whether to inject the previous action's result into kwargs.
     inject_last_result_as (str): The name of the kwarg key to inject the result as
                                  (default: 'last_result').
+    _requires_injection (bool): Whether the action requires input injection.
     """
     def __init__(
             self,
@@ -55,7 +75,8 @@ class BaseAction(ABC):
         self.results_context: ResultsContext | None = None
         self.inject_last_result: bool = inject_last_result
         self.inject_last_result_as: str = inject_last_result_as
-        self.requires_injection: bool = False
+        self._requires_injection: bool = False
+        self._skip_in_chain: bool = False
 
         if logging_hooks:
             register_debug_hooks(self.hooks)
@@ -122,7 +143,7 @@ class BaseAction(ABC):
 
     def requires_io_injection(self) -> bool:
         """Checks to see if the action requires input injection."""
-        return self.requires_injection
+        return self._requires_injection
 
     def __str__(self):
         return f"<{self.__class__.__name__} '{self.name}'>"
@@ -132,7 +153,27 @@ class BaseAction(ABC):
 
 
 class Action(BaseAction):
-    """A simple action that runs a callable. It can be a function or a coroutine."""
+    """
+    Action wraps a simple function or coroutine into a standard executable unit.
+
+    It supports:
+    - Optional retry logic.
+    - Hook lifecycle (before, success, error, after, teardown).
+    - Last result injection for chaining.
+    - Optional rollback handlers for undo logic.
+
+    Args:
+        name (str): Name of the action.
+        action (Callable): The function or coroutine to execute.
+        rollback (Callable, optional): Rollback function to undo the action.
+        args (tuple, optional): Static positional arguments.
+        kwargs (dict, optional): Static keyword arguments.
+        hooks (HookManager, optional): Hook manager for lifecycle events.
+        inject_last_result (bool, optional): Enable last_result injection.
+        inject_last_result_as (str, optional): Name of injected key.
+        retry (bool, optional): Whether to enable retries.
+        retry_policy (RetryPolicy, optional): Retry settings.
+    """
     def __init__(
             self,
             name: str,
@@ -147,7 +188,7 @@ class Action(BaseAction):
             retry_policy: RetryPolicy | None = None,
     ) -> None:
         super().__init__(name, hooks, inject_last_result, inject_last_result_as)
-        self.action = ensure_async(action)
+        self.action = action
         self.rollback = rollback
         self.args = args
         self.kwargs = kwargs or {}
@@ -156,9 +197,17 @@ class Action(BaseAction):
         if retry or (retry_policy and retry_policy.enabled):
             self.enable_retry()
 
+    @property
+    def action(self) -> Callable[..., Any]:
+        return self._action
+
+    @action.setter
+    def action(self, value: Callable[..., Any]):
+        self._action = ensure_async(value)
+
     def enable_retry(self):
         """Enable retry with the existing retry policy."""
-        self.retry_policy.enabled = True
+        self.retry_policy.enable_policy()
         logger.debug(f"[Action:{self.name}] Registering retry handler")
         handler = RetryHandler(self.retry_policy)
         self.hooks.register(HookType.ON_ERROR, handler.retry_on_error)
@@ -166,7 +215,8 @@ class Action(BaseAction):
     def set_retry_policy(self, policy: RetryPolicy):
         """Set a new retry policy and re-register the handler."""
         self.retry_policy = policy
-        self.enable_retry()
+        if policy.enabled:
+            self.enable_retry()
 
     async def _run(self, *args, **kwargs) -> Any:
         combined_args = args + self.args
@@ -213,12 +263,64 @@ class Action(BaseAction):
         else:
             console.print(Tree("".join(label)))
 
+    def __str__(self):
+        return f"Action(name={self.name}, action={self.action.__name__})"
+
 
 class LiteralInputAction(Action):
+    """
+    LiteralInputAction injects a static value into a ChainedAction.
+
+    This allows embedding hardcoded values mid-pipeline, useful when:
+    - Providing default or fallback inputs.
+    - Starting a pipeline with a fixed input.
+    - Supplying missing context manually.
+
+    Args:
+        value (Any): The static value to inject.
+    """
     def __init__(self, value: Any):
+        self._value = value
         async def literal(*args, **kwargs):
             return value
-        super().__init__("Input", literal, inject_last_result=True)
+        super().__init__("Input", literal)
+
+    @cached_property
+    def value(self) -> Any:
+        """Return the literal value."""
+        return self._value
+
+    def __str__(self) -> str:
+        return f"LiteralInputAction(value={self.value})"
+
+
+class FallbackAction(Action):
+    """
+    FallbackAction provides a default value if the previous action failed or returned None.
+
+    It injects the last result and checks:
+    - If last_result is not None, it passes it through unchanged.
+    - If last_result is None (e.g., due to failure), it replaces it with a fallback value.
+
+    Used in ChainedAction pipelines to gracefully recover from errors or missing data.
+    When activated, it consumes the preceding error and allows the chain to continue normally.
+
+    Args:
+        fallback (Any): The fallback value to use if last_result is None.
+    """
+    def __init__(self, fallback: Any):
+        self._fallback = fallback
+        async def _fallback_logic(last_result):
+            return last_result if last_result is not None else fallback
+        super().__init__(name="Fallback", action=_fallback_logic, inject_last_result=True)
+
+    @cached_property
+    def fallback(self) -> Any:
+        """Return the fallback value."""
+        return self._fallback
+
+    def __str__(self) -> str:
+        return f"FallbackAction(fallback={self.fallback})"
 
 
 class ActionListMixin:
@@ -253,7 +355,26 @@ class ActionListMixin:
 
 
 class ChainedAction(BaseAction, ActionListMixin):
-    """A ChainedAction is a sequence of actions that are executed in order."""
+    """
+    ChainedAction executes a sequence of actions one after another.
+
+    Features:
+    - Supports optional automatic last_result injection (auto_inject).
+    - Recovers from intermediate errors using FallbackAction if present.
+    - Rolls back all previously executed actions if a failure occurs.
+    - Handles literal values with LiteralInputAction.
+
+    Best used for defining robust, ordered workflows where each step can depend on previous results.
+
+    Args:
+        name (str): Name of the chain.
+        actions (list): List of actions or literals to execute.
+        hooks (HookManager, optional): Hooks for lifecycle events.
+        inject_last_result (bool, optional): Whether to inject last results into kwargs by default.
+        inject_last_result_as (str, optional): Key name for injection.
+        auto_inject (bool, optional): Auto-enable injection for subsequent actions.
+        return_list (bool, optional): Whether to return a list of all results. False returns the last result.
+    """
     def __init__(
             self,
             name: str,
@@ -262,28 +383,28 @@ class ChainedAction(BaseAction, ActionListMixin):
             inject_last_result: bool = False,
             inject_last_result_as: str = "last_result",
             auto_inject: bool = False,
+            return_list: bool = False,
     ) -> None:
         super().__init__(name, hooks, inject_last_result, inject_last_result_as)
         ActionListMixin.__init__(self)
         self.auto_inject = auto_inject
+        self.return_list = return_list
         if actions:
             self.set_actions(actions)
 
     def _wrap_literal_if_needed(self, action: BaseAction | Any) -> BaseAction:
         return LiteralInputAction(action) if not isinstance(action, BaseAction) else action
 
-    def _apply_auto_inject(self, action: BaseAction) -> None:
-        if self.auto_inject and not action.inject_last_result:
+    def add_action(self, action: BaseAction | Any) -> None:
+        action = self._wrap_literal_if_needed(action)
+        if self.actions and self.auto_inject and not action.inject_last_result:
             action.inject_last_result = True
-
-    def set_actions(self, actions: list[BaseAction | Any]):
-        self.actions.clear()
-        for action in actions:
-            action = self._wrap_literal_if_needed(action)
-            self._apply_auto_inject(action)
-            self.add_action(action)
+        super().add_action(action)
 
     async def _run(self, *args, **kwargs) -> list[Any]:
+        if not self.actions:
+            raise EmptyChainError(f"[{self.name}] No actions to execute.")
+
         results_context = ResultsContext(name=self.name)
         if self.results_context:
             results_context.add_result(self.results_context.last_result())
@@ -300,18 +421,35 @@ class ChainedAction(BaseAction, ActionListMixin):
             await self.hooks.trigger(HookType.BEFORE, context)
 
             for index, action in enumerate(self.actions):
+                if action._skip_in_chain:
+                    logger.debug("[%s] ⚠️ Skipping consumed action '%s'", self.name, action.name)
+                    continue
                 results_context.current_index = index
                 prepared = action.prepare_for_chain(results_context)
                 last_result = results_context.last_result()
-                if self.requires_io_injection() and last_result is not None:
-                    result = await prepared(**{prepared.inject_last_result_as: last_result})
-                else:
-                    result = await prepared(*args, **updated_kwargs)
+                try:
+                    if self.requires_io_injection() and last_result is not None:
+                        result = await prepared(**{prepared.inject_last_result_as: last_result})
+                    else:
+                        result = await prepared(*args, **updated_kwargs)
+                except Exception as error:
+                    if index + 1 < len(self.actions) and isinstance(self.actions[index + 1], FallbackAction):
+                        logger.warning("[%s] ⚠️ Fallback triggered: %s, recovering with fallback '%s'.",
+                                       self.name, error, self.actions[index + 1].name)
+                        results_context.add_result(None)
+                        context.extra["results"].append(None)
+                        fallback = self.actions[index + 1].prepare_for_chain(results_context)
+                        result = await fallback()
+                        fallback._skip_in_chain = True
+                    else:
+                        raise
                 results_context.add_result(result)
                 context.extra["results"].append(result)
                 context.extra["rollback_stack"].append(prepared)
 
-            context.result = context.extra["results"]
+            all_results = context.extra["results"]
+            assert all_results, f"[{self.name}] No results captured. Something seriously went wrong."
+            context.result = all_results if self.return_list else all_results[-1]
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
             return context.result
 
@@ -328,6 +466,18 @@ class ChainedAction(BaseAction, ActionListMixin):
             er.record(context)
 
     async def _rollback(self, rollback_stack, *args, **kwargs):
+        """
+        Roll back all executed actions in reverse order.
+
+        Rollbacks run even if a fallback recovered from failure,
+        ensuring consistent undo of all side effects.
+
+        Actions without rollback handlers are skipped.
+
+        Args:
+            rollback_stack (list): Actions to roll back.
+            *args, **kwargs: Passed to rollback handlers.
+        """
         for action in reversed(rollback_stack):
             rollback = getattr(action, "rollback", None)
             if rollback:
@@ -355,7 +505,37 @@ class ChainedAction(BaseAction, ActionListMixin):
 
 
 class ActionGroup(BaseAction, ActionListMixin):
-    """An ActionGroup is a collection of actions that can be run in parallel."""
+    """
+    ActionGroup executes multiple actions concurrently in parallel.
+
+    It is ideal for independent tasks that can be safely run simultaneously,
+    improving overall throughput and responsiveness of workflows.
+
+    Core features:
+    - Parallel execution of all contained actions.
+    - Shared last_result injection across all actions if configured.
+    - Aggregated collection of individual results as (name, result) pairs.
+    - Hook lifecycle support (before, on_success, on_error, after, on_teardown).
+    - Error aggregation: captures all action errors and reports them together.
+
+    Behavior:
+    - If any action fails, the group collects the errors but continues executing
+      other actions without interruption.
+    - After all actions complete, ActionGroup raises a single exception summarizing
+      all failures, or returns all results if successful.
+
+    Best used for:
+    - Batch processing multiple independent tasks.
+    - Reducing latency for workflows with parallelizable steps.
+    - Isolating errors while maximizing successful execution.
+
+    Args:
+        name (str): Name of the chain.
+        actions (list): List of actions or literals to execute.
+        hooks (HookManager, optional): Hooks for lifecycle events.
+        inject_last_result (bool, optional): Whether to inject last results into kwargs by default.
+        inject_last_result_as (str, optional): Key name for injection.
+    """
     def __init__(
             self,
             name: str,
@@ -436,7 +616,25 @@ class ActionGroup(BaseAction, ActionListMixin):
 
 
 class ProcessAction(BaseAction):
-    """A ProcessAction runs a function in a separate process using ProcessPoolExecutor."""
+    """
+    ProcessAction runs a function in a separate process using ProcessPoolExecutor.
+
+    Features:
+    - Executes CPU-bound or blocking tasks without blocking the main event loop.
+    - Supports last_result injection into the subprocess.
+    - Validates that last_result is pickleable when injection is enabled.
+
+    Args:
+        name (str): Name of the action.
+        func (Callable): Function to execute in a new process.
+        args (tuple, optional): Positional arguments.
+        kwargs (dict, optional): Keyword arguments.
+        hooks (HookManager, optional): Hook manager for lifecycle events.
+        executor (ProcessPoolExecutor, optional): Custom executor if desired.
+        inject_last_result (bool, optional): Inject last result into the function.
+        inject_last_result_as (str, optional): Name of the injected key.
+    """
+
     def __init__(
         self,
         name: str,
