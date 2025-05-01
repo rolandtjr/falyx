@@ -1,8 +1,7 @@
 import pytest
 
-from falyx.action import Action, ChainedAction, ActionGroup, FallbackAction
+from falyx.action import Action, ChainedAction, LiteralInputAction, FallbackAction
 from falyx.execution_registry import ExecutionRegistry as er
-from falyx.hook_manager import HookManager, HookType
 from falyx.context import ExecutionContext
 
 asyncio_default_fixture_loop_scope = "function"
@@ -17,6 +16,8 @@ def clean_registry():
     er.clear()
     yield
     er.clear()
+
+
 
 @pytest.mark.asyncio
 async def test_action_callable():
@@ -33,6 +34,7 @@ async def test_action_async_callable():
     action = Action("test_action", async_callable)
     result = await action()
     assert result == "Hello, World!"
+    assert str(action) == "Action(name='test_action', action=async_callable, args=(), kwargs={}, retry=False)"
 
 @pytest.mark.asyncio
 async def test_action_non_callable():
@@ -76,3 +78,28 @@ async def test_chained_action_literals(return_list, auto_inject, expected):
 
     result = await chain()
     assert result == expected
+
+@pytest.mark.asyncio
+async def test_literal_input_action():
+    """Test if LiteralInputAction can be created and used."""
+    action = LiteralInputAction("Hello, World!")
+    result = await action()
+    assert result == "Hello, World!"
+    assert action.value == "Hello, World!"
+    assert str(action) == "LiteralInputAction(value='Hello, World!')"
+
+@pytest.mark.asyncio
+async def test_fallback_action():
+    """Test if FallbackAction can be created and used."""
+    action = FallbackAction("Fallback value")
+    chain = ChainedAction(
+        name="Fallback Chain",
+        actions=[
+            Action(name="one", action=lambda: None),
+            action,
+        ],
+    )
+    result = await chain()
+    assert result == "Fallback value"
+    assert str(action) == "FallbackAction(fallback='Fallback value')"
+

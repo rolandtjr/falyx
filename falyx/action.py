@@ -123,31 +123,14 @@ class BaseAction(ABC):
         """Register a hook for all actions and sub-actions."""
         self.hooks.register(hook_type, hook)
 
-    @classmethod
-    def enable_retries_recursively(cls, action: BaseAction, policy: RetryPolicy | None):
-        if not policy:
-            policy = RetryPolicy(enabled=True)
-        if isinstance(action, Action):
-            action.retry_policy = policy
-            action.retry_policy.enabled = True
-            action.hooks.register(HookType.ON_ERROR, RetryHandler(policy).retry_on_error)
-
-        if hasattr(action, "actions"):
-            for sub in action.actions:
-                cls.enable_retries_recursively(sub, policy)
-
     async def _write_stdout(self, data: str) -> None:
         """Override in subclasses that produce terminal output."""
-        pass
 
     def requires_io_injection(self) -> bool:
         """Checks to see if the action requires input injection."""
         return self._requires_injection
 
-    def __str__(self):
-        return f"{self.__class__.__name__}('{self.name}')"
-
-    def __repr__(self):
+    def __repr__(self) -> str:
         return str(self)
 
 
@@ -170,7 +153,7 @@ class Action(BaseAction):
         hooks (HookManager, optional): Hook manager for lifecycle events.
         inject_last_result (bool, optional): Enable last_result injection.
         inject_last_result_as (str, optional): Name of injected key.
-        retry (bool, optional): Whether to enable retries.
+        retry (bool, optional): Enable retry logic.
         retry_policy (RetryPolicy, optional): Retry settings.
     """
     def __init__(
@@ -207,7 +190,7 @@ class Action(BaseAction):
     def enable_retry(self):
         """Enable retry with the existing retry policy."""
         self.retry_policy.enable_policy()
-        logger.debug(f"[Action:{self.name}] Registering retry handler")
+        logger.debug("[%s] Registering retry handler", self.name)
         handler = RetryHandler(self.retry_policy)
         self.hooks.register(HookType.ON_ERROR, handler.retry_on_error)
 
@@ -263,7 +246,10 @@ class Action(BaseAction):
             self.console.print(Tree("".join(label)))
 
     def __str__(self):
-        return f"Action(name={self.name}, action={self.action.__name__})"
+        return (
+            f"Action(name={self.name!r}, action={getattr(self._action, '__name__', repr(self._action))}, "
+            f"args={self.args!r}, kwargs={self.kwargs!r}, retry={self.retry_policy.enabled})"
+        )
 
 
 class LiteralInputAction(Action):
@@ -290,7 +276,7 @@ class LiteralInputAction(Action):
         return self._value
 
     def __str__(self) -> str:
-        return f"LiteralInputAction(value={self.value})"
+        return f"LiteralInputAction(value={self.value!r})"
 
 
 class FallbackAction(Action):
@@ -319,7 +305,7 @@ class FallbackAction(Action):
         return self._fallback
 
     def __str__(self) -> str:
-        return f"FallbackAction(fallback={self.fallback})"
+        return f"FallbackAction(fallback={self.fallback!r})"
 
 
 class ActionListMixin:
@@ -485,7 +471,7 @@ class ChainedAction(BaseAction, ActionListMixin):
                     logger.warning("[%s] ↩️ Rolling back...", action.name)
                     await action.rollback(*args, **kwargs)
                 except Exception as error:
-                    logger.error("[%s]⚠️ Rollback failed: %s", action.name, error)
+                    logger.error("[%s] ⚠️ Rollback failed: %s", action.name, error)
 
     async def preview(self, parent: Tree | None = None):
         label = [f"[{OneColors.CYAN_b}]⛓ ChainedAction[/] '{self.name}'"]
@@ -504,7 +490,10 @@ class ChainedAction(BaseAction, ActionListMixin):
             action.register_hooks_recursively(hook_type, hook)
 
     def __str__(self):
-        return f"ChainedAction(name={self.name}, actions={self.actions})"
+        return (
+            f"ChainedAction(name={self.name!r}, actions={[a.name for a in self.actions]!r}, "
+            f"auto_inject={self.auto_inject}, return_list={self.return_list})"
+        )
 
 
 class ActionGroup(BaseAction, ActionListMixin):
@@ -619,7 +608,10 @@ class ActionGroup(BaseAction, ActionListMixin):
             action.register_hooks_recursively(hook_type, hook)
 
     def __str__(self):
-        return f"ActionGroup(name={self.name}, actions={self.actions})"
+        return (
+            f"ActionGroup(name={self.name!r}, actions={[a.name for a in self.actions]!r}, "
+            f"inject_last_result={self.inject_last_result})"
+        )
 
 
 class ProcessAction(BaseAction):
@@ -716,3 +708,8 @@ class ProcessAction(BaseAction):
         except (pickle.PicklingError, TypeError):
             return False
 
+    def __str__(self) -> str:
+        return (
+            f"ProcessAction(name={self.name!r}, func={getattr(self.func, '__name__', repr(self.func))}, "
+            f"args={self.args!r}, kwargs={self.kwargs!r})"
+        )

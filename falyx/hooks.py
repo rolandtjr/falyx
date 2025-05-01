@@ -9,7 +9,6 @@ from falyx.themes.colors import OneColors
 from falyx.utils import logger
 
 
-
 class ResultReporter:
     def __init__(self, formatter: Callable[[], str] | None = None):
         """

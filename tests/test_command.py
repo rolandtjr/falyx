@@ -49,7 +49,8 @@ def test_command_str():
         description="Test Command",
         action=action
     )
-    assert str(cmd) == "Command(key='TEST', description='Test Command' action='Action(name=test_action, action=dummy_action)')"
+    print(cmd)
+    assert str(cmd) == "Command(key='TEST', description='Test Command' action='Action(name='test_action', action=dummy_action, args=(), kwargs={}, retry=False)')"
 
 @pytest.mark.parametrize(
     "action_factory, expected_requires_input",

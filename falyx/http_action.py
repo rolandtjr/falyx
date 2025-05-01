@@ -1,3 +1,13 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""http_action.py
+Defines an Action subclass for making HTTP requests using aiohttp within Falyx workflows.
+
+Features:
+- Automatic reuse of aiohttp.ClientSession via SharedContext
+- JSON, query param, header, and body support
+- Retry integration and last_result injection
+- Clean resource teardown using hooks
+"""
 from typing import Any
 
 import aiohttp
@@ -22,10 +32,32 @@ async def close_shared_http_session(context: ExecutionContext) -> None:
 
 class HTTPAction(Action):
     """
-    Specialized Action that performs an HTTP request using aiohttp and the shared context.
+    An Action for executing HTTP requests using aiohttp with shared session reuse.
 
-    Automatically reuses a shared aiohttp.ClientSession stored in SharedContext.
-    Closes the session at the end of the ActionGroup (via an after-hook).
+    This action integrates seamlessly into Falyx pipelines, with automatic session management,
+    result injection, and lifecycle hook support. It is ideal for CLI-driven API workflows
+    where you need to call remote services and process their responses.
+
+    Features:
+    - Uses aiohttp for asynchronous HTTP requests
+    - Reuses a shared session via SharedContext to reduce connection overhead
+    - Automatically closes the session at the end of an ActionGroup (if applicable)
+    - Supports GET, POST, PUT, DELETE, etc. with full header, query, body support
+    - Retry and result injection compatible
+
+    Args:
+        name (str): Name of the action.
+        method (str): HTTP method (e.g., 'GET', 'POST').
+        url (str): The request URL.
+        headers (dict[str, str], optional): Request headers.
+        params (dict[str, Any], optional): URL query parameters.
+        json (dict[str, Any], optional): JSON body to send.
+        data (Any, optional): Raw data or form-encoded body.
+        hooks (HookManager, optional): Hook manager for lifecycle events.
+        inject_last_result (bool): Enable last_result injection.
+        inject_last_result_as (str): Name of injected key.
+        retry (bool): Enable retry logic.
+        retry_policy (RetryPolicy): Retry settings.
     """
     def __init__(
         self,
@@ -107,3 +139,10 @@ class HTTPAction(Action):
             parent.add("".join(label))
         else:
             self.console.print(Tree("".join(label)))
+
+    def __str__(self):
+        return (
+            f"HTTPAction(name={self.name!r}, method={self.method!r}, url={self.url!r}, "
+            f"headers={self.headers!r}, params={self.params!r}, json={self.json!r}, data={self.data!r}, "
+            f"retry={self.retry_policy.enabled}, inject_last_result={self.inject_last_result})"
+        )

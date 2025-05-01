@@ -33,6 +33,7 @@ from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
 from falyx.io_action import BaseIOAction
 from falyx.retry import RetryPolicy
+from falyx.retry_utils import enable_retries_recursively
 from falyx.themes.colors import OneColors
 from falyx.utils import _noop, ensure_async, logger
 
@@ -129,7 +130,7 @@ class Command(BaseModel):
             logger.warning(f"[Command:{self.key}] Retry requested, but action is not an Action instance.")
         if self.retry_all and isinstance(self.action, BaseAction):
             self.retry_policy.enabled = True
-            self.action.enable_retries_recursively(self.action, self.retry_policy)
+            enable_retries_recursively(self.action, self.retry_policy)
         elif self.retry_all:
             logger.warning(f"[Command:{self.key}] Retry all requested, but action is not a BaseAction instance.")
 
