@@ -8,7 +8,7 @@ import logging
 
 from .action import Action, ActionGroup, ChainedAction, ProcessAction
 from .command import Command
-from .context import ExecutionContext, ResultsContext
+from .context import ExecutionContext, SharedContext
 from .execution_registry import ExecutionRegistry
 from .falyx import Falyx
 
@@ -24,6 +24,6 @@ __all__ = [
     "Falyx",
     "Command",
     "ExecutionContext",
-    "ResultsContext",
+    "SharedContext",
     "ExecutionRegistry",
 ]

@@ -2,6 +2,7 @@ import asyncio
 
 from falyx import Action, ActionGroup, ChainedAction
 
+
 # Actions can be defined as synchronous functions
 # Falyx will automatically convert them to async functions
 def hello() -> None:
