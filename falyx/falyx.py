@@ -830,9 +830,10 @@ class Falyx:
             except (EOFError, KeyboardInterrupt):
                 logger.info("EOF or KeyboardInterrupt. Exiting menu.")
                 break
-        logger.info(f"Exiting menu: {self.get_title()}")
-        if self.exit_message:
-            self.print_message(self.exit_message)
+            finally:
+                logger.info(f"Exiting menu: {self.get_title()}")
+                if self.exit_message:
+                    self.print_message(self.exit_message)
 
     async def run(self) -> None:
         """Run Falyx CLI with structured subcommands."""

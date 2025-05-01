@@ -20,7 +20,6 @@ pytest-asyncio = "^0.20"
 ruff = "^0.3"
 
 [tool.poetry.scripts]
-falyx = "falyx.cli.main:main"
 sync-version = "scripts.sync_version:main"
 
 [build-system]
