@@ -1,3 +1,4 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """config.py
 Configuration loader for Falyx CLI commands."""
 
@@ -79,11 +80,12 @@ def loader(file_path: str) -> list[dict[str, Any]]:
         command_dict = {
             "key": entry["key"],
             "description": entry["description"],
-            "aliases": entry.get("aliases", []),
             "action": wrap_if_needed(import_action(entry["action"]),
                                      name=entry["description"]),
             "args": tuple(entry.get("args", ())),
             "kwargs": entry.get("kwargs", {}),
+            "hidden": entry.get("hidden", False),
+            "aliases": entry.get("aliases", []),
             "help_text": entry.get("help_text", ""),
             "color": entry.get("color", "white"),
             "confirm": entry.get("confirm", False),
@@ -94,10 +96,18 @@ def loader(file_path: str) -> list[dict[str, Any]]:
             "spinner_type": entry.get("spinner_type", "dots"),
             "spinner_style": entry.get("spinner_style", "cyan"),
             "spinner_kwargs": entry.get("spinner_kwargs", {}),
-            "tags": entry.get("tags", []),
+            "before_hooks": entry.get("before_hooks", []),
+            "success_hooks": entry.get("success_hooks", []),
+            "error_hooks": entry.get("error_hooks", []),
+            "after_hooks": entry.get("after_hooks", []),
+            "teardown_hooks": entry.get("teardown_hooks", []),
+            "retry": entry.get("retry", False),
+            "retry_all": entry.get("retry_all", False),
             "retry_policy": RetryPolicy(**entry.get("retry_policy", {})),
+            "tags": entry.get("tags", []),
+            "logging_hooks": entry.get("logging_hooks", False),
+            "requires_input": entry.get("requires_input", None),
         }
         commands.append(command_dict)
 
     return commands
-

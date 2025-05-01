@@ -1,16 +1,23 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """falyx.py
 
-This class creates a Falyx object that creates a selectable menu
-with customizable commands and functionality.
+Main class for constructing and running Falyx CLI menus.
 
-It allows for adding commands, and their accompanying actions,
-and provides a method to display the menu and handle user input.
+Falyx provides a structured, customizable interactive menu system
+for running commands, actions, and workflows. It supports:
 
-This class uses the `rich` library to display the menu in a
-formatted and visually appealing way.
+- Hook lifecycle management (before/on_success/on_error/after/on_teardown)
+- Dynamic command addition and alias resolution
+- Rich-based menu display with multi-column layouts
+- Interactive input validation and auto-completion
+- History tracking and help menu generation
+- Confirmation prompts and spinners
+- Headless mode for automated script execution
+- CLI argument parsing with argparse integration
+- Retry policy configuration for actions
 
-This class also uses the `prompt_toolkit` library to handle
-user input and create an interactive experience.
+Falyx enables building flexible, robust, and user-friendly
+terminal applications with minimal boilerplate.
 """
 import asyncio
 import logging
@@ -30,7 +37,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
 
-from falyx.action import BaseAction
+from falyx.action import Action, BaseAction
 from falyx.bottom_bar import BottomBar
 from falyx.command import Command
 from falyx.context import ExecutionContext
@@ -43,37 +50,57 @@ from falyx.options_manager import OptionsManager
 from falyx.parsers import get_arg_parsers
 from falyx.retry import RetryPolicy
 from falyx.themes.colors import OneColors, get_nord_theme
-from falyx.utils import CaseInsensitiveDict, async_confirm, chunks, logger
+from falyx.utils import (CaseInsensitiveDict, async_confirm, chunks,
+                         get_program_invocation, logger)
 from falyx.version import __version__
 
 
 class Falyx:
-    """Class to create a menu with commands.
-
-    Hook functions must have the signature:
-        def hook(command: Command) -> None:
-    where `command` is the selected command.
-
-    Error hook functions must have the signature:
-        def error_hook(command: Command, error: Exception) -> None:
-    where `command` is the selected command and `error` is the exception raised.
-
-    Hook execution order:
-    1. Before action hooks of the menu.
-    2. Before action hooks of the selected command.
-    3. Action of the selected command.
-    4. After action hooks of the selected command.
-    5. After action hooks of the menu.
-    6. On error hooks of the selected command (if an error occurs).
-    7. On error hooks of the menu (if an error occurs).
-
-    Parameters:
-        title (str|Markdown): The title of the menu.
-        columns (int): The number of columns to display the commands in.
-        prompt (AnyFormattedText): The prompt to display when asking for input.
-        bottom_bar (str|callable|None): The text to display in the bottom bar.
     """
+    Main menu controller for Falyx CLI applications.
 
+    Falyx orchestrates the full lifecycle of an interactive menu system, 
+    handling user input, command execution, error recovery, and structured 
+    CLI workflows.
+
+    Key Features:
+    - Interactive menu with Rich rendering and Prompt Toolkit input handling
+    - Dynamic command management with alias and abbreviation matching
+    - Full lifecycle hooks (before, success, error, after, teardown) at both menu and command levels
+    - Built-in retry support, spinner visuals, and confirmation prompts
+    - Submenu nesting and action chaining
+    - History tracking, help generation, and headless execution modes
+    - Seamless CLI argument parsing and integration via argparse
+    - Extensible with user-defined hooks, bottom bars, and custom layouts
+
+    Args:
+        title (str | Markdown): Title displayed for the menu.
+        prompt (AnyFormattedText): Prompt displayed when requesting user input.
+        columns (int): Number of columns to use when rendering menu commands.
+        bottom_bar (BottomBar | str | Callable | None): Bottom toolbar content or logic.
+        welcome_message (str | Markdown | dict): Welcome message shown at startup.
+        exit_message (str | Markdown | dict): Exit message shown on shutdown.
+        key_bindings (KeyBindings | None): Custom Prompt Toolkit key bindings.
+        include_history_command (bool): Whether to add a built-in history viewer command.
+        include_help_command (bool): Whether to add a built-in help viewer command.
+        confirm_on_error (bool): Whether to prompt the user after errors.
+        never_confirm (bool): Whether to skip confirmation prompts entirely.
+        always_confirm (bool): Whether to force confirmation prompts for all actions.
+        cli_args (Namespace | None): Parsed CLI arguments, usually from argparse.
+        options (OptionsManager | None): Declarative option mappings.
+        custom_table (Callable[[Falyx], Table] | Table | None): Custom menu table generator.
+
+    Methods:
+        run(): Main entry point for CLI argument-based workflows. Most users will use this.
+        menu(): Run the interactive menu loop.
+        headless(command_key, return_context): Run a command directly without showing the menu.
+        add_command(): Add a single command to the menu.
+        add_commands(): Add multiple commands at once.
+        register_all_hooks(): Register hooks across all commands and submenus.
+        debug_hooks(): Log hook registration for debugging.
+        build_default_table(): Construct the standard Rich table layout.
+
+    """
     def __init__(
         self,
         title: str | Markdown = "Menu",
@@ -84,7 +111,7 @@ class Falyx:
         exit_message: str | Markdown | dict[str, Any] = "",
         key_bindings: KeyBindings | None = None,
         include_history_command: bool = True,
-        include_help_command: bool = False,
+        include_help_command: bool = True,
         confirm_on_error: bool = True,
         never_confirm: bool = False,
         always_confirm: bool = False,
@@ -207,6 +234,8 @@ class Falyx:
 
         for command in self.commands.values():
             help_text = command.help_text or command.description
+            if command.requires_input:
+                help_text += " [dim](requires input)[/dim]"
             table.add_row(
                 f"[{command.color}]{command.key}[/]",
                 ", ".join(command.aliases) if command.aliases else "None",
@@ -234,7 +263,7 @@ class Falyx:
                 "Show this help menu"
             )
 
-        self.console.print(table)
+        self.console.print(table, justify="center")
 
     def _get_help_command(self) -> Command:
         """Returns the help command for the menu."""
@@ -324,13 +353,12 @@ class Falyx:
     def bottom_bar(self, bottom_bar: BottomBar | str |  Callable[[], Any] | None) -> None:
         """Sets the bottom bar for the menu."""
         if bottom_bar is None:
-            self._bottom_bar = BottomBar(self.columns, self.key_bindings, key_validator=self.is_key_available)
+            self._bottom_bar: BottomBar | str | Callable[[], Any] = BottomBar(self.columns, self.key_bindings, key_validator=self.is_key_available)
         elif isinstance(bottom_bar, BottomBar):
             bottom_bar.key_validator = self.is_key_available
             bottom_bar.key_bindings = self.key_bindings
             self._bottom_bar = bottom_bar
-        elif (isinstance(bottom_bar, str) or
-            callable(bottom_bar)):
+        elif (isinstance(bottom_bar, str) or callable(bottom_bar)):
             self._bottom_bar = bottom_bar
         else:
             raise FalyxError("Bottom bar must be a string, callable, or BottomBar instance.")
@@ -339,12 +367,12 @@ class Falyx:
     def _get_bottom_bar_render(self) -> Callable[[], Any] | str | None:
         """Returns the bottom bar for the menu."""
         if isinstance(self.bottom_bar, BottomBar) and self.bottom_bar._named_items:
-            return self._bottom_bar.render
-        elif callable(self._bottom_bar):
-            return self._bottom_bar
-        elif isinstance(self._bottom_bar, str):
-            return self._bottom_bar
-        elif self._bottom_bar is None:
+            return self.bottom_bar.render
+        elif callable(self.bottom_bar):
+            return self.bottom_bar
+        elif isinstance(self.bottom_bar, str):
+            return self.bottom_bar
+        elif self.bottom_bar is None:
             return None
         return None
 
@@ -475,9 +503,10 @@ class Falyx:
         key: str,
         description: str,
         action: BaseAction | Callable[[], Any],
-        aliases: list[str] | None = None,
         args: tuple = (),
         kwargs: dict[str, Any] = {},
+        hidden: bool = False,
+        aliases: list[str] | None = None,
         help_text: str = "",
         color: str = OneColors.WHITE,
         confirm: bool = False,
@@ -491,25 +520,27 @@ class Falyx:
         hooks: HookManager | None = None,
         before_hooks: list[Callable] | None = None,
         success_hooks: list[Callable] | None = None,
-        after_hooks: list[Callable] | None = None,
         error_hooks: list[Callable] | None = None,
+        after_hooks: list[Callable] | None = None,
         teardown_hooks: list[Callable] | None = None,
         tags: list[str] | None = None,
         logging_hooks: bool = False,
         retry: bool = False,
         retry_all: bool = False,
         retry_policy: RetryPolicy | None = None,
+        requires_input: bool | None = None,
     ) -> Command:
         """Adds an command to the menu, preventing duplicates."""
         self._validate_command_key(key)
         command = Command(
             key=key,
             description=description,
-            aliases=aliases if aliases else [],
-            help_text=help_text,
             action=action,
             args=args,
             kwargs=kwargs,
+            hidden=hidden,
+            aliases=aliases if aliases else [],
+            help_text=help_text,
             color=color,
             confirm=confirm,
             confirm_message=confirm_message,
@@ -524,6 +555,7 @@ class Falyx:
             retry=retry,
             retry_all=retry_all,
             retry_policy=retry_policy or RetryPolicy(),
+            requires_input=requires_input,
         )
 
         if hooks:
@@ -558,13 +590,15 @@ class Falyx:
     def build_default_table(self) -> Table:
         """Build the standard table layout. Developers can subclass or call this in custom tables."""
         table = Table(title=self.title, show_header=False, box=box.SIMPLE, expand=True)
-        for chunk in chunks(self.commands.items(), self.columns):
+        visible_commands = [item for item in self.commands.items() if not item[1].hidden]
+        for chunk in chunks(visible_commands, self.columns):
             row = []
             for key, command in chunk:
                 row.append(f"[{key}] [{command.color}]{command.description}")
             table.add_row(*row)
         bottom_row = self.get_bottom_row()
-        table.add_row(*bottom_row)
+        for row in chunks(bottom_row, self.columns):
+            table.add_row(*row)
         return table
 
     @property
@@ -617,9 +651,9 @@ class Falyx:
             confirm_answer = await async_confirm(selected_command.confirmation_prompt)
 
             if confirm_answer:
-                logger.info(f"[{OneColors.LIGHT_YELLOW}][{selected_command.description}]🔐 confirmed.")
+                logger.info(f"[{selected_command.description}]🔐 confirmed.")
             else:
-                logger.info(f"[{OneColors.DARK_RED}][{selected_command.description}]❌ cancelled.")
+                logger.info(f"[{selected_command.description}]❌ cancelled.")
             return confirm_answer
         return True
 
@@ -658,8 +692,19 @@ class Falyx:
         choice = await self.session.prompt_async()
         selected_command = self.get_command(choice)
         if not selected_command:
-            logger.info(f"[{OneColors.LIGHT_YELLOW}] Invalid command '{choice}'.")
+            logger.info(f"Invalid command '{choice}'.")
             return True
+
+        if selected_command.requires_input:
+            program = get_program_invocation()
+            self.console.print(
+                f"[{OneColors.LIGHT_YELLOW}]⚠️ Command '{selected_command.key}' requires input "
+                f"and must be run via [{OneColors.MAGENTA}]'{program} run'[{OneColors.LIGHT_YELLOW}] "
+                 "with proper piping or arguments.[/]"
+
+            )
+            return True
+
         self.last_run_command = selected_command
 
         if selected_command == self.exit_command:
@@ -667,7 +712,7 @@ class Falyx:
             return False
 
         if not await self._should_run_action(selected_command):
-            logger.info(f"[{OneColors.DARK_RED}] {selected_command.description} cancelled.")
+            logger.info(f"{selected_command.description} cancelled.")
             return True
 
         context = self._create_context(selected_command)
@@ -750,7 +795,10 @@ class Falyx:
                 selected_command.retry_policy.delay = self.cli_args.retry_delay
             if self.cli_args.retry_backoff:
                 selected_command.retry_policy.backoff = self.cli_args.retry_backoff
-            #selected_command.update_retry_policy(selected_command.retry_policy)
+            if isinstance(selected_command.action, Action):
+                selected_command.action.set_retry_policy(selected_command.retry_policy)
+            else:
+                logger.warning(f"[Command:{selected_command.key}] Retry requested, but action is not an Action instance.")
 
     def print_message(self, message: str | Markdown | dict[str, Any]) -> None:
         """Prints a message to the console."""
@@ -773,18 +821,19 @@ class Falyx:
         if self.welcome_message:
             self.print_message(self.welcome_message)
         while True:
-            self.console.print(self.table)
+            self.console.print(self.table, justify="center")
             try:
                 task = asyncio.create_task(self.process_command())
                 should_continue = await task
                 if not should_continue:
                     break
             except (EOFError, KeyboardInterrupt):
-                logger.info(f"[{OneColors.DARK_RED}]EOF or KeyboardInterrupt. Exiting menu.")
+                logger.info("EOF or KeyboardInterrupt. Exiting menu.")
                 break
-        logger.info(f"Exiting menu: {self.get_title()}")
-        if self.exit_message:
-            self.print_message(self.exit_message)
+            finally:
+                logger.info(f"Exiting menu: {self.get_title()}")
+                if self.exit_message:
+                    self.print_message(self.exit_message)
 
     async def run(self) -> None:
         """Run Falyx CLI with structured subcommands."""

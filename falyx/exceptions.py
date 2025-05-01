@@ -1,3 +1,4 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 class FalyxError(Exception):
     """Custom exception for the Menu class."""
 
@@ -20,3 +21,7 @@ class NotAFalyxError(FalyxError):
 
 class CircuitBreakerOpen(FalyxError):
     """Exception raised when the circuit breaker is open."""
+
+class EmptyChainError(FalyxError):
+    """Exception raised when the chain is empty."""
+

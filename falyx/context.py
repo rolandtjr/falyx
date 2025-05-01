@@ -1,4 +1,7 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """context.py"""
+from __future__ import annotations
+
 import time
 from datetime import datetime
 from typing import Any
@@ -23,6 +26,8 @@ class ExecutionContext(BaseModel):
     extra: dict[str, Any] = Field(default_factory=dict)
     console: Console = Field(default_factory=lambda: Console(color_system="auto"))
 
+    shared_context: SharedContext | None = None
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def start_timer(self):
@@ -32,6 +37,9 @@ class ExecutionContext(BaseModel):
     def stop_timer(self):
         self.end_time = time.perf_counter()
         self.end_wall = datetime.now()
+
+    def get_shared_context(self) -> SharedContext:
+        return self.shared_context or SharedContext(name="default")
 
     @property
     def duration(self) -> float | None:
@@ -103,7 +111,7 @@ class ExecutionContext(BaseModel):
         )
 
 
-class ResultsContext(BaseModel):
+class SharedContext(BaseModel):
     name: str
     results: list[Any] = Field(default_factory=list)
     errors: list[tuple[int, Exception]] = Field(default_factory=list)
@@ -111,10 +119,15 @@ class ResultsContext(BaseModel):
     is_parallel: bool = False
     shared_result: Any | None = None
 
+    share: dict[str, Any] = Field(default_factory=dict)
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def add_result(self, result: Any) -> None:
         self.results.append(result)
+
+    def add_error(self, index: int, error: Exception) -> None:
+        self.errors.append((index, error))
 
     def set_shared_result(self, result: Any) -> None:
         self.shared_result = result
@@ -126,10 +139,16 @@ class ResultsContext(BaseModel):
             return self.shared_result
         return self.results[-1] if self.results else None
 
+    def get(self, key: str, default: Any = None) -> Any:
+        return self.share.get(key, default)
+
+    def set(self, key: str, value: Any) -> None:
+        self.share[key] = value
+
     def __str__(self) -> str:
         parallel_label = "Parallel" if self.is_parallel else "Sequential"
         return (
-            f"<{parallel_label}ResultsContext '{self.name}' | "
+            f"<{parallel_label}SharedContext '{self.name}' | "
             f"Results: {self.results} | "
             f"Errors: {self.errors}>"
         )
