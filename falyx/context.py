@@ -87,7 +87,11 @@ class ExecutionContext(BaseModel):
     def to_log_line(self) -> str:
         """Structured flat-line format for logging and metrics."""
         duration_str = f"{self.duration:.3f}s" if self.duration is not None else "n/a"
-        exception_str = f"{type(self.exception).__name__}: {self.exception}" if self.exception else "None"
+        exception_str = (
+            f"{type(self.exception).__name__}: {self.exception}"
+            if self.exception
+            else "None"
+        )
         return (
             f"[{self.name}] status={self.status} duration={duration_str} "
             f"result={repr(self.result)} exception={exception_str}"
@@ -95,7 +99,11 @@ class ExecutionContext(BaseModel):
 
     def __str__(self) -> str:
         duration_str = f"{self.duration:.3f}s" if self.duration is not None else "n/a"
-        result_str = f"Result: {repr(self.result)}" if self.success else f"Exception: {self.exception}"
+        result_str = (
+            f"Result: {repr(self.result)}"
+            if self.success
+            else f"Exception: {self.exception}"
+        )
         return (
             f"<ExecutionContext '{self.name}' | {self.status} | "
             f"Duration: {duration_str} | {result_str}>"
@@ -152,6 +160,7 @@ class SharedContext(BaseModel):
             f"Results: {self.results} | "
             f"Errors: {self.errors}>"
         )
+
 
 if __name__ == "__main__":
     import asyncio

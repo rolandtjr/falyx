@@ -59,6 +59,7 @@ class HTTPAction(Action):
         retry (bool): Enable retry logic.
         retry_policy (RetryPolicy): Retry settings.
     """
+
     def __init__(
         self,
         name: str,

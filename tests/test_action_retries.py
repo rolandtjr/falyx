@@ -6,12 +6,14 @@ from falyx.retry_utils import enable_retries_recursively
 
 asyncio_default_fixture_loop_scope = "function"
 
+
 # --- Fixtures ---
 @pytest.fixture(autouse=True)
 def clean_registry():
     er.clear()
     yield
     er.clear()
+
 
 def test_action_enable_retry():
     """Test if Action can be created with retry=True."""

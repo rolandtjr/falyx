@@ -69,7 +69,6 @@ def loader(file_path: str) -> list[dict[str, Any]]:
     if not isinstance(raw_config, list):
         raise ValueError("Configuration file must contain a list of command definitions.")
 
-
     required = ["key", "description", "action"]
     commands = []
     for entry in raw_config:
@@ -80,8 +79,9 @@ def loader(file_path: str) -> list[dict[str, Any]]:
         command_dict = {
             "key": entry["key"],
             "description": entry["description"],
-            "action": wrap_if_needed(import_action(entry["action"]),
-                                     name=entry["description"]),
+            "action": wrap_if_needed(
+                import_action(entry["action"]), name=entry["description"]
+            ),
             "args": tuple(entry.get("args", ())),
             "kwargs": entry.get("kwargs", {}),
             "hidden": entry.get("hidden", False),

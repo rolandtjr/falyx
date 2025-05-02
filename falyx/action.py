@@ -59,13 +59,14 @@ class BaseAction(ABC):
                                  (default: 'last_result').
     _requires_injection (bool): Whether the action requires input injection.
     """
+
     def __init__(
-            self,
-            name: str,
-            hooks: HookManager | None = None,
-            inject_last_result: bool = False,
-            inject_last_result_as: str = "last_result",
-            logging_hooks: bool = False,
+        self,
+        name: str,
+        hooks: HookManager | None = None,
+        inject_last_result: bool = False,
+        inject_last_result_as: str = "last_result",
+        logging_hooks: bool = False,
     ) -> None:
         self.name = name
         self.hooks = hooks or HookManager()
@@ -156,18 +157,19 @@ class Action(BaseAction):
         retry (bool, optional): Enable retry logic.
         retry_policy (RetryPolicy, optional): Retry settings.
     """
+
     def __init__(
-            self,
-            name: str,
-            action,
-            rollback=None,
-            args: tuple[Any, ...] = (),
-            kwargs: dict[str, Any] | None = None,
-            hooks: HookManager | None = None,
-            inject_last_result: bool = False,
-            inject_last_result_as: str = "last_result",
-            retry: bool = False,
-            retry_policy: RetryPolicy | None = None,
+        self,
+        name: str,
+        action,
+        rollback=None,
+        args: tuple[Any, ...] = (),
+        kwargs: dict[str, Any] | None = None,
+        hooks: HookManager | None = None,
+        inject_last_result: bool = False,
+        inject_last_result_as: str = "last_result",
+        retry: bool = False,
+        retry_policy: RetryPolicy | None = None,
     ) -> None:
         super().__init__(name, hooks, inject_last_result, inject_last_result_as)
         self.action = action
@@ -264,10 +266,13 @@ class LiteralInputAction(Action):
     Args:
         value (Any): The static value to inject.
     """
+
     def __init__(self, value: Any):
         self._value = value
+
         async def literal(*args, **kwargs):
             return value
+
         super().__init__("Input", literal)
 
     @cached_property
@@ -293,10 +298,13 @@ class FallbackAction(Action):
     Args:
         fallback (Any): The fallback value to use if last_result is None.
     """
+
     def __init__(self, fallback: Any):
         self._fallback = fallback
+
         async def _fallback_logic(last_result):
             return last_result if last_result is not None else fallback
+
         super().__init__(name="Fallback", action=_fallback_logic, inject_last_result=True)
 
     @cached_property
@@ -310,6 +318,7 @@ class FallbackAction(Action):
 
 class ActionListMixin:
     """Mixin for managing a list of actions."""
+
     def __init__(self) -> None:
         self.actions: list[BaseAction] = []
 
@@ -360,15 +369,16 @@ class ChainedAction(BaseAction, ActionListMixin):
         auto_inject (bool, optional): Auto-enable injection for subsequent actions.
         return_list (bool, optional): Whether to return a list of all results. False returns the last result.
     """
+
     def __init__(
-            self,
-            name: str,
-            actions: list[BaseAction | Any] | None = None,
-            hooks: HookManager | None = None,
-            inject_last_result: bool = False,
-            inject_last_result_as: str = "last_result",
-            auto_inject: bool = False,
-            return_list: bool = False,
+        self,
+        name: str,
+        actions: list[BaseAction | Any] | None = None,
+        hooks: HookManager | None = None,
+        inject_last_result: bool = False,
+        inject_last_result_as: str = "last_result",
+        auto_inject: bool = False,
+        return_list: bool = False,
     ) -> None:
         super().__init__(name, hooks, inject_last_result, inject_last_result_as)
         ActionListMixin.__init__(self)
@@ -378,7 +388,9 @@ class ChainedAction(BaseAction, ActionListMixin):
             self.set_actions(actions)
 
     def _wrap_literal_if_needed(self, action: BaseAction | Any) -> BaseAction:
-        return LiteralInputAction(action) if not isinstance(action, BaseAction) else action
+        return (
+            LiteralInputAction(action) if not isinstance(action, BaseAction) else action
+        )
 
     def add_action(self, action: BaseAction | Any) -> None:
         action = self._wrap_literal_if_needed(action)
@@ -408,23 +420,35 @@ class ChainedAction(BaseAction, ActionListMixin):
 
             for index, action in enumerate(self.actions):
                 if action._skip_in_chain:
-                    logger.debug("[%s] ⚠️ Skipping consumed action '%s'", self.name, action.name)
+                    logger.debug(
+                        "[%s] ⚠️ Skipping consumed action '%s'", self.name, action.name
+                    )
                     continue
                 shared_context.current_index = index
                 prepared = action.prepare_for_chain(shared_context)
                 last_result = shared_context.last_result()
                 try:
                     if self.requires_io_injection() and last_result is not None:
-                        result = await prepared(**{prepared.inject_last_result_as: last_result})
+                        result = await prepared(
+                            **{prepared.inject_last_result_as: last_result}
+                        )
                     else:
                         result = await prepared(*args, **updated_kwargs)
                 except Exception as error:
-                    if index + 1 < len(self.actions) and isinstance(self.actions[index + 1], FallbackAction):
-                        logger.warning("[%s] ⚠️ Fallback triggered: %s, recovering with fallback '%s'.",
-                                       self.name, error, self.actions[index + 1].name)
+                    if index + 1 < len(self.actions) and isinstance(
+                        self.actions[index + 1], FallbackAction
+                    ):
+                        logger.warning(
+                            "[%s] ⚠️ Fallback triggered: %s, recovering with fallback '%s'.",
+                            self.name,
+                            error,
+                            self.actions[index + 1].name,
+                        )
                         shared_context.add_result(None)
                         context.extra["results"].append(None)
-                        fallback = self.actions[index + 1].prepare_for_chain(shared_context)
+                        fallback = self.actions[index + 1].prepare_for_chain(
+                            shared_context
+                        )
                         result = await fallback()
                         fallback._skip_in_chain = True
                     else:
@@ -434,7 +458,9 @@ class ChainedAction(BaseAction, ActionListMixin):
                 context.extra["rollback_stack"].append(prepared)
 
             all_results = context.extra["results"]
-            assert all_results, f"[{self.name}] No results captured. Something seriously went wrong."
+            assert (
+                all_results
+            ), f"[{self.name}] No results captured. Something seriously went wrong."
             context.result = all_results if self.return_list else all_results[-1]
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
             return context.result
@@ -528,13 +554,14 @@ class ActionGroup(BaseAction, ActionListMixin):
         inject_last_result (bool, optional): Whether to inject last results into kwargs by default.
         inject_last_result_as (str, optional): Key name for injection.
     """
+
     def __init__(
-            self,
-            name: str,
-            actions: list[BaseAction] | None = None,
-            hooks: HookManager | None = None,
-            inject_last_result: bool = False,
-            inject_last_result_as: str = "last_result",
+        self,
+        name: str,
+        actions: list[BaseAction] | None = None,
+        hooks: HookManager | None = None,
+        inject_last_result: bool = False,
+        inject_last_result_as: str = "last_result",
     ):
         super().__init__(name, hooks, inject_last_result, inject_last_result_as)
         ActionListMixin.__init__(self)
@@ -554,6 +581,7 @@ class ActionGroup(BaseAction, ActionListMixin):
             extra={"results": [], "errors": []},
             shared_context=shared_context,
         )
+
         async def run_one(action: BaseAction):
             try:
                 prepared = action.prepare_for_group(shared_context)
@@ -692,7 +720,9 @@ class ProcessAction(BaseAction):
             er.record(context)
 
     async def preview(self, parent: Tree | None = None):
-        label = [f"[{OneColors.DARK_YELLOW_b}]🧠 ProcessAction (new process)[/] '{self.name}'"]
+        label = [
+            f"[{OneColors.DARK_YELLOW_b}]🧠 ProcessAction (new process)[/] '{self.name}'"
+        ]
         if self.inject_last_result:
             label.append(f" [dim](injects '{self.inject_last_result_as}')[/dim]")
         if parent:
@@ -703,6 +733,7 @@ class ProcessAction(BaseAction):
     def _validate_pickleable(self, obj: Any) -> bool:
         try:
             import pickle
+
             pickle.dumps(obj)
             return True
         except (pickle.PicklingError, TypeError):

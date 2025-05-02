@@ -45,11 +45,7 @@ class BottomBar:
     def space(self) -> int:
         return self.console.width // self.columns
 
-    def add_custom(
-        self,
-        name: str,
-        render_fn: Callable[[], HTML]
-    ) -> None:
+    def add_custom(self, name: str, render_fn: Callable[[], HTML]) -> None:
         """Add a custom render function to the bottom bar."""
         if not callable(render_fn):
             raise ValueError("`render_fn` must be callable")
@@ -63,9 +59,7 @@ class BottomBar:
         bg: str = OneColors.WHITE,
     ) -> None:
         def render():
-            return HTML(
-                f"<style fg='{fg}' bg='{bg}'>{text:^{self.space}}</style>"
-            )
+            return HTML(f"<style fg='{fg}' bg='{bg}'>{text:^{self.space}}</style>")
 
         self._add_named(name, render)
 
@@ -85,9 +79,7 @@ class BottomBar:
             get_value_ = self._value_getters[name]
             current_ = get_value_()
             text = f"{label}: {current_}"
-            return HTML(
-                f"<style fg='{fg}' bg='{bg}'>{text:^{self.space}}</style>"
-            )
+            return HTML(f"<style fg='{fg}' bg='{bg}'>{text:^{self.space}}</style>")
 
         self._add_named(name, render)
 
@@ -114,9 +106,7 @@ class BottomBar:
                     f"Current value {current_value} is greater than total value {total}"
                 )
             text = f"{label}: {current_value}/{total}"
-            return HTML(
-                f"<style fg='{fg}' bg='{bg}'>{text:^{self.space}}</style>"
-            )
+            return HTML(f"<style fg='{fg}' bg='{bg}'>{text:^{self.space}}</style>")
 
         self._add_named(name, render)
 
@@ -138,7 +128,9 @@ class BottomBar:
         if key in self.toggle_keys:
             raise ValueError(f"Key {key} is already used as a toggle")
         if self.key_validator and not self.key_validator(key):
-            raise ValueError(f"Key '{key}' conflicts with existing command, toggle, or reserved key.")
+            raise ValueError(
+                f"Key '{key}' conflicts with existing command, toggle, or reserved key."
+            )
         self._value_getters[key] = get_state
         self.toggle_keys.append(key)
 
@@ -147,9 +139,7 @@ class BottomBar:
             color = bg_on if get_state_() else bg_off
             status = "ON" if get_state_() else "OFF"
             text = f"({key.upper()}) {label}: {status}"
-            return HTML(
-                f"<style bg='{color}' fg='{fg}'>{text:^{self.space}}</style>"
-            )
+            return HTML(f"<style bg='{color}' fg='{fg}'>{text:^{self.space}}</style>")
 
         self._add_named(key, render)
 

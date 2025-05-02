@@ -4,6 +4,7 @@ Falyx CLI Framework
 Copyright (c) 2025 rtj.dev LLC.
 Licensed under the MIT License. See LICENSE file for details.
 """
+
 import asyncio
 import random
 from argparse import Namespace
@@ -131,7 +132,7 @@ async def main() -> None:
             Action("Clean", foo.clean),
             Action("Build", foo.build_package),
             Action("Package", foo.package),
-        ]
+        ],
     )
     flx.add_command(
         key="P",
@@ -150,7 +151,7 @@ async def main() -> None:
             Action("Unit Tests", foo.run_tests),
             Action("Integration Tests", foo.run_integration_tests),
             Action("Lint", foo.run_linter),
-        ]
+        ],
     )
     flx.add_command(
         key="G",

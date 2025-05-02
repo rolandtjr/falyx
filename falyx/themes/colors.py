@@ -17,6 +17,7 @@ Example dynamic usage:
     console.print("Hello!", style=NordColors.NORD12bu)
     # => Renders "Hello!" in #D08770 (Nord12) plus bold and underline styles
 """
+
 import re
 from difflib import get_close_matches
 
@@ -82,14 +83,17 @@ class ColorsMeta(type):
         except AttributeError:
             error_msg = [f"'{cls.__name__}' has no color named '{base}'."]
             valid_bases = [
-                key for key, val in cls.__dict__.items() if isinstance(val, str) and
-                not key.startswith("__")
+                key
+                for key, val in cls.__dict__.items()
+                if isinstance(val, str) and not key.startswith("__")
             ]
             suggestions = get_close_matches(base, valid_bases, n=1, cutoff=0.5)
             if suggestions:
                 error_msg.append(f"Did you mean '{suggestions[0]}'?")
             if valid_bases:
-                error_msg.append(f"Valid base color names include: {', '.join(valid_bases)}")
+                error_msg.append(
+                    f"Valid base color names include: {', '.join(valid_bases)}"
+                )
             raise AttributeError(" ".join(error_msg)) from None
 
         if not isinstance(color_value, str):
@@ -105,7 +109,9 @@ class ColorsMeta(type):
             if mapped_style:
                 styles.append(mapped_style)
             else:
-                raise AttributeError(f"Unknown style flag '{letter}' in attribute '{name}'")
+                raise AttributeError(
+                    f"Unknown style flag '{letter}' in attribute '{name}'"
+                )
 
         order = {"b": 1, "i": 2, "u": 3, "d": 4, "r": 5, "s": 6}
         styles_sorted = sorted(styles, key=lambda s: order[s[0]])
@@ -133,7 +139,6 @@ class OneColors(metaclass=ColorsMeta):
     BLUE = "#61AFEF"
     MAGENTA = "#C678DD"
 
-
     @classmethod
     def as_dict(cls):
         """
@@ -143,9 +148,9 @@ class OneColors(metaclass=ColorsMeta):
         return {
             attr: getattr(cls, attr)
             for attr in dir(cls)
-            if not callable(getattr(cls, attr)) and
-            not attr.startswith("__")
+            if not callable(getattr(cls, attr)) and not attr.startswith("__")
         }
+
 
 class NordColors(metaclass=ColorsMeta):
     """
@@ -215,19 +220,19 @@ class NordColors(metaclass=ColorsMeta):
         return {
             attr: getattr(cls, attr)
             for attr in dir(cls)
-            if attr.startswith("NORD") and
-            not callable(getattr(cls, attr))
+            if attr.startswith("NORD") and not callable(getattr(cls, attr))
         }
 
     @classmethod
     def aliases(cls):
         """
-        Returns a dictionary of *all* other aliases 
+        Returns a dictionary of *all* other aliases
         (Polar Night, Snow Storm, Frost, Aurora).
         """
         skip_prefixes = ("NORD", "__")
         alias_names = [
-            attr for attr in dir(cls)
+            attr
+            for attr in dir(cls)
             if not any(attr.startswith(sp) for sp in skip_prefixes)
             and not callable(getattr(cls, attr))
         ]
@@ -264,7 +269,6 @@ NORD_THEME_STYLES: dict[str, Style] = {
     "blink2": Style(blink2=True),
     "reverse": Style(reverse=True),
     "strike": Style(strike=True),
-
     # ---------------------------------------------------------------
     # Basic color names mapped to Nord
     # ---------------------------------------------------------------
@@ -277,7 +281,6 @@ NORD_THEME_STYLES: dict[str, Style] = {
     "cyan": Style(color=NordColors.CYAN),
     "blue": Style(color=NordColors.BLUE),
     "white": Style(color=NordColors.SNOW_STORM_BRIGHTEST),
-
     # ---------------------------------------------------------------
     # Inspect
     # ---------------------------------------------------------------
@@ -292,14 +295,12 @@ NORD_THEME_STYLES: dict[str, Style] = {
     "inspect.help": Style(color=NordColors.FROST_ICE),
     "inspect.doc": Style(dim=True),
     "inspect.value.border": Style(color=NordColors.GREEN),
-
     # ---------------------------------------------------------------
     # Live / Layout
     # ---------------------------------------------------------------
     "live.ellipsis": Style(bold=True, color=NordColors.RED),
     "layout.tree.row": Style(dim=False, color=NordColors.RED),
     "layout.tree.column": Style(dim=False, color=NordColors.FROST_DEEP),
-
     # ---------------------------------------------------------------
     # Logging
     # ---------------------------------------------------------------
@@ -314,7 +315,6 @@ NORD_THEME_STYLES: dict[str, Style] = {
     "log.time": Style(color=NordColors.FROST_ICE, dim=True),
     "log.message": Style.null(),
     "log.path": Style(dim=True),
-
     # ---------------------------------------------------------------
     # Python repr
     # ---------------------------------------------------------------
@@ -340,18 +340,18 @@ NORD_THEME_STYLES: dict[str, Style] = {
     "repr.bool_true": Style(color=NordColors.GREEN, italic=True),
     "repr.bool_false": Style(color=NordColors.RED, italic=True),
     "repr.none": Style(color=NordColors.PURPLE, italic=True),
-    "repr.url": Style(underline=True, color=NordColors.FROST_ICE, italic=False, bold=False),
+    "repr.url": Style(
+        underline=True, color=NordColors.FROST_ICE, italic=False, bold=False
+    ),
     "repr.uuid": Style(color=NordColors.YELLOW, bold=False),
     "repr.call": Style(color=NordColors.PURPLE, bold=True),
     "repr.path": Style(color=NordColors.PURPLE),
     "repr.filename": Style(color=NordColors.PURPLE),
-
     # ---------------------------------------------------------------
     # Rule
     # ---------------------------------------------------------------
     "rule.line": Style(color=NordColors.GREEN),
     "rule.text": Style.null(),
-
     # ---------------------------------------------------------------
     # JSON
     # ---------------------------------------------------------------
@@ -362,7 +362,6 @@ NORD_THEME_STYLES: dict[str, Style] = {
     "json.number": Style(color=NordColors.FROST_ICE, bold=True, italic=False),
     "json.str": Style(color=NordColors.GREEN, italic=False, bold=False),
     "json.key": Style(color=NordColors.FROST_ICE, bold=True),
-
     # ---------------------------------------------------------------
     # Prompt
     # ---------------------------------------------------------------
@@ -371,12 +370,10 @@ NORD_THEME_STYLES: dict[str, Style] = {
     "prompt.default": Style(color=NordColors.FROST_ICE, bold=True),
     "prompt.invalid": Style(color=NordColors.RED),
     "prompt.invalid.choice": Style(color=NordColors.RED),
-
     # ---------------------------------------------------------------
     # Pretty
     # ---------------------------------------------------------------
     "pretty": Style.null(),
-
     # ---------------------------------------------------------------
     # Scope
     # ---------------------------------------------------------------
@@ -384,7 +381,6 @@ NORD_THEME_STYLES: dict[str, Style] = {
     "scope.key": Style(color=NordColors.YELLOW, italic=True),
     "scope.key.special": Style(color=NordColors.YELLOW, italic=True, dim=True),
     "scope.equals": Style(color=NordColors.RED),
-
     # ---------------------------------------------------------------
     # Table
     # ---------------------------------------------------------------
@@ -393,7 +389,6 @@ NORD_THEME_STYLES: dict[str, Style] = {
     "table.cell": Style.null(),
     "table.title": Style(italic=True),
     "table.caption": Style(italic=True, dim=True),
-
     # ---------------------------------------------------------------
     # Traceback
     # ---------------------------------------------------------------
@@ -405,7 +400,6 @@ NORD_THEME_STYLES: dict[str, Style] = {
     "traceback.exc_type": Style(color=NordColors.RED, bold=True),
     "traceback.exc_value": Style.null(),
     "traceback.offset": Style(color=NordColors.RED, bold=True),
-
     # ---------------------------------------------------------------
     # Progress bars
     # ---------------------------------------------------------------
@@ -423,13 +417,11 @@ NORD_THEME_STYLES: dict[str, Style] = {
     "progress.data.speed": Style(color=NordColors.RED),
     "progress.spinner": Style(color=NordColors.GREEN),
     "status.spinner": Style(color=NordColors.GREEN),
-
     # ---------------------------------------------------------------
     # Tree
     # ---------------------------------------------------------------
     "tree": Style(),
     "tree.line": Style(),
-
     # ---------------------------------------------------------------
     # Markdown
     # ---------------------------------------------------------------
@@ -438,8 +430,12 @@ NORD_THEME_STYLES: dict[str, Style] = {
     "markdown.em": Style(italic=True),
     "markdown.emph": Style(italic=True),  # For commonmark compatibility
     "markdown.strong": Style(bold=True),
-    "markdown.code": Style(bold=True, color=NordColors.FROST_ICE, bgcolor=NordColors.POLAR_NIGHT_ORIGIN),
-    "markdown.code_block": Style(color=NordColors.FROST_ICE, bgcolor=NordColors.POLAR_NIGHT_ORIGIN),
+    "markdown.code": Style(
+        bold=True, color=NordColors.FROST_ICE, bgcolor=NordColors.POLAR_NIGHT_ORIGIN
+    ),
+    "markdown.code_block": Style(
+        color=NordColors.FROST_ICE, bgcolor=NordColors.POLAR_NIGHT_ORIGIN
+    ),
     "markdown.block_quote": Style(color=NordColors.PURPLE),
     "markdown.list": Style(color=NordColors.FROST_ICE),
     "markdown.item": Style(),
@@ -457,7 +453,6 @@ NORD_THEME_STYLES: dict[str, Style] = {
     "markdown.link": Style(color=NordColors.FROST_ICE),
     "markdown.link_url": Style(color=NordColors.FROST_SKY, underline=True),
     "markdown.s": Style(strike=True),
-
     # ---------------------------------------------------------------
     # ISO8601
     # ---------------------------------------------------------------
@@ -504,7 +499,9 @@ if __name__ == "__main__":
         console.print(f"Caught error: {error}", style="red")
 
     # Demonstrate a traceback style:
-    console.print("\n8) Raising and displaying a traceback with Nord styling:\n", style="bold")
+    console.print(
+        "\n8) Raising and displaying a traceback with Nord styling:\n", style="bold"
+    )
     try:
         raise ValueError("Nord test exception!")
     except ValueError:

@@ -53,8 +53,16 @@ class ExecutionRegistry:
         table.add_column("Result / Exception", overflow="fold")
 
         for ctx in cls.get_all():
-            start = datetime.fromtimestamp(ctx.start_time).strftime("%H:%M:%S") if ctx.start_time else "n/a"
-            end = datetime.fromtimestamp(ctx.end_time).strftime("%H:%M:%S") if ctx.end_time else "n/a"
+            start = (
+                datetime.fromtimestamp(ctx.start_time).strftime("%H:%M:%S")
+                if ctx.start_time
+                else "n/a"
+            )
+            end = (
+                datetime.fromtimestamp(ctx.end_time).strftime("%H:%M:%S")
+                if ctx.end_time
+                else "n/a"
+            )
             duration = f"{ctx.duration:.3f}s" if ctx.duration else "n/a"
 
             if ctx.exception:
@@ -74,6 +82,8 @@ class ExecutionRegistry:
     def get_history_action(cls) -> "Action":
         """Return an Action that prints the execution summary."""
         from falyx.action import Action
+
         async def show_history():
             cls.summary()
+
         return Action(name="View Execution History", action=show_history)

@@ -11,8 +11,11 @@ from typing import Any, Awaitable, Callable, TypeVar
 
 import pythonjsonlogger.json
 from prompt_toolkit import PromptSession
-from prompt_toolkit.formatted_text import (AnyFormattedText, FormattedText,
-                                           merge_formatted_text)
+from prompt_toolkit.formatted_text import (
+    AnyFormattedText,
+    FormattedText,
+    merge_formatted_text,
+)
 from rich.logging import RichHandler
 
 from falyx.themes.colors import OneColors
@@ -20,6 +23,7 @@ from falyx.themes.colors import OneColors
 logger = logging.getLogger("falyx")
 
 T = TypeVar("T")
+
 
 async def _noop(*args, **kwargs):
     pass
@@ -44,7 +48,7 @@ def is_coroutine(function: Callable[..., Any]) -> bool:
 
 def ensure_async(function: Callable[..., T]) -> Callable[..., Awaitable[T]]:
     if is_coroutine(function):
-        return function # type: ignore
+        return function  # type: ignore
 
     @functools.wraps(function)
     async def async_wrapper(*args, **kwargs) -> T:
@@ -68,7 +72,9 @@ def chunks(iterator, size):
 async def async_confirm(message: AnyFormattedText = "Are you sure?") -> bool:
     session: PromptSession = PromptSession()
     while True:
-        merged_message: AnyFormattedText = merge_formatted_text([message, FormattedText([(OneColors.LIGHT_YELLOW_b, " [Y/n] ")])])
+        merged_message: AnyFormattedText = merge_formatted_text(
+            [message, FormattedText([(OneColors.LIGHT_YELLOW_b, " [Y/n] ")])]
+        )
         answer: str = (await session.prompt_async(merged_message)).strip().lower()
         if answer in ("y", "yes"):
             return True
@@ -182,7 +188,9 @@ def setup_logging(
     elif mode == "json":
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(
-            pythonjsonlogger.json.JsonFormatter("%(asctime)s %(name)s %(levelname)s %(message)s")
+            pythonjsonlogger.json.JsonFormatter(
+                "%(asctime)s %(name)s %(levelname)s %(message)s"
+            )
         )
     else:
         raise ValueError(f"Invalid log mode: {mode}")
@@ -194,13 +202,17 @@ def setup_logging(
     file_handler.setLevel(file_log_level)
     if json_log_to_file:
         file_handler.setFormatter(
-            pythonjsonlogger.json.JsonFormatter("%(asctime)s %(name)s %(levelname)s %(message)s")
+            pythonjsonlogger.json.JsonFormatter(
+                "%(asctime)s %(name)s %(levelname)s %(message)s"
+            )
         )
     else:
-        file_handler.setFormatter(logging.Formatter(
-            "%(asctime)s [%(name)s] [%(levelname)s] %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S"
-        ))
+        file_handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s [%(name)s] [%(levelname)s] %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
     root.addHandler(file_handler)
 
     logging.getLogger("urllib3").setLevel(logging.WARNING)

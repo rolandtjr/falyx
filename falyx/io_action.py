@@ -2,7 +2,7 @@
 """io_action.py
 BaseIOAction: A base class for stream- or buffer-based IO-driven Actions.
 
-This module defines `BaseIOAction`, a specialized variant of `BaseAction` 
+This module defines `BaseIOAction`, a specialized variant of `BaseAction`
 that interacts with standard input and output, enabling command-line pipelines,
 text filters, and stream processing tasks.
 
@@ -58,6 +58,7 @@ class BaseIOAction(BaseAction):
         mode (str): Either "buffered" or "stream". Controls input behavior.
         inject_last_result (bool): Whether to inject shared context input.
     """
+
     def __init__(
         self,
         name: str,
@@ -94,7 +95,9 @@ class BaseIOAction(BaseAction):
         if self.inject_last_result and self.shared_context:
             return self.shared_context.last_result()
 
-        logger.debug("[%s] No input provided and no last result found for injection.", self.name)
+        logger.debug(
+            "[%s] No input provided and no last result found for injection.", self.name
+        )
         raise FalyxError("No input provided and no last result to inject.")
 
     async def __call__(self, *args, **kwargs):
@@ -137,7 +140,6 @@ class BaseIOAction(BaseAction):
             return await asyncio.to_thread(sys.stdin.read)
         return ""
 
-
     async def _read_stdin_stream(self) -> Any:
         """Returns a generator that yields lines from stdin in a background thread."""
         loop = asyncio.get_running_loop()
@@ -176,7 +178,9 @@ class BaseIOAction(BaseAction):
 class UppercaseIO(BaseIOAction):
     def from_input(self, raw: str | bytes) -> str:
         if not isinstance(raw, (str, bytes)):
-            raise TypeError(f"{self.name} expected str or bytes input, got {type(raw).__name__}")
+            raise TypeError(
+                f"{self.name} expected str or bytes input, got {type(raw).__name__}"
+            )
         return raw.strip() if isinstance(raw, str) else raw.decode("utf-8").strip()
 
     async def _run(self, parsed_input: str, *args, **kwargs) -> str:
@@ -213,21 +217,22 @@ class ShellAction(BaseIOAction):
         command_template (str): Shell command to execute. Must include `{}` to include input.
                                 If no placeholder is present, the input is not included.
     """
+
     def __init__(self, name: str, command_template: str, **kwargs):
         super().__init__(name=name, **kwargs)
         self.command_template = command_template
 
     def from_input(self, raw: str | bytes) -> str:
         if not isinstance(raw, (str, bytes)):
-            raise TypeError(f"{self.name} expected str or bytes input, got {type(raw).__name__}")
+            raise TypeError(
+                f"{self.name} expected str or bytes input, got {type(raw).__name__}"
+            )
         return raw.strip() if isinstance(raw, str) else raw.decode("utf-8").strip()
 
     async def _run(self, parsed_input: str) -> str:
         # Replace placeholder in template, or use raw input as full command
         command = self.command_template.format(parsed_input)
-        result = subprocess.run(
-            command, shell=True, text=True, capture_output=True
-        )
+        result = subprocess.run(command, shell=True, text=True, capture_output=True)
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip())
         return result.stdout.strip()
@@ -245,7 +250,10 @@ class ShellAction(BaseIOAction):
             console.print(Tree("".join(label)))
 
     def __str__(self):
-        return f"ShellAction(name={self.name!r}, command_template={self.command_template!r})"
+        return (
+            f"ShellAction(name={self.name!r}, command_template={self.command_template!r})"
+        )
+
 
 class GrepAction(BaseIOAction):
     def __init__(self, name: str, pattern: str, **kwargs):
@@ -254,13 +262,19 @@ class GrepAction(BaseIOAction):
 
     def from_input(self, raw: str | bytes) -> str:
         if not isinstance(raw, (str, bytes)):
-            raise TypeError(f"{self.name} expected str or bytes input, got {type(raw).__name__}")
+            raise TypeError(
+                f"{self.name} expected str or bytes input, got {type(raw).__name__}"
+            )
         return raw.strip() if isinstance(raw, str) else raw.decode("utf-8").strip()
 
     async def _run(self, parsed_input: str) -> str:
         command = ["grep", "-n", self.pattern]
         process = subprocess.Popen(
-            command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
         stdout, stderr = process.communicate(input=parsed_input)
         if process.returncode == 1:
@@ -271,4 +285,3 @@ class GrepAction(BaseIOAction):
 
     def to_output(self, result: str) -> str:
         return result
-

@@ -6,12 +6,14 @@ from falyx.utils import setup_logging
 
 setup_logging()
 
+
 # A flaky async step that fails randomly
 async def flaky_step():
     await asyncio.sleep(0.2)
     if random.random() < 0.5:
         raise RuntimeError("Random failure!")
     return "ok"
+
 
 # Create a retry handler
 step1 = Action(name="step_1", action=flaky_step, retry=True)

@@ -26,9 +26,7 @@ class OptionsManager:
         """Get the value of an option."""
         return getattr(self.options[namespace_name], option_name, default)
 
-    def set(
-        self, option_name: str, value: Any, namespace_name: str = "cli_args"
-    ) -> None:
+    def set(self, option_name: str, value: Any, namespace_name: str = "cli_args") -> None:
         """Set the value of an option."""
         setattr(self.options[namespace_name], option_name, value)
 

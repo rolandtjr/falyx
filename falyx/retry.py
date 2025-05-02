@@ -34,15 +34,15 @@ class RetryPolicy(BaseModel):
 
 
 class RetryHandler:
-    def __init__(self, policy: RetryPolicy=RetryPolicy()):
+    def __init__(self, policy: RetryPolicy = RetryPolicy()):
         self.policy = policy
 
     def enable_policy(
         self,
-        max_retries: int=3,
-        delay: float=1.0,
-        backoff: float=2.0,
-        jitter: float=0.0,
+        max_retries: int = 3,
+        delay: float = 1.0,
+        backoff: float = 2.0,
+        jitter: float = 0.0,
     ):
         self.policy.enabled = True
         self.policy.max_retries = max_retries
@@ -53,6 +53,7 @@ class RetryHandler:
 
     async def retry_on_error(self, context: ExecutionContext):
         from falyx.action import Action
+
         name = context.name
         error = context.exception
         target = context.action
@@ -66,7 +67,9 @@ class RetryHandler:
             return
 
         if not isinstance(target, Action):
-            logger.warning(f"[{name}] ❌ RetryHandler only supports only supports Action objects.")
+            logger.warning(
+                f"[{name}] ❌ RetryHandler only supports only supports Action objects."
+            )
             return
 
         if not getattr(target, "is_retryable", False):

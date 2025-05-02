@@ -10,13 +10,13 @@ from falyx.context import ExecutionContext
 from falyx.utils import logger
 
 Hook = Union[
-    Callable[[ExecutionContext], None],
-    Callable[[ExecutionContext], Awaitable[None]]
+    Callable[[ExecutionContext], None], Callable[[ExecutionContext], Awaitable[None]]
 ]
 
 
 class HookType(Enum):
     """Enum for hook types to categorize the hooks."""
+
     BEFORE = "before"
     ON_SUCCESS = "on_success"
     ON_ERROR = "on_error"
@@ -61,10 +61,13 @@ class HookManager:
                 else:
                     hook(context)
             except Exception as hook_error:
-                logger.warning(f"⚠️ Hook '{hook.__name__}' raised an exception during '{hook_type}'"
-                               f" for '{context.name}': {hook_error}")
+                logger.warning(
+                    f"⚠️ Hook '{hook.__name__}' raised an exception during '{hook_type}'"
+                    f" for '{context.name}': {hook_error}"
+                )
 
                 if hook_type == HookType.ON_ERROR:
-                    assert isinstance(context.exception, Exception), "Context exception should be set for ON_ERROR hook"
+                    assert isinstance(
+                        context.exception, Exception
+                    ), "Context exception should be set for ON_ERROR hook"
                     raise context.exception from hook_error
-

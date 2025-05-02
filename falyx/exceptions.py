@@ -22,6 +22,6 @@ class NotAFalyxError(FalyxError):
 class CircuitBreakerOpen(FalyxError):
     """Exception raised when the circuit breaker is open."""
 
+
 class EmptyChainError(FalyxError):
     """Exception raised when the chain is empty."""
-

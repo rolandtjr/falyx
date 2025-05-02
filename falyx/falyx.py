@@ -42,16 +42,25 @@ from falyx.bottom_bar import BottomBar
 from falyx.command import Command
 from falyx.context import ExecutionContext
 from falyx.debug import log_after, log_before, log_error, log_success
-from falyx.exceptions import (CommandAlreadyExistsError, FalyxError,
-                              InvalidActionError, NotAFalyxError)
+from falyx.exceptions import (
+    CommandAlreadyExistsError,
+    FalyxError,
+    InvalidActionError,
+    NotAFalyxError,
+)
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import Hook, HookManager, HookType
 from falyx.options_manager import OptionsManager
 from falyx.parsers import get_arg_parsers
 from falyx.retry import RetryPolicy
 from falyx.themes.colors import OneColors, get_nord_theme
-from falyx.utils import (CaseInsensitiveDict, async_confirm, chunks,
-                         get_program_invocation, logger)
+from falyx.utils import (
+    CaseInsensitiveDict,
+    async_confirm,
+    chunks,
+    get_program_invocation,
+    logger,
+)
 from falyx.version import __version__
 
 
@@ -59,8 +68,8 @@ class Falyx:
     """
     Main menu controller for Falyx CLI applications.
 
-    Falyx orchestrates the full lifecycle of an interactive menu system, 
-    handling user input, command execution, error recovery, and structured 
+    Falyx orchestrates the full lifecycle of an interactive menu system,
+    handling user input, command execution, error recovery, and structured
     CLI workflows.
 
     Key Features:
@@ -101,6 +110,7 @@ class Falyx:
         build_default_table(): Construct the standard Rich table layout.
 
     """
+
     def __init__(
         self,
         title: str | Markdown = "Menu",
@@ -117,6 +127,7 @@ class Falyx:
         always_confirm: bool = False,
         cli_args: Namespace | None = None,
         options: OptionsManager | None = None,
+        render_menu: Callable[["Falyx"], None] | None = None,
         custom_table: Callable[["Falyx"], Table] | Table | None = None,
     ) -> None:
         """Initializes the Falyx object."""
@@ -125,8 +136,12 @@ class Falyx:
         self.columns: int = columns
         self.commands: dict[str, Command] = CaseInsensitiveDict()
         self.exit_command: Command = self._get_exit_command()
-        self.history_command: Command | None = self._get_history_command() if include_history_command else None
-        self.help_command: Command | None = self._get_help_command() if include_help_command else None
+        self.history_command: Command | None = (
+            self._get_history_command() if include_history_command else None
+        )
+        self.help_command: Command | None = (
+            self._get_help_command() if include_help_command else None
+        )
         self.console: Console = Console(color_system="truecolor", theme=get_nord_theme())
         self.welcome_message: str | Markdown | dict[str, Any] = welcome_message
         self.exit_message: str | Markdown | dict[str, Any] = exit_message
@@ -138,15 +153,16 @@ class Falyx:
         self._never_confirm: bool = never_confirm
         self._always_confirm: bool = always_confirm
         self.cli_args: Namespace | None = cli_args
+        self.render_menu: Callable[["Falyx"], None] | None = render_menu
         self.custom_table: Callable[["Falyx"], Table] | Table | None = custom_table
         self.set_options(cli_args, options)
         self._session: PromptSession | None = None
 
     def set_options(
-            self,
-            cli_args: Namespace | None,
-            options: OptionsManager | None = None,
-        ) -> None:
+        self,
+        cli_args: Namespace | None,
+        options: OptionsManager | None = None,
+    ) -> None:
         """Checks if the options are set correctly."""
         self.options: OptionsManager = options or OptionsManager()
         if not cli_args and not options:
@@ -155,7 +171,9 @@ class Falyx:
         if options and not cli_args:
             raise FalyxError("Options are set, but CLI arguments are not.")
 
-        assert isinstance(cli_args, Namespace), "CLI arguments must be a Namespace object."
+        assert isinstance(
+            cli_args, Namespace
+        ), "CLI arguments must be a Namespace object."
         if options is None:
             self.options.from_namespace(cli_args, "cli_args")
 
@@ -240,27 +258,27 @@ class Falyx:
                 f"[{command.color}]{command.key}[/]",
                 ", ".join(command.aliases) if command.aliases else "None",
                 help_text,
-                ", ".join(command.tags) if command.tags else "None"
+                ", ".join(command.tags) if command.tags else "None",
             )
 
         table.add_row(
             f"[{self.exit_command.color}]{self.exit_command.key}[/]",
             ", ".join(self.exit_command.aliases),
-            "Exit this menu or program"
+            "Exit this menu or program",
         )
 
         if self.history_command:
             table.add_row(
                 f"[{self.history_command.color}]{self.history_command.key}[/]",
                 ", ".join(self.history_command.aliases),
-                "History of executed actions"
-        )
+                "History of executed actions",
+            )
 
         if self.help_command:
             table.add_row(
                 f"[{self.help_command.color}]{self.help_command.key}[/]",
                 ", ".join(self.help_command.aliases),
-                "Show this help menu"
+                "Show this help menu",
             )
 
         self.console.print(table, justify="center")
@@ -274,6 +292,7 @@ class Falyx:
             action=self._show_help,
             color=OneColors.LIGHT_YELLOW,
         )
+
     def _get_completer(self) -> WordCompleter:
         """Completer to provide auto-completion for the menu commands."""
         keys = [self.exit_command.key]
@@ -350,18 +369,22 @@ class Falyx:
         return self._bottom_bar
 
     @bottom_bar.setter
-    def bottom_bar(self, bottom_bar: BottomBar | str |  Callable[[], Any] | None) -> None:
+    def bottom_bar(self, bottom_bar: BottomBar | str | Callable[[], Any] | None) -> None:
         """Sets the bottom bar for the menu."""
         if bottom_bar is None:
-            self._bottom_bar: BottomBar | str | Callable[[], Any] = BottomBar(self.columns, self.key_bindings, key_validator=self.is_key_available)
+            self._bottom_bar: BottomBar | str | Callable[[], Any] = BottomBar(
+                self.columns, self.key_bindings, key_validator=self.is_key_available
+            )
         elif isinstance(bottom_bar, BottomBar):
             bottom_bar.key_validator = self.is_key_available
             bottom_bar.key_bindings = self.key_bindings
             self._bottom_bar = bottom_bar
-        elif (isinstance(bottom_bar, str) or callable(bottom_bar)):
+        elif isinstance(bottom_bar, str) or callable(bottom_bar):
             self._bottom_bar = bottom_bar
         else:
-            raise FalyxError("Bottom bar must be a string, callable, or BottomBar instance.")
+            raise FalyxError(
+                "Bottom bar must be a string, callable, or BottomBar instance."
+            )
         self._invalidate_session_cache()
 
     def _get_bottom_bar_render(self) -> Callable[[], Any] | str | None:
@@ -381,14 +404,14 @@ class Falyx:
         """Returns the prompt session for the menu."""
         if self._session is None:
             self._session = PromptSession(
-                                message=self.prompt,
-                                multiline=False,
-                                completer=self._get_completer(),
-                                reserve_space_for_menu=1,
-                                validator=self._get_validator(),
-                                bottom_toolbar=self._get_bottom_bar_render(),
-                                key_bindings=self.key_bindings,
-                            )
+                message=self.prompt,
+                multiline=False,
+                completer=self._get_completer(),
+                reserve_space_for_menu=1,
+                validator=self._get_validator(),
+                bottom_toolbar=self._get_bottom_bar_render(),
+                key_bindings=self.key_bindings,
+            )
         return self._session
 
     def register_all_hooks(self, hook_type: HookType, hooks: Hook | list[Hook]) -> None:
@@ -414,32 +437,58 @@ class Falyx:
 
     def debug_hooks(self) -> None:
         """Logs the names of all hooks registered for the menu and its commands."""
+
         def hook_names(hook_list):
             return [hook.__name__ for hook in hook_list]
 
-        logger.debug(f"Menu-level before hooks: {hook_names(self.hooks._hooks[HookType.BEFORE])}")
-        logger.debug(f"Menu-level success hooks: {hook_names(self.hooks._hooks[HookType.ON_SUCCESS])}")
-        logger.debug(f"Menu-level error hooks: {hook_names(self.hooks._hooks[HookType.ON_ERROR])}")
-        logger.debug(f"Menu-level after hooks: {hook_names(self.hooks._hooks[HookType.AFTER])}")
-        logger.debug(f"Menu-level on_teardown hooks: {hook_names(self.hooks._hooks[HookType.ON_TEARDOWN])}")
+        logger.debug(
+            "Menu-level before hooks: "
+            f"{hook_names(self.hooks._hooks[HookType.BEFORE])}"
+        )
+        logger.debug(
+            f"Menu-level success hooks: {hook_names(self.hooks._hooks[HookType.ON_SUCCESS])}"
+        )
+        logger.debug(
+            f"Menu-level error hooks: {hook_names(self.hooks._hooks[HookType.ON_ERROR])}"
+        )
+        logger.debug(
+            f"Menu-level after hooks: {hook_names(self.hooks._hooks[HookType.AFTER])}"
+        )
+        logger.debug(
+            f"Menu-level on_teardown hooks: {hook_names(self.hooks._hooks[HookType.ON_TEARDOWN])}"
+        )
 
         for key, command in self.commands.items():
-            logger.debug(f"[Command '{key}'] before: {hook_names(command.hooks._hooks[HookType.BEFORE])}")
-            logger.debug(f"[Command '{key}'] success: {hook_names(command.hooks._hooks[HookType.ON_SUCCESS])}")
-            logger.debug(f"[Command '{key}'] error: {hook_names(command.hooks._hooks[HookType.ON_ERROR])}")
-            logger.debug(f"[Command '{key}'] after: {hook_names(command.hooks._hooks[HookType.AFTER])}")
-            logger.debug(f"[Command '{key}'] on_teardown: {hook_names(command.hooks._hooks[HookType.ON_TEARDOWN])}")
+            logger.debug(
+                f"[Command '{key}'] before: {hook_names(command.hooks._hooks[HookType.BEFORE])}"
+            )
+            logger.debug(
+                f"[Command '{key}'] success: {hook_names(command.hooks._hooks[HookType.ON_SUCCESS])}"
+            )
+            logger.debug(
+                f"[Command '{key}'] error: {hook_names(command.hooks._hooks[HookType.ON_ERROR])}"
+            )
+            logger.debug(
+                f"[Command '{key}'] after: {hook_names(command.hooks._hooks[HookType.AFTER])}"
+            )
+            logger.debug(
+                f"[Command '{key}'] on_teardown: {hook_names(command.hooks._hooks[HookType.ON_TEARDOWN])}"
+            )
 
     def is_key_available(self, key: str) -> bool:
         key = key.upper()
-        toggles = self._bottom_bar.toggle_keys if isinstance(self._bottom_bar, BottomBar) else []
+        toggles = (
+            self._bottom_bar.toggle_keys
+            if isinstance(self._bottom_bar, BottomBar)
+            else []
+        )
 
         conflicts = (
             key in self.commands,
             key == self.exit_command.key.upper(),
             self.history_command and key == self.history_command.key.upper(),
             self.help_command and key == self.help_command.key.upper(),
-            key in toggles
+            key in toggles,
         )
 
         return not any(conflicts)
@@ -447,7 +496,11 @@ class Falyx:
     def _validate_command_key(self, key: str) -> None:
         """Validates the command key to ensure it is unique."""
         key = key.upper()
-        toggles = self._bottom_bar.toggle_keys if isinstance(self._bottom_bar, BottomBar) else []
+        toggles = (
+            self._bottom_bar.toggle_keys
+            if isinstance(self._bottom_bar, BottomBar)
+            else []
+        )
         collisions = []
 
         if key in self.commands:
@@ -462,7 +515,9 @@ class Falyx:
             collisions.append("toggle")
 
         if collisions:
-            raise CommandAlreadyExistsError(f"Command key '{key}' conflicts with existing {', '.join(collisions)}.")
+            raise CommandAlreadyExistsError(
+                f"Command key '{key}' conflicts with existing {', '.join(collisions)}."
+            )
 
     def update_exit_command(
         self,
@@ -486,7 +541,9 @@ class Falyx:
             confirm_message=confirm_message,
         )
 
-    def add_submenu(self, key: str, description: str, submenu: "Falyx", color: str = OneColors.CYAN) -> None:
+    def add_submenu(
+        self, key: str, description: str, submenu: "Falyx", color: str = OneColors.CYAN
+    ) -> None:
         """Adds a submenu to the menu."""
         if not isinstance(submenu, Falyx):
             raise NotAFalyxError("submenu must be an instance of Falyx.")
@@ -581,10 +638,16 @@ class Falyx:
         """Returns the bottom row of the table for displaying additional commands."""
         bottom_row = []
         if self.history_command:
-            bottom_row.append(f"[{self.history_command.key}] [{self.history_command.color}]{self.history_command.description}")
+            bottom_row.append(
+                f"[{self.history_command.key}] [{self.history_command.color}]{self.history_command.description}"
+            )
         if self.help_command:
-            bottom_row.append(f"[{self.help_command.key}] [{self.help_command.color}]{self.help_command.description}")
-        bottom_row.append(f"[{self.exit_command.key}] [{self.exit_command.color}]{self.exit_command.description}")
+            bottom_row.append(
+                f"[{self.help_command.key}] [{self.help_command.color}]{self.help_command.description}"
+            )
+        bottom_row.append(
+            f"[{self.exit_command.key}] [{self.exit_command.color}]{self.exit_command.description}"
+        )
         return bottom_row
 
     def build_default_table(self) -> Table:
@@ -626,13 +689,17 @@ class Falyx:
         fuzzy_matches = get_close_matches(choice, list(name_map.keys()), n=3, cutoff=0.7)
         if fuzzy_matches:
             if not from_validate:
-                self.console.print(f"[{OneColors.LIGHT_YELLOW}]⚠️ Unknown command '{choice}'. Did you mean:[/] ")
+                self.console.print(
+                    f"[{OneColors.LIGHT_YELLOW}]⚠️ Unknown command '{choice}'. Did you mean:[/] "
+                )
             for match in fuzzy_matches:
                 cmd = name_map[match]
                 self.console.print(f"  • [bold]{match}[/] → {cmd.description}")
         else:
             if not from_validate:
-                self.console.print(f"[{OneColors.LIGHT_YELLOW}]⚠️ Unknown command '{choice}'[/]")
+                self.console.print(
+                    f"[{OneColors.LIGHT_YELLOW}]⚠️ Unknown command '{choice}'[/]"
+                )
         return None
 
     async def _should_run_action(self, selected_command: Command) -> bool:
@@ -642,9 +709,11 @@ class Falyx:
         if self.cli_args and getattr(self.cli_args, "skip_confirm", False):
             return True
 
-        if (self._always_confirm or
-            selected_command.confirm or
-            self.cli_args and getattr(self.cli_args, "force_confirm", False)
+        if (
+            self._always_confirm
+            or selected_command.confirm
+            or self.cli_args
+            and getattr(self.cli_args, "force_confirm", False)
         ):
             if selected_command.preview_before_confirm:
                 await selected_command.preview()
@@ -676,16 +745,20 @@ class Falyx:
         ):
             return await command()
 
-    async def _handle_action_error(self, selected_command: Command, error: Exception) -> bool:
+    async def _handle_action_error(
+        self, selected_command: Command, error: Exception
+    ) -> bool:
         """Handles errors that occur during the action of the selected command."""
         logger.exception(f"Error executing '{selected_command.description}': {error}")
-        self.console.print(f"[{OneColors.DARK_RED}]An error occurred while executing "
-                           f"{selected_command.description}:[/] {error}")
+        self.console.print(
+            f"[{OneColors.DARK_RED}]An error occurred while executing "
+            f"{selected_command.description}:[/] {error}"
+        )
         if self.confirm_on_error and not self._never_confirm:
             return await async_confirm("An error occurred. Do you wish to continue?")
         if self._never_confirm:
             return True
-        return False 
+        return False
 
     async def process_command(self) -> bool:
         """Processes the action of the selected command."""
@@ -700,8 +773,7 @@ class Falyx:
             self.console.print(
                 f"[{OneColors.LIGHT_YELLOW}]⚠️ Command '{selected_command.key}' requires input "
                 f"and must be run via [{OneColors.MAGENTA}]'{program} run'[{OneColors.LIGHT_YELLOW}] "
-                 "with proper piping or arguments.[/]"
-
+                "with proper piping or arguments.[/]"
             )
             return True
 
@@ -730,7 +802,9 @@ class Falyx:
             context.exception = error
             await self.hooks.trigger(HookType.ON_ERROR, context)
             if not context.exception:
-                logger.info(f"✅ Recovery hook handled error for '{selected_command.description}'")
+                logger.info(
+                    f"✅ Recovery hook handled error for '{selected_command.description}'"
+                )
                 context.result = result
             else:
                 return await self._handle_action_error(selected_command, error)
@@ -753,7 +827,9 @@ class Falyx:
         logger.info(f"[Headless] 🚀 Running: '{selected_command.description}'")
 
         if not await self._should_run_action(selected_command):
-            raise FalyxError(f"[Headless] '{selected_command.description}' cancelled by confirmation.")
+            raise FalyxError(
+                f"[Headless] '{selected_command.description}' cancelled by confirmation."
+            )
 
         context = self._create_context(selected_command)
         context.start_timer()
@@ -769,14 +845,20 @@ class Falyx:
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
             logger.info(f"[Headless] ✅ '{selected_command.description}' complete.")
         except (KeyboardInterrupt, EOFError):
-            raise FalyxError(f"[Headless] ⚠️ '{selected_command.description}' interrupted by user.")
+            raise FalyxError(
+                f"[Headless] ⚠️ '{selected_command.description}' interrupted by user."
+            )
         except Exception as error:
             context.exception = error
             await self.hooks.trigger(HookType.ON_ERROR, context)
             if not context.exception:
-                logger.info(f"[Headless] ✅ Recovery hook handled error for '{selected_command.description}'")
+                logger.info(
+                    f"[Headless] ✅ Recovery hook handled error for '{selected_command.description}'"
+                )
                 return True
-            raise FalyxError(f"[Headless] ❌ '{selected_command.description}' failed.") from error
+            raise FalyxError(
+                f"[Headless] ❌ '{selected_command.description}' failed."
+            ) from error
         finally:
             context.stop_timer()
             await self.hooks.trigger(HookType.AFTER, context)
@@ -787,7 +869,11 @@ class Falyx:
     def _set_retry_policy(self, selected_command: Command) -> None:
         """Sets the retry policy for the command based on CLI arguments."""
         assert isinstance(self.cli_args, Namespace), "CLI arguments must be provided."
-        if self.cli_args.retries or self.cli_args.retry_delay or self.cli_args.retry_backoff:
+        if (
+            self.cli_args.retries
+            or self.cli_args.retry_delay
+            or self.cli_args.retry_backoff
+        ):
             selected_command.retry_policy.enabled = True
             if self.cli_args.retries:
                 selected_command.retry_policy.max_retries = self.cli_args.retries
@@ -798,7 +884,9 @@ class Falyx:
             if isinstance(selected_command.action, Action):
                 selected_command.action.set_retry_policy(selected_command.retry_policy)
             else:
-                logger.warning(f"[Command:{selected_command.key}] Retry requested, but action is not an Action instance.")
+                logger.warning(
+                    f"[Command:{selected_command.key}] Retry requested, but action is not an Action instance."
+                )
 
     def print_message(self, message: str | Markdown | dict[str, Any]) -> None:
         """Prints a message to the console."""
@@ -821,7 +909,10 @@ class Falyx:
         if self.welcome_message:
             self.print_message(self.welcome_message)
         while True:
-            self.console.print(self.table, justify="center")
+            if callable(self.render_menu):
+                self.render_menu(self)
+            elif isinstance(self.render_menu, str):
+                self.console.print(self.table, justify="center")
             try:
                 task = asyncio.create_task(self.process_command())
                 should_continue = await task
@@ -858,16 +949,22 @@ class Falyx:
         if self.cli_args.command == "preview":
             command = self.get_command(self.cli_args.name)
             if not command:
-                self.console.print(f"[{OneColors.DARK_RED}]❌ Command '{self.cli_args.name}' not found.[/]")
+                self.console.print(
+                    f"[{OneColors.DARK_RED}]❌ Command '{self.cli_args.name}' not found.[/]"
+                )
                 sys.exit(1)
-            self.console.print(f"Preview of command '{command.key}': {command.description}")
+            self.console.print(
+                f"Preview of command '{command.key}': {command.description}"
+            )
             await command.preview()
             sys.exit(0)
 
         if self.cli_args.command == "run":
             command = self.get_command(self.cli_args.name)
             if not command:
-                self.console.print(f"[{OneColors.DARK_RED}]❌ Command '{self.cli_args.name}' not found.[/]")
+                self.console.print(
+                    f"[{OneColors.DARK_RED}]❌ Command '{self.cli_args.name}' not found.[/]"
+                )
                 sys.exit(1)
             self._set_retry_policy(command)
             try:
@@ -879,14 +976,19 @@ class Falyx:
 
         if self.cli_args.command == "run-all":
             matching = [
-                cmd for cmd in self.commands.values()
+                cmd
+                for cmd in self.commands.values()
                 if self.cli_args.tag.lower() in (tag.lower() for tag in cmd.tags)
             ]
             if not matching:
-                self.console.print(f"[{OneColors.LIGHT_YELLOW}]⚠️ No commands found with tag: '{self.cli_args.tag}'[/]")
+                self.console.print(
+                    f"[{OneColors.LIGHT_YELLOW}]⚠️ No commands found with tag: '{self.cli_args.tag}'[/]"
+                )
                 sys.exit(1)
 
-            self.console.print(f"[{OneColors.CYAN_b}]🚀 Running all commands with tag:[/] {self.cli_args.tag}")
+            self.console.print(
+                f"[{OneColors.CYAN_b}]🚀 Running all commands with tag:[/] {self.cli_args.tag}"
+            )
             for cmd in matching:
                 self._set_retry_policy(cmd)
                 await self.headless(cmd.key)

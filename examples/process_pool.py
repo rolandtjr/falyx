@@ -1,9 +1,11 @@
+from rich.console import Console
+
 from falyx import Falyx, ProcessAction
 from falyx.themes.colors import NordColors as nc
-from rich.console import Console
 
 console = Console()
 falyx = Falyx(title="🚀 Process Pool Demo")
+
 
 def generate_primes(n):
     primes = []
@@ -12,6 +14,7 @@ def generate_primes(n):
             primes.append(num)
     console.print(f"Generated {len(primes)} primes up to {n}.", style=nc.GREEN)
     return primes
+
 
 # Will not block the event loop
 heavy_action = ProcessAction("Prime Generator", generate_primes, args=(100_000,))

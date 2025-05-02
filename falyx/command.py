@@ -44,7 +44,7 @@ class Command(BaseModel):
     """
     Represents a selectable command in a Falyx menu system.
 
-    A Command wraps an executable action (function, coroutine, or BaseAction) 
+    A Command wraps an executable action (function, coroutine, or BaseAction)
     and enhances it with:
 
     - Lifecycle hooks (before, success, error, after, teardown)
@@ -91,6 +91,7 @@ class Command(BaseModel):
         result: Property exposing the last result.
         log_summary(): Summarizes execution details to the console.
     """
+
     key: str
     description: str
     action: BaseAction | Callable[[], Any] = _noop
@@ -127,12 +128,16 @@ class Command(BaseModel):
         elif self.retry_policy and isinstance(self.action, Action):
             self.action.set_retry_policy(self.retry_policy)
         elif self.retry:
-            logger.warning(f"[Command:{self.key}] Retry requested, but action is not an Action instance.")
+            logger.warning(
+                f"[Command:{self.key}] Retry requested, but action is not an Action instance."
+            )
         if self.retry_all and isinstance(self.action, BaseAction):
             self.retry_policy.enabled = True
             enable_retries_recursively(self.action, self.retry_policy)
         elif self.retry_all:
-            logger.warning(f"[Command:{self.key}] Retry all requested, but action is not a BaseAction instance.")
+            logger.warning(
+                f"[Command:{self.key}] Retry all requested, but action is not a BaseAction instance."
+            )
 
         if self.logging_hooks and isinstance(self.action, BaseAction):
             register_debug_hooks(self.action.hooks)
@@ -149,7 +154,11 @@ class Command(BaseModel):
         if isinstance(self.action, BaseIOAction):
             return True
         elif isinstance(self.action, ChainedAction):
-            return isinstance(self.action.actions[0], BaseIOAction) if self.action.actions else False
+            return (
+                isinstance(self.action.actions[0], BaseIOAction)
+                if self.action.actions
+                else False
+            )
         elif isinstance(self.action, ActionGroup):
             return any(isinstance(action, BaseIOAction) for action in self.action.actions)
         return False
@@ -164,8 +173,10 @@ class Command(BaseModel):
         raise TypeError("Action must be a callable or an instance of BaseAction")
 
     def __str__(self):
-        return (f"Command(key='{self.key}', description='{self.description}' "
-                f"action='{self.action}')")
+        return (
+            f"Command(key='{self.key}', description='{self.description}' "
+            f"action='{self.action}')"
+        )
 
     async def __call__(self, *args, **kwargs):
         """Run the action with full hook lifecycle, timing, and error handling."""
@@ -208,9 +219,7 @@ class Command(BaseModel):
     def confirmation_prompt(self) -> FormattedText:
         """Generate a styled prompt_toolkit FormattedText confirmation message."""
         if self.confirm_message and self.confirm_message != "Are you sure?":
-            return FormattedText([
-                ("class:confirm", self.confirm_message)
-            ])
+            return FormattedText([("class:confirm", self.confirm_message)])
 
         action_name = getattr(self.action, "__name__", None)
         if isinstance(self.action, BaseAction):
@@ -225,7 +234,9 @@ class Command(BaseModel):
             prompt.append(("class:confirm", f"(calls `{action_name}`) "))
 
         if self.args or self.kwargs:
-            prompt.append((OneColors.DARK_YELLOW, f"with args={self.args}, kwargs={self.kwargs} "))
+            prompt.append(
+                (OneColors.DARK_YELLOW, f"with args={self.args}, kwargs={self.kwargs} ")
+            )
 
         return FormattedText(prompt)
 
@@ -248,4 +259,6 @@ class Command(BaseModel):
             )
         else:
             console.print(f"{label}")
-            console.print(f"[{OneColors.DARK_RED}]⚠️ Action is not callable or lacks a preview method.[/]")
+            console.print(
+                f"[{OneColors.DARK_RED}]⚠️ Action is not callable or lacks a preview method.[/]"
+            )

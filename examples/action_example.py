@@ -8,14 +8,17 @@ from falyx import Action, ActionGroup, ChainedAction
 def hello() -> None:
     print("Hello, world!")
 
+
 hello = Action(name="hello_action", action=hello)
 
 # Actions can be run by themselves or as part of a command or pipeline
 asyncio.run(hello())
 
+
 # Actions are designed to be asynchronous first
 async def goodbye() -> None:
     print("Goodbye!")
+
 
 goodbye = Action(name="goodbye_action", action=goodbye)
 
