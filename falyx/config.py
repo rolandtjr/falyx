@@ -35,7 +35,7 @@ def import_action(dotted_path: str) -> Any:
     return getattr(module, attr)
 
 
-def loader(file_path: str) -> list[dict[str, Any]]:
+def loader(file_path: Path | str) -> list[dict[str, Any]]:
     """
     Load command definitions from a YAML or TOML file.
 
@@ -53,7 +53,13 @@ def loader(file_path: str) -> list[dict[str, Any]]:
     Raises:
         ValueError: If the file format is unsupported or file cannot be parsed.
     """
-    path = Path(file_path)
+    if isinstance(file_path, str):
+        path = Path(file_path)
+    elif isinstance(file_path, Path):
+        path = file_path
+    else:
+        raise TypeError("file_path must be a string or Path object.")
+
     if not path.is_file():
         raise FileNotFoundError(f"No such config file: {file_path}")
 
