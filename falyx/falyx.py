@@ -911,7 +911,7 @@ class Falyx:
         while True:
             if callable(self.render_menu):
                 self.render_menu(self)
-            elif isinstance(self.render_menu, str):
+            else:
                 self.console.print(self.table, justify="center")
             try:
                 task = asyncio.create_task(self.process_command())
