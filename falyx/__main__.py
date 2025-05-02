@@ -33,7 +33,7 @@ def bootstrap() -> Path | None:
     return None
 
 
-async def main() -> None:
+def main() -> None:
     bootstrap_path = bootstrap()
     if not bootstrap_path:
         print("No Falyx config file found. Exiting.")
@@ -45,8 +45,8 @@ async def main() -> None:
         columns=4,
     )
     flx.add_commands(loader(bootstrap_path))
-    await flx.run()
+    asyncio.run(flx.run())
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
