@@ -68,7 +68,7 @@ class Command(BaseModel):
         args (tuple): Static positional arguments.
         kwargs (dict): Static keyword arguments.
         help_text (str): Additional help or guidance text.
-        color (str): Color theme for CLI rendering.
+        style (str): Rich style for description.
         confirm (bool): Whether to require confirmation before executing.
         confirm_message (str): Custom confirmation prompt.
         preview_before_confirm (bool): Whether to preview before confirming.
@@ -101,7 +101,7 @@ class Command(BaseModel):
     hidden: bool = False
     aliases: list[str] = Field(default_factory=list)
     help_text: str = ""
-    color: str = OneColors.WHITE
+    style: str = OneColors.WHITE
     confirm: bool = False
     confirm_message: str = "Are you sure?"
     preview_before_confirm: bool = True

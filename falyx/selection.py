@@ -1,5 +1,6 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """selection.py"""
+from dataclasses import dataclass
 from typing import Any, Callable, KeysView, Sequence
 
 from prompt_toolkit import PromptSession
@@ -11,6 +12,21 @@ from rich.table import Table
 from falyx.themes.colors import OneColors
 from falyx.utils import chunks
 from falyx.validators import int_range_validator, key_validator
+
+
+@dataclass
+class SelectionOption:
+    description: str
+    value: Any
+    style: str = OneColors.WHITE
+
+    def __post_init__(self):
+        if not isinstance(self.description, str):
+            raise TypeError("SelectionOption description must be a string.")
+
+    def render(self, key: str) -> str:
+        """Render the selection option for display."""
+        return f"[{OneColors.WHITE}][{key}][/] [{self.style}]{self.description}[/]"
 
 
 def render_table_base(
@@ -139,7 +155,7 @@ def render_selection_indexed_table(
 
 def render_selection_dict_table(
     title: str,
-    selections: dict[str, tuple[str, Any]],
+    selections: dict[str, SelectionOption],
     columns: int = 2,
     caption: str = "",
     box_style: box.Box = box.SIMPLE,
@@ -172,8 +188,10 @@ def render_selection_dict_table(
 
     for chunk in chunks(selections.items(), columns):
         row = []
-        for key, value in chunk:
-            row.append(f"[{OneColors.WHITE}][{key.upper()}] {value[0]}")
+        for key, option in chunk:
+            row.append(
+                f"[{OneColors.WHITE}][{key.upper()}] [{option.style}]{option.description}[/]"
+            )
         table.add_row(*row)
 
     return table
@@ -281,7 +299,7 @@ async def select_value_from_list(
 
 
 async def select_key_from_dict(
-    selections: dict[str, tuple[str, Any]],
+    selections: dict[str, SelectionOption],
     table: Table,
     console: Console | None = None,
     session: PromptSession | None = None,
@@ -305,7 +323,7 @@ async def select_key_from_dict(
 
 
 async def select_value_from_dict(
-    selections: dict[str, tuple[str, Any]],
+    selections: dict[str, SelectionOption],
     table: Table,
     console: Console | None = None,
     session: PromptSession | None = None,
@@ -327,12 +345,12 @@ async def select_value_from_dict(
         prompt_message=prompt_message,
     )
 
-    return selections[selection_key][1]
+    return selections[selection_key].value
 
 
 async def get_selection_from_dict_menu(
     title: str,
-    selections: dict[str, tuple[str, Any]],
+    selections: dict[str, SelectionOption],
     console: Console | None = None,
     session: PromptSession | None = None,
     prompt_message: str = "Select an option > ",

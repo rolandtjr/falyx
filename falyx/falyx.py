@@ -231,7 +231,7 @@ class Falyx:
             key="Q",
             description="Exit",
             aliases=["EXIT", "QUIT"],
-            color=OneColors.DARK_RED,
+            style=OneColors.DARK_RED,
         )
 
     def _get_history_command(self) -> Command:
@@ -241,7 +241,7 @@ class Falyx:
             description="History",
             aliases=["HISTORY"],
             action=er.get_history_action(),
-            color=OneColors.DARK_YELLOW,
+            style=OneColors.DARK_YELLOW,
         )
 
     async def _show_help(self):
@@ -256,28 +256,28 @@ class Falyx:
             if command.requires_input:
                 help_text += " [dim](requires input)[/dim]"
             table.add_row(
-                f"[{command.color}]{command.key}[/]",
+                f"[{command.style}]{command.key}[/]",
                 ", ".join(command.aliases) if command.aliases else "None",
                 help_text,
                 ", ".join(command.tags) if command.tags else "None",
             )
 
         table.add_row(
-            f"[{self.exit_command.color}]{self.exit_command.key}[/]",
+            f"[{self.exit_command.style}]{self.exit_command.key}[/]",
             ", ".join(self.exit_command.aliases),
             "Exit this menu or program",
         )
 
         if self.history_command:
             table.add_row(
-                f"[{self.history_command.color}]{self.history_command.key}[/]",
+                f"[{self.history_command.style}]{self.history_command.key}[/]",
                 ", ".join(self.history_command.aliases),
                 "History of executed actions",
             )
 
         if self.help_command:
             table.add_row(
-                f"[{self.help_command.color}]{self.help_command.key}[/]",
+                f"[{self.help_command.style}]{self.help_command.key}[/]",
                 ", ".join(self.help_command.aliases),
                 "Show this help menu",
             )
@@ -291,7 +291,7 @@ class Falyx:
             aliases=["HELP"],
             description="Help",
             action=self._show_help,
-            color=OneColors.LIGHT_YELLOW,
+            style=OneColors.LIGHT_YELLOW,
         )
 
     def _get_completer(self) -> WordCompleter:
@@ -526,7 +526,7 @@ class Falyx:
         description: str = "Exit",
         aliases: list[str] | None = None,
         action: Callable[[], Any] = lambda: None,
-        color: str = OneColors.DARK_RED,
+        style: str = OneColors.DARK_RED,
         confirm: bool = False,
         confirm_message: str = "Are you sure?",
     ) -> None:
@@ -539,19 +539,19 @@ class Falyx:
             description=description,
             aliases=aliases if aliases else self.exit_command.aliases,
             action=action,
-            color=color,
+            style=style,
             confirm=confirm,
             confirm_message=confirm_message,
         )
 
     def add_submenu(
-        self, key: str, description: str, submenu: "Falyx", color: str = OneColors.CYAN
+        self, key: str, description: str, submenu: "Falyx", style: str = OneColors.CYAN
     ) -> None:
         """Adds a submenu to the menu."""
         if not isinstance(submenu, Falyx):
             raise NotAFalyxError("submenu must be an instance of Falyx.")
         self._validate_command_key(key)
-        self.add_command(key, description, submenu.menu, color=color)
+        self.add_command(key, description, submenu.menu, style=style)
         submenu.update_exit_command(key="B", description="Back", aliases=["BACK"])
 
     def add_commands(self, commands: list[dict]) -> None:
@@ -569,7 +569,7 @@ class Falyx:
         hidden: bool = False,
         aliases: list[str] | None = None,
         help_text: str = "",
-        color: str = OneColors.WHITE,
+        style: str = OneColors.WHITE,
         confirm: bool = False,
         confirm_message: str = "Are you sure?",
         preview_before_confirm: bool = True,
@@ -602,7 +602,7 @@ class Falyx:
             hidden=hidden,
             aliases=aliases if aliases else [],
             help_text=help_text,
-            color=color,
+            style=style,
             confirm=confirm,
             confirm_message=confirm_message,
             preview_before_confirm=preview_before_confirm,
@@ -644,14 +644,14 @@ class Falyx:
         bottom_row = []
         if self.history_command:
             bottom_row.append(
-                f"[{self.history_command.key}] [{self.history_command.color}]{self.history_command.description}"
+                f"[{self.history_command.key}] [{self.history_command.style}]{self.history_command.description}"
             )
         if self.help_command:
             bottom_row.append(
-                f"[{self.help_command.key}] [{self.help_command.color}]{self.help_command.description}"
+                f"[{self.help_command.key}] [{self.help_command.style}]{self.help_command.description}"
             )
         bottom_row.append(
-            f"[{self.exit_command.key}] [{self.exit_command.color}]{self.exit_command.description}"
+            f"[{self.exit_command.key}] [{self.exit_command.style}]{self.exit_command.description}"
         )
         return bottom_row
 
@@ -662,7 +662,7 @@ class Falyx:
         for chunk in chunks(visible_commands, self.columns):
             row = []
             for key, command in chunk:
-                row.append(f"[{key}] [{command.color}]{command.description}")
+                row.append(f"[{key}] [{command.style}]{command.description}")
             table.add_row(*row)
         bottom_row = self.get_bottom_row()
         for row in chunks(bottom_row, self.columns):

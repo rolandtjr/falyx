@@ -23,7 +23,7 @@ from falyx.utils import CaseInsensitiveDict, chunks, logger
 class MenuOption:
     description: str
     action: BaseAction
-    color: str = OneColors.WHITE
+    style: str = OneColors.WHITE
 
     def __post_init__(self):
         if not isinstance(self.description, str):
@@ -33,7 +33,7 @@ class MenuOption:
 
     def render(self, key: str) -> str:
         """Render the menu option for display."""
-        return f"[{OneColors.WHITE}][{key}][/] [{self.color}]{self.description}[/]"
+        return f"[{OneColors.WHITE}][{key}][/] [{self.style}]{self.description}[/]"
 
 
 class MenuOptionMap(CaseInsensitiveDict):

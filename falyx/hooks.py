@@ -1,7 +1,7 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """hooks.py"""
 import time
-from typing import Callable
+from typing import Any, Callable
 
 from falyx.context import ExecutionContext
 from falyx.exceptions import CircuitBreakerOpen
@@ -10,11 +10,17 @@ from falyx.utils import logger
 
 
 class ResultReporter:
-    def __init__(self, formatter: Callable[[], str] | None = None):
+    def __init__(self, formatter: Callable[[Any], str] | None = None):
         """
         Optional result formatter. If not provided, uses repr(result).
         """
-        self.formatter = formatter or (lambda r: repr(r))
+        self.formatter = formatter or (self.default_formatter)
+
+    def default_formatter(self, result: Any):
+        """
+        Default formatter for results. Converts the result to a string.
+        """
+        return repr(result)
 
     @property
     def __name__(self):

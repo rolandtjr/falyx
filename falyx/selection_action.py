@@ -11,6 +11,7 @@ from falyx.context import ExecutionContext
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookType
 from falyx.selection import (
+    SelectionOption,
     prompt_for_index,
     prompt_for_selection,
     render_selection_dict_table,
@@ -24,7 +25,7 @@ class SelectionAction(BaseAction):
     def __init__(
         self,
         name: str,
-        selections: list[str] | dict[str, tuple[str, Any]],
+        selections: list[str] | dict[str, SelectionOption],
         *,
         title: str = "Select an option",
         columns: int = 2,
@@ -121,7 +122,7 @@ class SelectionAction(BaseAction):
                     )
                 else:
                     key = effective_default
-                result = key if self.return_key else self.selections[key][1]
+                result = key if self.return_key else self.selections[key].value
             else:
                 raise TypeError(
                     f"'selections' must be a list[str] or dict[str, tuple[str, Any]], got {type(self.selections).__name__}"
@@ -153,8 +154,8 @@ class SelectionAction(BaseAction):
             sub = tree.add(
                 f"[dim]Type:[/] Dict[str, (str, Any)] ({len(self.selections)} items)"
             )
-            for i, (key, (label, _)) in enumerate(list(self.selections.items())[:10]):
-                sub.add(f"[dim]{key}[/]: {label}")
+            for i, (key, option) in enumerate(list(self.selections.items())[:10]):
+                sub.add(f"[dim]{key}[/]: {option.description}")
             if len(self.selections) > 10:
                 sub.add(f"[dim]... ({len(self.selections) - 10} more)[/]")
         else:

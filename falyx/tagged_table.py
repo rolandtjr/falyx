@@ -22,7 +22,7 @@ def build_tagged_table(flx: Falyx) -> Table:
     for group_name, commands in grouped.items():
         table.add_row(f"[bold underline]{group_name} Commands[/]")
         for cmd in commands:
-            table.add_row(f"[{cmd.key}] [{cmd.color}]{cmd.description}")
+            table.add_row(f"[{cmd.key}] [{cmd.style}]{cmd.description}")
         table.add_row("")
 
     # Add bottom row

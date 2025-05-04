@@ -93,7 +93,7 @@ def loader(file_path: Path | str) -> list[dict[str, Any]]:
             "hidden": entry.get("hidden", False),
             "aliases": entry.get("aliases", []),
             "help_text": entry.get("help_text", ""),
-            "color": entry.get("color", "white"),
+            "style": entry.get("style", "white"),
             "confirm": entry.get("confirm", False),
             "confirm_message": entry.get("confirm_message", "Are you sure?"),
             "preview_before_confirm": entry.get("preview_before_confirm", True),
