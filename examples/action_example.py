@@ -9,10 +9,10 @@ def hello() -> None:
     print("Hello, world!")
 
 
-hello = Action(name="hello_action", action=hello)
+hello_action = Action(name="hello_action", action=hello)
 
 # Actions can be run by themselves or as part of a command or pipeline
-asyncio.run(hello())
+asyncio.run(hello_action())
 
 
 # Actions are designed to be asynchronous first
@@ -20,14 +20,14 @@ async def goodbye() -> None:
     print("Goodbye!")
 
 
-goodbye = Action(name="goodbye_action", action=goodbye)
+goodbye_action = Action(name="goodbye_action", action=goodbye)
 
 asyncio.run(goodbye())
 
 # Actions can be run in parallel
-group = ActionGroup(name="greeting_group", actions=[hello, goodbye])
+group = ActionGroup(name="greeting_group", actions=[hello_action, goodbye_action])
 asyncio.run(group())
 
 # Actions can be run in a chain
-chain = ChainedAction(name="greeting_chain", actions=[hello, goodbye])
+chain = ChainedAction(name="greeting_chain", actions=[hello_action, goodbye_action])
 asyncio.run(chain())

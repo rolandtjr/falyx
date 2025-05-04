@@ -1,5 +1,20 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""context.py"""
+"""
+Execution context management for Falyx CLI actions.
+
+This module defines `ExecutionContext` and `SharedContext`, which are responsible for
+capturing per-action and cross-action metadata during CLI workflow execution. These
+context objects provide structured introspection, result tracking, error recording,
+and time-based performance metrics.
+
+- `ExecutionContext`: Captures runtime information for a single action execution,
+  including arguments, results, exceptions, timing, and logging.
+- `SharedContext`: Maintains shared state and result propagation across
+  `ChainedAction` or `ActionGroup` executions.
+
+These contexts enable rich introspection, traceability, and workflow coordination,
+supporting hook lifecycles, retries, and structured output generation.
+"""
 from __future__ import annotations
 
 import time
@@ -11,6 +26,47 @@ from rich.console import Console
 
 
 class ExecutionContext(BaseModel):
+    """
+    Represents the runtime metadata and state for a single action execution.
+
+    The `ExecutionContext` tracks arguments, results, exceptions, timing, and additional
+    metadata for each invocation of a Falyx `BaseAction`. It provides integration with the
+    Falyx hook system and execution registry, enabling lifecycle management, diagnostics,
+    and structured logging.
+
+    Attributes:
+        name (str): The name of the action being executed.
+        args (tuple): Positional arguments passed to the action.
+        kwargs (dict): Keyword arguments passed to the action.
+        action (BaseAction | Callable): The action instance being executed.
+        result (Any | None): The result of the action, if successful.
+        exception (Exception | None): The exception raised, if execution failed.
+        start_time (float | None): High-resolution performance start time.
+        end_time (float | None): High-resolution performance end time.
+        start_wall (datetime | None): Wall-clock timestamp when execution began.
+        end_wall (datetime | None): Wall-clock timestamp when execution ended.
+        extra (dict): Metadata for custom introspection or special use by Actions.
+        console (Console): Rich console instance for logging or UI output.
+        shared_context (SharedContext | None): Optional shared context when running in a chain or group.
+
+    Properties:
+        duration (float | None): The execution duration in seconds.
+        success (bool): Whether the action completed without raising an exception.
+        status (str): Returns "OK" if successful, otherwise "ERROR".
+
+    Methods:
+        start_timer(): Starts the timing and timestamp tracking.
+        stop_timer(): Stops timing and stores end timestamps.
+        log_summary(logger=None): Logs a rich or plain summary of execution.
+        to_log_line(): Returns a single-line log entry for metrics or tracing.
+        as_dict(): Serializes core result and diagnostic metadata.
+        get_shared_context(): Returns the shared context or creates a default one.
+
+    This class is used internally by all Falyx actions and hook events. It ensures
+    consistent tracking and reporting across asynchronous workflows, including CLI-driven
+    and automated batch executions.
+    """
+
     name: str
     args: tuple = ()
     kwargs: dict = {}
@@ -120,6 +176,37 @@ class ExecutionContext(BaseModel):
 
 
 class SharedContext(BaseModel):
+    """
+    SharedContext maintains transient shared state during the execution
+    of a ChainedAction or ActionGroup.
+
+    This context object is passed to all actions within a chain or group,
+    enabling result propagation, shared data exchange, and coordinated
+    tracking of execution order and failures.
+
+    Attributes:
+        name (str): Identifier for the context (usually the parent action name).
+        results (list[Any]): Captures results from each action, in order of execution.
+        errors (list[tuple[int, Exception]]): Indexed list of errors from failed actions.
+        current_index (int): Index of the currently executing action (used in chains).
+        is_parallel (bool): Whether the context is used in parallel mode (ActionGroup).
+        shared_result (Any | None): Optional shared value available to all actions in parallel mode.
+        share (dict[str, Any]): Custom shared key-value store for user-defined communication
+            between actions (e.g., flags, intermediate data, settings).
+
+    Note:
+        SharedContext is only used within grouped or chained workflows. It should not be
+        used for standalone `Action` executions, where state should be scoped to the
+        individual ExecutionContext instead.
+
+    Example usage:
+        - In a ChainedAction: last_result is pulled from `results[-1]`.
+        - In an ActionGroup: all actions can read/write `shared_result` or use `share`.
+
+    This class supports fault-tolerant and modular composition of CLI workflows
+    by enabling flexible intra-action communication without global state.
+    """
+
     name: str
     results: list[Any] = Field(default_factory=list)
     errors: list[tuple[int, Exception]] = Field(default_factory=list)

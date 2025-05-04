@@ -69,7 +69,7 @@ def chunks(iterator, size):
         yield chunk
 
 
-async def async_confirm(message: AnyFormattedText = "Are you sure?") -> bool:
+async def confirm_async(message: AnyFormattedText = "Are you sure?") -> bool:
     session: PromptSession = PromptSession()
     while True:
         merged_message: AnyFormattedText = merge_formatted_text(
@@ -86,26 +86,36 @@ async def async_confirm(message: AnyFormattedText = "Are you sure?") -> bool:
 class CaseInsensitiveDict(dict):
     """A case-insensitive dictionary that treats all keys as uppercase."""
 
+    def _normalize_key(self, key):
+        return key.upper() if isinstance(key, str) else key
+
     def __setitem__(self, key, value):
-        super().__setitem__(key.upper(), value)
+        super().__setitem__(self._normalize_key(key), value)
 
     def __getitem__(self, key):
-        return super().__getitem__(key.upper())
+        return super().__getitem__(self._normalize_key(key))
 
     def __contains__(self, key):
-        return super().__contains__(key.upper())
+        return super().__contains__(self._normalize_key(key))
 
     def get(self, key, default=None):
-        return super().get(key.upper(), default)
+        return super().get(self._normalize_key(key), default)
 
     def pop(self, key, default=None):
-        return super().pop(key.upper(), default)
+        return super().pop(self._normalize_key(key), default)
 
     def update(self, other=None, **kwargs):
+        items = {}
         if other:
-            other = {k.upper(): v for k, v in other.items()}
-        kwargs = {k.upper(): v for k, v in kwargs.items()}
-        super().update(other, **kwargs)
+            items.update({self._normalize_key(k): v for k, v in other.items()})
+        items.update({self._normalize_key(k): v for k, v in kwargs.items()})
+        super().update(items)
+
+    def __iter__(self):
+        return super().__iter__()
+
+    def keys(self):
+        return super().keys()
 
 
 def running_in_container() -> bool:

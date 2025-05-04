@@ -43,7 +43,7 @@ class RetryHandler:
         delay: float = 1.0,
         backoff: float = 2.0,
         jitter: float = 0.0,
-    ):
+    ) -> None:
         self.policy.enabled = True
         self.policy.max_retries = max_retries
         self.policy.delay = delay
@@ -51,7 +51,7 @@ class RetryHandler:
         self.policy.jitter = jitter
         logger.info(f"🔄 Retry policy enabled: {self.policy}")
 
-    async def retry_on_error(self, context: ExecutionContext):
+    async def retry_on_error(self, context: ExecutionContext) -> None:
         from falyx.action import Action
 
         name = context.name
@@ -64,21 +64,21 @@ class RetryHandler:
 
         if not target:
             logger.warning(f"[{name}] ⚠️ No action target. Cannot retry.")
-            return
+            return None
 
         if not isinstance(target, Action):
             logger.warning(
                 f"[{name}] ❌ RetryHandler only supports only supports Action objects."
             )
-            return
+            return None
 
         if not getattr(target, "is_retryable", False):
             logger.warning(f"[{name}] ❌ Not retryable.")
-            return
+            return None
 
         if not self.policy.enabled:
             logger.warning(f"[{name}] ❌ Retry policy is disabled.")
-            return
+            return None
 
         while retries_done < self.policy.max_retries:
             retries_done += 1
@@ -97,7 +97,7 @@ class RetryHandler:
                 context.result = result
                 context.exception = None
                 logger.info(f"[{name}] ✅ Retry succeeded on attempt {retries_done}.")
-                return
+                return None
             except Exception as retry_error:
                 last_error = retry_error
                 current_delay *= self.policy.backoff
@@ -108,4 +108,3 @@ class RetryHandler:
 
         context.exception = last_error
         logger.error(f"[{name}] ❌ All {self.policy.max_retries} retries failed.")
-        return

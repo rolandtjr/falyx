@@ -37,7 +37,6 @@ def get_arg_parsers(
     description: str | None = "Falyx CLI - Run structured async command workflows.",
     epilog: str | None = None,
     parents: Sequence[ArgumentParser] = [],
-    formatter_class: HelpFormatter = HelpFormatter,
     prefix_chars: str = "-",
     fromfile_prefix_chars: str | None = None,
     argument_default: Any = None,
@@ -53,7 +52,6 @@ def get_arg_parsers(
         description=description,
         epilog=epilog,
         parents=parents,
-        formatter_class=formatter_class,
         prefix_chars=prefix_chars,
         fromfile_prefix_chars=fromfile_prefix_chars,
         argument_default=argument_default,
@@ -61,6 +59,11 @@ def get_arg_parsers(
         add_help=add_help,
         allow_abbrev=allow_abbrev,
         exit_on_error=exit_on_error,
+    )
+    parser.add_argument(
+        "--never-prompt",
+        action="store_true",
+        help="Run in non-interactive mode with all prompts bypassed.",
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable debug logging for Falyx."

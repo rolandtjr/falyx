@@ -12,6 +12,7 @@ async def flaky_step():
     await asyncio.sleep(0.2)
     if random.random() < 0.5:
         raise RuntimeError("Random failure!")
+    print("Flaky step succeeded!")
     return "ok"
 
 

@@ -53,11 +53,12 @@ from falyx.hook_manager import Hook, HookManager, HookType
 from falyx.options_manager import OptionsManager
 from falyx.parsers import get_arg_parsers
 from falyx.retry import RetryPolicy
+from falyx.signals import BackSignal, QuitSignal
 from falyx.themes.colors import OneColors, get_nord_theme
 from falyx.utils import (
     CaseInsensitiveDict,
-    async_confirm,
     chunks,
+    confirm_async,
     get_program_invocation,
     logger,
 )
@@ -93,7 +94,7 @@ class Falyx:
         include_history_command (bool): Whether to add a built-in history viewer command.
         include_help_command (bool): Whether to add a built-in help viewer command.
         confirm_on_error (bool): Whether to prompt the user after errors.
-        never_confirm (bool): Whether to skip confirmation prompts entirely.
+        never_prompt (bool): Whether to skip confirmation prompts entirely.
         always_confirm (bool): Whether to force confirmation prompts for all actions.
         cli_args (Namespace | None): Parsed CLI arguments, usually from argparse.
         options (OptionsManager | None): Declarative option mappings.
@@ -123,7 +124,7 @@ class Falyx:
         include_history_command: bool = True,
         include_help_command: bool = True,
         confirm_on_error: bool = True,
-        never_confirm: bool = False,
+        never_prompt: bool = False,
         always_confirm: bool = False,
         cli_args: Namespace | None = None,
         options: OptionsManager | None = None,
@@ -150,7 +151,7 @@ class Falyx:
         self.key_bindings: KeyBindings = key_bindings or KeyBindings()
         self.bottom_bar: BottomBar | str | Callable[[], None] = bottom_bar
         self.confirm_on_error: bool = confirm_on_error
-        self._never_confirm: bool = never_confirm
+        self._never_prompt: bool = never_prompt
         self._always_confirm: bool = always_confirm
         self.cli_args: Namespace | None = cli_args
         self.render_menu: Callable[["Falyx"], None] | None = render_menu
@@ -166,7 +167,7 @@ class Falyx:
         """Checks if the options are set correctly."""
         self.options: OptionsManager = options or OptionsManager()
         if not cli_args and not options:
-            return
+            return None
 
         if options and not cli_args:
             raise FalyxError("Options are set, but CLI arguments are not.")
@@ -521,8 +522,9 @@ class Falyx:
 
     def update_exit_command(
         self,
-        key: str = "0",
+        key: str = "Q",
         description: str = "Exit",
+        aliases: list[str] | None = None,
         action: Callable[[], Any] = lambda: None,
         color: str = OneColors.DARK_RED,
         confirm: bool = False,
@@ -535,6 +537,7 @@ class Falyx:
         self.exit_command = Command(
             key=key,
             description=description,
+            aliases=aliases if aliases else self.exit_command.aliases,
             action=action,
             color=color,
             confirm=confirm,
@@ -549,6 +552,7 @@ class Falyx:
             raise NotAFalyxError("submenu must be an instance of Falyx.")
         self._validate_command_key(key)
         self.add_command(key, description, submenu.menu, color=color)
+        submenu.update_exit_command(key="B", description="Back", aliases=["BACK"])
 
     def add_commands(self, commands: list[dict]) -> None:
         """Adds multiple commands to the menu."""
@@ -613,6 +617,7 @@ class Falyx:
             retry_all=retry_all,
             retry_policy=retry_policy or RetryPolicy(),
             requires_input=requires_input,
+            options_manager=self.options,
         )
 
         if hooks:
@@ -703,7 +708,7 @@ class Falyx:
         return None
 
     async def _should_run_action(self, selected_command: Command) -> bool:
-        if self._never_confirm:
+        if self._never_prompt:
             return True
 
         if self.cli_args and getattr(self.cli_args, "skip_confirm", False):
@@ -717,7 +722,7 @@ class Falyx:
         ):
             if selected_command.preview_before_confirm:
                 await selected_command.preview()
-            confirm_answer = await async_confirm(selected_command.confirmation_prompt)
+            confirm_answer = await confirm_async(selected_command.confirmation_prompt)
 
             if confirm_answer:
                 logger.info(f"[{selected_command.description}]🔐 confirmed.")
@@ -747,18 +752,13 @@ class Falyx:
 
     async def _handle_action_error(
         self, selected_command: Command, error: Exception
-    ) -> bool:
+    ) -> None:
         """Handles errors that occur during the action of the selected command."""
         logger.exception(f"Error executing '{selected_command.description}': {error}")
         self.console.print(
             f"[{OneColors.DARK_RED}]An error occurred while executing "
             f"{selected_command.description}:[/] {error}"
         )
-        if self.confirm_on_error and not self._never_confirm:
-            return await async_confirm("An error occurred. Do you wish to continue?")
-        if self._never_confirm:
-            return True
-        return False
 
     async def process_command(self) -> bool:
         """Processes the action of the selected command."""
@@ -801,13 +801,7 @@ class Falyx:
         except Exception as error:
             context.exception = error
             await self.hooks.trigger(HookType.ON_ERROR, context)
-            if not context.exception:
-                logger.info(
-                    f"✅ Recovery hook handled error for '{selected_command.description}'"
-                )
-                context.result = result
-            else:
-                return await self._handle_action_error(selected_command, error)
+            await self._handle_action_error(selected_command, error)
         finally:
             context.stop_timer()
             await self.hooks.trigger(HookType.AFTER, context)
@@ -822,7 +816,7 @@ class Falyx:
 
         if not selected_command:
             logger.info("[Headless] Back command selected. Exiting menu.")
-            return
+            return None
 
         logger.info(f"[Headless] 🚀 Running: '{selected_command.description}'")
 
@@ -851,11 +845,6 @@ class Falyx:
         except Exception as error:
             context.exception = error
             await self.hooks.trigger(HookType.ON_ERROR, context)
-            if not context.exception:
-                logger.info(
-                    f"[Headless] ✅ Recovery hook handled error for '{selected_command.description}'"
-                )
-                return True
             raise FalyxError(
                 f"[Headless] ❌ '{selected_command.description}' failed."
             ) from error
@@ -921,6 +910,11 @@ class Falyx:
             except (EOFError, KeyboardInterrupt):
                 logger.info("EOF or KeyboardInterrupt. Exiting menu.")
                 break
+            except QuitSignal:
+                logger.info("QuitSignal received. Exiting menu.")
+                break
+            except BackSignal:
+                logger.info("BackSignal received.")
             finally:
                 logger.info(f"Exiting menu: {self.get_title()}")
                 if self.exit_message:
@@ -937,6 +931,9 @@ class Falyx:
         if self.cli_args.debug_hooks:
             logger.debug("✅ Enabling global debug hooks for all commands")
             self.register_all_with_debug_hooks()
+
+        if self.cli_args.never_prompt:
+            self._never_prompt = True
 
         if self.cli_args.command == "list":
             await self._show_help()

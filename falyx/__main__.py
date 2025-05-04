@@ -29,8 +29,7 @@ def bootstrap() -> Path | None:
     config_path = find_falyx_config()
     if config_path and str(config_path.parent) not in sys.path:
         sys.path.insert(0, str(config_path.parent))
-        return config_path
-    return None
+    return config_path
 
 
 def main() -> None:

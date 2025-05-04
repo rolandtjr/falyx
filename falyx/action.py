@@ -43,6 +43,7 @@ from falyx.debug import register_debug_hooks
 from falyx.exceptions import EmptyChainError
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import Hook, HookManager, HookType
+from falyx.options_manager import OptionsManager
 from falyx.retry import RetryHandler, RetryPolicy
 from falyx.themes.colors import OneColors
 from falyx.utils import ensure_async, logger
@@ -66,6 +67,7 @@ class BaseAction(ABC):
         hooks: HookManager | None = None,
         inject_last_result: bool = False,
         inject_last_result_as: str = "last_result",
+        never_prompt: bool = False,
         logging_hooks: bool = False,
     ) -> None:
         self.name = name
@@ -74,9 +76,11 @@ class BaseAction(ABC):
         self.shared_context: SharedContext | None = None
         self.inject_last_result: bool = inject_last_result
         self.inject_last_result_as: str = inject_last_result_as
+        self._never_prompt: bool = never_prompt
         self._requires_injection: bool = False
         self._skip_in_chain: bool = False
         self.console = Console(color_system="auto")
+        self.options_manager: OptionsManager | None = None
 
         if logging_hooks:
             register_debug_hooks(self.hooks)
@@ -92,23 +96,39 @@ class BaseAction(ABC):
     async def preview(self, parent: Tree | None = None):
         raise NotImplementedError("preview must be implemented by subclasses")
 
-    def set_shared_context(self, shared_context: SharedContext):
+    def set_options_manager(self, options_manager: OptionsManager) -> None:
+        self.options_manager = options_manager
+
+    def set_shared_context(self, shared_context: SharedContext) -> None:
         self.shared_context = shared_context
 
-    def prepare_for_chain(self, shared_context: SharedContext) -> BaseAction:
+    def get_option(self, option_name: str, default: Any = None) -> Any:
+        """Resolve an option from the OptionsManager if present, otherwise use the fallback."""
+        if self.options_manager:
+            return self.options_manager.get(option_name, default)
+        return default
+
+    @property
+    def last_result(self) -> Any:
+        """Return the last result from the shared context."""
+        if self.shared_context:
+            return self.shared_context.last_result()
+        return None
+
+    @property
+    def never_prompt(self) -> bool:
+        return self.get_option("never_prompt", self._never_prompt)
+
+    def prepare(
+        self, shared_context: SharedContext, options_manager: OptionsManager | None = None
+    ) -> BaseAction:
         """
         Prepare the action specifically for sequential (ChainedAction) execution.
         Can be overridden for chain-specific logic.
         """
         self.set_shared_context(shared_context)
-        return self
-
-    def prepare_for_group(self, shared_context: SharedContext) -> BaseAction:
-        """
-        Prepare the action specifically for parallel (ActionGroup) execution.
-        Can be overridden for group-specific logic.
-        """
-        self.set_shared_context(shared_context)
+        if options_manager:
+            self.set_options_manager(options_manager)
         return self
 
     def _maybe_inject_last_result(self, kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -161,8 +181,8 @@ class Action(BaseAction):
     def __init__(
         self,
         name: str,
-        action,
-        rollback=None,
+        action: Callable[..., Any],
+        rollback: Callable[..., Any] | None = None,
         args: tuple[Any, ...] = (),
         kwargs: dict[str, Any] | None = None,
         hooks: HookManager | None = None,
@@ -189,6 +209,17 @@ class Action(BaseAction):
     def action(self, value: Callable[..., Any]):
         self._action = ensure_async(value)
 
+    @property
+    def rollback(self) -> Callable[..., Any] | None:
+        return self._rollback
+
+    @rollback.setter
+    def rollback(self, value: Callable[..., Any] | None):
+        if value is None:
+            self._rollback = None
+        else:
+            self._rollback = ensure_async(value)
+
     def enable_retry(self):
         """Enable retry with the existing retry policy."""
         self.retry_policy.enable_policy()
@@ -212,6 +243,7 @@ class Action(BaseAction):
             kwargs=combined_kwargs,
             action=self,
         )
+
         context.start_timer()
         try:
             await self.hooks.trigger(HookType.BEFORE, context)
@@ -425,7 +457,7 @@ class ChainedAction(BaseAction, ActionListMixin):
                     )
                     continue
                 shared_context.current_index = index
-                prepared = action.prepare_for_chain(shared_context)
+                prepared = action.prepare(shared_context, self.options_manager)
                 last_result = shared_context.last_result()
                 try:
                     if self.requires_io_injection() and last_result is not None:
@@ -446,9 +478,7 @@ class ChainedAction(BaseAction, ActionListMixin):
                         )
                         shared_context.add_result(None)
                         context.extra["results"].append(None)
-                        fallback = self.actions[index + 1].prepare_for_chain(
-                            shared_context
-                        )
+                        fallback = self.actions[index + 1].prepare(shared_context)
                         result = await fallback()
                         fallback._skip_in_chain = True
                     else:
@@ -584,7 +614,7 @@ class ActionGroup(BaseAction, ActionListMixin):
 
         async def run_one(action: BaseAction):
             try:
-                prepared = action.prepare_for_group(shared_context)
+                prepared = action.prepare(shared_context, self.options_manager)
                 result = await prepared(*args, **updated_kwargs)
                 shared_context.add_result((action.name, result))
                 context.extra["results"].append((action.name, result))

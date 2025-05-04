@@ -9,8 +9,8 @@ from falyx.utils import logger
 
 
 class OptionsManager:
-    def __init__(self, namespaces: list[tuple[str, Namespace]] = None) -> None:
-        self.options = defaultdict(lambda: Namespace())
+    def __init__(self, namespaces: list[tuple[str, Namespace]] | None = None) -> None:
+        self.options: defaultdict = defaultdict(lambda: Namespace())
         if namespaces:
             for namespace_name, namespace in namespaces:
                 self.from_namespace(namespace, namespace_name)

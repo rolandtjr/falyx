@@ -42,6 +42,48 @@ async def test_action_async_callable():
         str(action)
         == "Action(name='test_action', action=async_callable, args=(), kwargs={}, retry=False)"
     )
+    assert (
+        repr(action)
+        == "Action(name='test_action', action=async_callable, args=(), kwargs={}, retry=False)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_chained_action():
+    """Test if ChainedAction can be created and used."""
+    action1 = Action("one", lambda: 1)
+    action2 = Action("two", lambda: 2)
+    chain = ChainedAction(
+        name="Simple Chain",
+        actions=[action1, action2],
+        return_list=True,
+    )
+
+    result = await chain()
+    assert result == [1, 2]
+    assert (
+        str(chain)
+        == "ChainedAction(name='Simple Chain', actions=['one', 'two'], auto_inject=False, return_list=True)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_action_group():
+    """Test if ActionGroup can be created and used."""
+    action1 = Action("one", lambda: 1)
+    action2 = Action("two", lambda: 2)
+    group = ChainedAction(
+        name="Simple Group",
+        actions=[action1, action2],
+        return_list=True,
+    )
+
+    result = await group()
+    assert result == [1, 2]
+    assert (
+        str(group)
+        == "ChainedAction(name='Simple Group', actions=['one', 'two'], auto_inject=False, return_list=True)"
+    )
 
 
 @pytest.mark.asyncio
@@ -120,3 +162,62 @@ async def test_fallback_action():
     result = await chain()
     assert result == "Fallback value"
     assert str(action) == "FallbackAction(fallback='Fallback value')"
+
+
+@pytest.mark.asyncio
+async def test_remove_action_from_chain():
+    """Test if an action can be removed from a chain."""
+    action1 = Action(name="one", action=lambda: 1)
+    action2 = Action(name="two", action=lambda: 2)
+    chain = ChainedAction(
+        name="Simple Chain",
+        actions=[action1, action2],
+    )
+
+    assert len(chain.actions) == 2
+
+    # Remove the first action
+    chain.remove_action(action1.name)
+
+    assert len(chain.actions) == 1
+    assert chain.actions[0] == action2
+
+
+@pytest.mark.asyncio
+async def test_has_action_in_chain():
+    """Test if an action can be checked for presence in a chain."""
+    action1 = Action(name="one", action=lambda: 1)
+    action2 = Action(name="two", action=lambda: 2)
+    chain = ChainedAction(
+        name="Simple Chain",
+        actions=[action1, action2],
+    )
+
+    assert chain.has_action(action1.name) is True
+    assert chain.has_action(action2.name) is True
+
+    # Remove the first action
+    chain.remove_action(action1.name)
+
+    assert chain.has_action(action1.name) is False
+    assert chain.has_action(action2.name) is True
+
+
+@pytest.mark.asyncio
+async def test_get_action_from_chain():
+    """Test if an action can be retrieved from a chain."""
+    action1 = Action(name="one", action=lambda: 1)
+    action2 = Action(name="two", action=lambda: 2)
+    chain = ChainedAction(
+        name="Simple Chain",
+        actions=[action1, action2],
+    )
+
+    assert chain.get_action(action1.name) == action1
+    assert chain.get_action(action2.name) == action2
+
+    # Remove the first action
+    chain.remove_action(action1.name)
+
+    assert chain.get_action(action1.name) is None
+    assert chain.get_action(action2.name) == action2

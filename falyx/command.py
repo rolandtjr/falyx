@@ -32,6 +32,7 @@ from falyx.debug import register_debug_hooks
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
 from falyx.io_action import BaseIOAction
+from falyx.options_manager import OptionsManager
 from falyx.retry import RetryPolicy
 from falyx.retry_utils import enable_retries_recursively
 from falyx.themes.colors import OneColors
@@ -116,6 +117,7 @@ class Command(BaseModel):
     tags: list[str] = Field(default_factory=list)
     logging_hooks: bool = False
     requires_input: bool | None = None
+    options_manager: OptionsManager = Field(default_factory=OptionsManager)
 
     _context: ExecutionContext | None = PrivateAttr(default=None)
 
@@ -178,8 +180,14 @@ class Command(BaseModel):
             f"action='{self.action}')"
         )
 
+    def _inject_options_manager(self):
+        """Inject the options manager into the action if applicable."""
+        if isinstance(self.action, BaseAction):
+            self.action.set_options_manager(self.options_manager)
+
     async def __call__(self, *args, **kwargs):
         """Run the action with full hook lifecycle, timing, and error handling."""
+        self._inject_options_manager()
         combined_args = args + self.args
         combined_kwargs = {**self.kwargs, **kwargs}
         context = ExecutionContext(
@@ -200,9 +208,6 @@ class Command(BaseModel):
         except Exception as error:
             context.exception = error
             await self.hooks.trigger(HookType.ON_ERROR, context)
-            if context.result is not None:
-                logger.info(f"✅ Recovered: {self.key}")
-                return context.result
             raise error
         finally:
             context.stop_timer()
