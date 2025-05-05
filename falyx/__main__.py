@@ -9,6 +9,7 @@ import asyncio
 import sys
 from argparse import Namespace
 from pathlib import Path
+from typing import Any
 
 from falyx.config import loader
 from falyx.falyx import Falyx
@@ -20,8 +21,11 @@ def find_falyx_config() -> Path | None:
         Path.cwd() / "falyx.yaml",
         Path.cwd() / "falyx.toml",
         Path.cwd() / ".falyx.yaml",
+        Path.cwd() / ".falyx.toml",
         Path.home() / ".config" / "falyx" / "falyx.yaml",
+        Path.home() / ".config" / "falyx" / "falyx.toml",
         Path.home() / ".falyx.yaml",
+        Path.home() / ".falyx.toml",
     ]
     return next((p for p in candidates if p.exists()), None)
 
@@ -33,7 +37,7 @@ def bootstrap() -> Path | None:
     return config_path
 
 
-def parse_args() -> Namespace:
+def get_falyx_parsers() -> FalyxParsers:
     falyx_parsers: FalyxParsers = get_arg_parsers()
     init_parser = falyx_parsers.subparsers.add_parser(
         "init", help="Create a new Falyx CLI project"
@@ -43,12 +47,10 @@ def parse_args() -> Namespace:
         "init-global", help="Set up ~/.config/falyx with example tasks"
     )
 
-    return falyx_parsers.parse_args()
+    return falyx_parsers
 
 
-def main() -> None:
-    args = parse_args()
-
+def main(args: Namespace) -> Any:
     if args.command == "init":
         from falyx.init import init_project
 
@@ -72,8 +74,10 @@ def main() -> None:
         columns=4,
     )
     flx.add_commands(loader(bootstrap_path))
-    asyncio.run(flx.run())
+    return asyncio.run(flx.run())
 
 
 if __name__ == "__main__":
-    main()
+    parsers = get_falyx_parsers()
+    args = parsers.parse_args()
+    main(args)

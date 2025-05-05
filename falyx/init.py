@@ -6,9 +6,11 @@ from rich.console import Console
 TEMPLATE_TASKS = """\
 async def build():
     print("🔨 Building project...")
+    return "Build complete!"
 
 async def test():
     print("🧪 Running tests...")
+    return "Tests complete!"
 """
 
 TEMPLATE_CONFIG = """\
