@@ -16,8 +16,6 @@ from .hook_manager import HookType
 
 logger = logging.getLogger("falyx")
 
-__version__ = "0.1.0"
-
 __all__ = [
     "Action",
     "ChainedAction",

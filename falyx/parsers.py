@@ -2,7 +2,7 @@
 """parsers.py
 This module contains the argument parsers used for the Falyx CLI.
 """
-from argparse import ArgumentParser, HelpFormatter, Namespace
+from argparse import ArgumentParser, Namespace, _SubParsersAction
 from dataclasses import asdict, dataclass
 from typing import Any, Sequence
 
@@ -12,6 +12,7 @@ class FalyxParsers:
     """Defines the argument parsers for the Falyx CLI."""
 
     root: ArgumentParser
+    subparsers: _SubParsersAction
     run: ArgumentParser
     run_all: ArgumentParser
     preview: ArgumentParser
@@ -151,6 +152,7 @@ def get_arg_parsers(
 
     return FalyxParsers(
         root=parser,
+        subparsers=subparsers,
         run=run_parser,
         run_all=run_all_parser,
         preview=preview_parser,
