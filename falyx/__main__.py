@@ -50,7 +50,7 @@ def get_falyx_parsers() -> FalyxParsers:
     return falyx_parsers
 
 
-def main(args: Namespace) -> Any:
+def run(args: Namespace) -> Any:
     if args.command == "init":
         from falyx.init import init_project
 
@@ -77,7 +77,11 @@ def main(args: Namespace) -> Any:
     return asyncio.run(flx.run())
 
 
-if __name__ == "__main__":
+def main():
     parsers = get_falyx_parsers()
     args = parsers.parse_args()
-    main(args)
+    run(args)
+
+
+if __name__ == "__main__":
+    main()

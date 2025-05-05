@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from falyx.__main__ import bootstrap, find_falyx_config, get_falyx_parsers, main
+from falyx.__main__ import bootstrap, find_falyx_config, get_falyx_parsers, run
 
 
 def test_find_falyx_config():
@@ -64,11 +64,11 @@ def test_parse_args():
     assert args.command == "init-global"
 
 
-def test_main():
-    """Test if the main function works correctly."""
+def test_run():
+    """Test if the run function works correctly."""
     falyx_parsers = get_falyx_parsers()
     args = falyx_parsers.parse_args(["init", "test_project"])
-    main(args)
+    run(args)
     assert args.command == "init"
     assert args.name == "test_project"
     # Check if the project directory was created
@@ -79,7 +79,7 @@ def test_main():
     Path("test_project").rmdir()
     # Test init-global
     args = falyx_parsers.parse_args(["init-global"])
-    main(args)
+    run(args)
     # Check if the global config directory was created
     assert (Path.home() / ".config" / "falyx" / "falyx.yaml").exists()
     # Clean up
@@ -92,7 +92,7 @@ def test_no_bootstrap():
     """Test if the main function works correctly when no config file is found."""
     falyx_parsers = get_falyx_parsers()
     args = falyx_parsers.parse_args(["list"])
-    assert main(args) is None
+    assert run(args) is None
     # Check if the task was run
     assert args.command == "list"
 
@@ -101,12 +101,12 @@ def test_run_test_project():
     """Test if the main function works correctly with a test project."""
     falyx_parsers = get_falyx_parsers()
     args = falyx_parsers.parse_args(["init", "test_project"])
-    main(args)
+    run(args)
 
     args = falyx_parsers.parse_args(["run", "B"])
     os.chdir("test_project")
     with pytest.raises(SystemExit):
-        assert main(args) == "Build complete!"
+        assert run(args) == "Build complete!"
     os.chdir("..")
     shutil.rmtree("test_project")
     assert not Path("test_project").exists()
