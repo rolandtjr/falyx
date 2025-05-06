@@ -16,7 +16,10 @@ def int_range_validator(minimum: int, maximum: int) -> Validator:
         except ValueError:
             return False
 
-    return Validator.from_callable(validate, error_message="Invalid input.")
+    return Validator.from_callable(
+        validate,
+        error_message=f"Invalid input. Enter a number between {minimum} and {maximum}.",
+    )
 
 
 def key_validator(keys: Sequence[str] | KeysView[str]) -> Validator:
@@ -27,4 +30,17 @@ def key_validator(keys: Sequence[str] | KeysView[str]) -> Validator:
             return False
         return True
 
-    return Validator.from_callable(validate, error_message="Invalid input.")
+    return Validator.from_callable(
+        validate, error_message=f"Invalid input. Available keys: {', '.join(keys)}."
+    )
+
+
+def yes_no_validator() -> Validator:
+    """Validator for yes/no inputs."""
+
+    def validate(input: str) -> bool:
+        if input.upper() not in ["Y", "N"]:
+            return False
+        return True
+
+    return Validator.from_callable(validate, error_message="Enter 'Y' or 'n'.")

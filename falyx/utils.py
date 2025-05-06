@@ -19,6 +19,7 @@ from prompt_toolkit.formatted_text import (
 from rich.logging import RichHandler
 
 from falyx.themes.colors import OneColors
+from falyx.validators import yes_no_validator
 
 logger = logging.getLogger("falyx")
 
@@ -69,18 +70,20 @@ def chunks(iterator, size):
         yield chunk
 
 
-async def confirm_async(message: AnyFormattedText = "Are you sure?") -> bool:
-    session: PromptSession = PromptSession()
-    while True:
-        merged_message: AnyFormattedText = merge_formatted_text(
-            [message, FormattedText([(OneColors.LIGHT_YELLOW_b, " [Y/n] ")])]
-        )
-        answer: str = (await session.prompt_async(merged_message)).strip().lower()
-        if answer in ("y", "yes"):
-            return True
-        if answer in ("n", "no", ""):
-            return False
-        print("Please enter y or n.")
+async def confirm_async(
+    message: AnyFormattedText = "Are you sure?",
+    prefix: AnyFormattedText = FormattedText([(OneColors.CYAN, "❓ ")]),
+    suffix: AnyFormattedText = FormattedText([(OneColors.LIGHT_YELLOW_b, " [Y/n] > ")]),
+    session: PromptSession | None = None,
+) -> bool:
+    """Prompt the user with a yes/no async confirmation and return True for 'Y'."""
+    session = session or PromptSession()
+    merged_message: AnyFormattedText = merge_formatted_text([prefix, message, suffix])
+    answer = await session.prompt_async(
+        merged_message,
+        validator=yes_no_validator(),
+    )
+    return True if answer.upper() == "Y" else False
 
 
 class CaseInsensitiveDict(dict):

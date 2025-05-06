@@ -27,10 +27,20 @@ TEMPLATE_CONFIG = """\
   spinner: true
 """
 
+GLOBAL_TEMPLATE_TASKS = """\
+async def cleanup():
+    print("🧹 Cleaning temp files...")
+"""
+
+GLOBAL_CONFIG = """\
+async def cleanup():
+    print("🧹 Cleaning temp files...")
+"""
+
 console = Console(color_system="auto")
 
 
-def init_project(name: str = "."):
+def init_project(name: str = ".") -> None:
     target = Path(name).resolve()
     target.mkdir(parents=True, exist_ok=True)
 
@@ -39,7 +49,7 @@ def init_project(name: str = "."):
 
     if tasks_path.exists() or config_path.exists():
         console.print(f"⚠️  Project already initialized at {target}")
-        return
+        return None
 
     tasks_path.write_text(TEMPLATE_TASKS)
     config_path.write_text(TEMPLATE_CONFIG)
@@ -47,7 +57,7 @@ def init_project(name: str = "."):
     print(f"✅ Initialized Falyx project in {target}")
 
 
-def init_global():
+def init_global() -> None:
     config_dir = Path.home() / ".config" / "falyx"
     config_dir.mkdir(parents=True, exist_ok=True)
 
@@ -56,22 +66,9 @@ def init_global():
 
     if tasks_path.exists() or config_path.exists():
         console.print("⚠️  Global Falyx config already exists at ~/.config/falyx")
-        return
+        return None
 
-    tasks_path.write_text(
-        """\
-async def cleanup():
-    print("🧹 Cleaning temp files...")
-"""
-    )
-
-    config_path.write_text(
-        """\
-- key: C
-  description: Cleanup temp files
-  action: tasks.cleanup
-  aliases: [clean, cleanup]
-"""
-    )
+    tasks_path.write_text(GLOBAL_TEMPLATE_TASKS)
+    config_path.write_text(GLOBAL_CONFIG)
 
     console.print("✅ Initialized global Falyx config at ~/.config/falyx")

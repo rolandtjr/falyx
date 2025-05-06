@@ -35,8 +35,8 @@ def test_bootstrap_no_config():
     sys_path_before = list(sys.path)
     bootstrap_path = bootstrap()
     assert bootstrap_path is None
-    assert str(Path.cwd()) in sys.path
     sys.path = sys_path_before
+    assert str(Path.cwd()) not in sys.path
 
 
 def test_bootstrap_with_global_config():

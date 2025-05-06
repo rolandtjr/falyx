@@ -18,6 +18,6 @@ repos:
     hooks:
     - id: sync-version
       name: Sync version from pyproject.toml
-      entry: poetry run sync-version
+      entry: python scripts/sync_version.py
       language: system
       files: ^pyproject\.toml$

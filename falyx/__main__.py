@@ -46,7 +46,6 @@ def get_falyx_parsers() -> FalyxParsers:
     falyx_parsers.subparsers.add_parser(
         "init-global", help="Set up ~/.config/falyx with example tasks"
     )
-
     return falyx_parsers
 
 
