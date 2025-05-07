@@ -214,4 +214,9 @@ class MenuAction(BaseAction):
             self.console.print(tree)
 
     def __str__(self) -> str:
-        return f"MenuAction(name={self.name}, options={list(self.menu_options.keys())})"
+        return (
+            f"MenuAction(name={self.name!r}, options={list(self.menu_options.keys())!r}, "
+            f"default_selection={self.default_selection!r}, "
+            f"include_reserved={self.include_reserved}, "
+            f"prompt={'off' if self.never_prompt else 'on'})"
+        )

@@ -12,7 +12,7 @@ for running commands, actions, and workflows. It supports:
 - Interactive input validation and auto-completion
 - History tracking and help menu generation
 - Confirmation prompts and spinners
-- Headless mode for automated script execution
+- Run key for automated script execution
 - CLI argument parsing with argparse integration
 - Retry policy configuration for actions
 
@@ -79,7 +79,7 @@ class Falyx:
     - Full lifecycle hooks (before, success, error, after, teardown) at both menu and command levels
     - Built-in retry support, spinner visuals, and confirmation prompts
     - Submenu nesting and action chaining
-    - History tracking, help generation, and headless execution modes
+    - History tracking, help generation, and run key execution modes
     - Seamless CLI argument parsing and integration via argparse
     - Extensible with user-defined hooks, bottom bars, and custom layouts
 
@@ -103,7 +103,7 @@ class Falyx:
     Methods:
         run(): Main entry point for CLI argument-based workflows. Most users will use this.
         menu(): Run the interactive menu loop.
-        headless(command_key, return_context): Run a command directly without showing the menu.
+        run_key(command_key, return_context): Run a command directly without showing the menu.
         add_command(): Add a single command to the menu.
         add_commands(): Add multiple commands at once.
         register_all_hooks(): Register hooks across all commands and submenus.
@@ -705,6 +705,7 @@ class Falyx:
                 self.console.print(
                     f"[{OneColors.LIGHT_YELLOW}]⚠️ Unknown command '{choice}'[/]"
                 )
+        logger.warning(f"⚠️ Command '{choice}' not found.")
         return None
 
     async def _should_run_action(self, selected_command: Command) -> bool:
@@ -808,21 +809,26 @@ class Falyx:
             await self.hooks.trigger(HookType.ON_TEARDOWN, context)
         return True
 
-    async def headless(self, command_key: str, return_context: bool = False) -> Any:
-        """Runs the action of the selected command without displaying the menu."""
+    async def run_key(self, command_key: str, return_context: bool = False) -> Any:
+        """Run a command by key without displaying the menu (non-interactive mode)."""
         self.debug_hooks()
         selected_command = self.get_command(command_key)
         self.last_run_command = selected_command
 
         if not selected_command:
-            logger.info("[Headless] Back command selected. Exiting menu.")
             return None
 
-        logger.info(f"[Headless] 🚀 Running: '{selected_command.description}'")
+        logger.info(
+            "[run_key] 🚀 Executing: %s — %s",
+            selected_command.key,
+            selected_command.description,
+        )
 
         if not await self._should_run_action(selected_command):
+            logger.info("[run_key] ❌ Cancelled: %s", selected_command.description)
             raise FalyxError(
-                f"[Headless] '{selected_command.description}' cancelled by confirmation."
+                f"[run_key] '{selected_command.description}' "
+                "cancelled by confirmation."
             )
 
         context = self._create_context(selected_command)
@@ -837,16 +843,25 @@ class Falyx:
             context.result = result
 
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
-            logger.info(f"[Headless] ✅ '{selected_command.description}' complete.")
+            logger.info("[run_key] ✅ '%s' complete.", selected_command.description)
         except (KeyboardInterrupt, EOFError):
+            logger.warning(
+                "[run_key] ⚠️ Interrupted by user: ", selected_command.description
+            )
             raise FalyxError(
-                f"[Headless] ⚠️ '{selected_command.description}' interrupted by user."
+                f"[run_key] ⚠️ '{selected_command.description}' interrupted by user."
             )
         except Exception as error:
             context.exception = error
             await self.hooks.trigger(HookType.ON_ERROR, context)
+            logger.error(
+                "[run_key] ❌ Failed: %s — %s: %s",
+                selected_command.description,
+                type(error).__name__,
+                error,
+            )
             raise FalyxError(
-                f"[Headless] ❌ '{selected_command.description}' failed."
+                f"[run_key] ❌ '{selected_command.description}' failed."
             ) from error
         finally:
             context.stop_timer()
@@ -965,7 +980,7 @@ class Falyx:
                 sys.exit(1)
             self._set_retry_policy(command)
             try:
-                await self.headless(self.cli_args.name)
+                await self.run_key(self.cli_args.name)
             except FalyxError as error:
                 self.console.print(f"[{OneColors.DARK_RED}]❌ Error: {error}[/]")
                 sys.exit(1)
@@ -988,7 +1003,7 @@ class Falyx:
             )
             for cmd in matching:
                 self._set_retry_policy(cmd)
-                await self.headless(cmd.key)
+                await self.run_key(cmd.key)
             sys.exit(0)
 
         await self.menu()

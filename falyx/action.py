@@ -312,6 +312,14 @@ class LiteralInputAction(Action):
         """Return the literal value."""
         return self._value
 
+    async def preview(self, parent: Tree | None = None):
+        label = [f"[{OneColors.LIGHT_YELLOW}]📥 LiteralInput[/] '{self.name}'"]
+        label.append(f" [dim](value = {repr(self.value)})[/dim]")
+        if parent:
+            parent.add("".join(label))
+        else:
+            self.console.print(Tree("".join(label)))
+
     def __str__(self) -> str:
         return f"LiteralInputAction(value={self.value!r})"
 
@@ -343,6 +351,14 @@ class FallbackAction(Action):
     def fallback(self) -> Any:
         """Return the fallback value."""
         return self._fallback
+
+    async def preview(self, parent: Tree | None = None):
+        label = [f"[{OneColors.LIGHT_RED}]🛟 Fallback[/] '{self.name}'"]
+        label.append(f" [dim](uses fallback = {repr(self.fallback)})[/dim]")
+        if parent:
+            parent.add("".join(label))
+        else:
+            self.console.print(Tree("".join(label)))
 
     def __str__(self) -> str:
         return f"FallbackAction(fallback={self.fallback!r})"
@@ -419,13 +435,16 @@ class ChainedAction(BaseAction, ActionListMixin):
         if actions:
             self.set_actions(actions)
 
-    def _wrap_literal_if_needed(self, action: BaseAction | Any) -> BaseAction:
-        return (
-            LiteralInputAction(action) if not isinstance(action, BaseAction) else action
-        )
+    def _wrap_if_needed(self, action: BaseAction | Any) -> BaseAction:
+        if isinstance(action, BaseAction):
+            return action
+        elif callable(action):
+            return Action(name=action.__name__, action=action)
+        else:
+            return LiteralInputAction(action)
 
     def add_action(self, action: BaseAction | Any) -> None:
-        action = self._wrap_literal_if_needed(action)
+        action = self._wrap_if_needed(action)
         if self.actions and self.auto_inject and not action.inject_last_result:
             action.inject_last_result = True
         super().add_action(action)
@@ -529,6 +548,12 @@ class ChainedAction(BaseAction, ActionListMixin):
                 except Exception as error:
                     logger.error("[%s] ⚠️ Rollback failed: %s", action.name, error)
 
+    def register_hooks_recursively(self, hook_type: HookType, hook: Hook):
+        """Register a hook for all actions and sub-actions."""
+        self.hooks.register(hook_type, hook)
+        for action in self.actions:
+            action.register_hooks_recursively(hook_type, hook)
+
     async def preview(self, parent: Tree | None = None):
         label = [f"[{OneColors.CYAN_b}]⛓ ChainedAction[/] '{self.name}'"]
         if self.inject_last_result:
@@ -538,12 +563,6 @@ class ChainedAction(BaseAction, ActionListMixin):
             await action.preview(parent=tree)
         if not parent:
             self.console.print(tree)
-
-    def register_hooks_recursively(self, hook_type: HookType, hook: Hook):
-        """Register a hook for all actions and sub-actions."""
-        self.hooks.register(hook_type, hook)
-        for action in self.actions:
-            action.register_hooks_recursively(hook_type, hook)
 
     def __str__(self):
         return (
@@ -648,6 +667,12 @@ class ActionGroup(BaseAction, ActionListMixin):
             await self.hooks.trigger(HookType.ON_TEARDOWN, context)
             er.record(context)
 
+    def register_hooks_recursively(self, hook_type: HookType, hook: Hook):
+        """Register a hook for all actions and sub-actions."""
+        super().register_hooks_recursively(hook_type, hook)
+        for action in self.actions:
+            action.register_hooks_recursively(hook_type, hook)
+
     async def preview(self, parent: Tree | None = None):
         label = [f"[{OneColors.MAGENTA_b}]⏩ ActionGroup (parallel)[/] '{self.name}'"]
         if self.inject_last_result:
@@ -658,12 +683,6 @@ class ActionGroup(BaseAction, ActionListMixin):
         await asyncio.gather(*(action.preview(parent=tree) for action in actions))
         if not parent:
             self.console.print(tree)
-
-    def register_hooks_recursively(self, hook_type: HookType, hook: Hook):
-        """Register a hook for all actions and sub-actions."""
-        super().register_hooks_recursively(hook_type, hook)
-        for action in self.actions:
-            action.register_hooks_recursively(hook_type, hook)
 
     def __str__(self):
         return (
@@ -749,6 +768,15 @@ class ProcessAction(BaseAction):
             await self.hooks.trigger(HookType.ON_TEARDOWN, context)
             er.record(context)
 
+    def _validate_pickleable(self, obj: Any) -> bool:
+        try:
+            import pickle
+
+            pickle.dumps(obj)
+            return True
+        except (pickle.PicklingError, TypeError):
+            return False
+
     async def preview(self, parent: Tree | None = None):
         label = [
             f"[{OneColors.DARK_YELLOW_b}]🧠 ProcessAction (new process)[/] '{self.name}'"
@@ -759,15 +787,6 @@ class ProcessAction(BaseAction):
             parent.add("".join(label))
         else:
             self.console.print(Tree("".join(label)))
-
-    def _validate_pickleable(self, obj: Any) -> bool:
-        try:
-            import pickle
-
-            pickle.dumps(obj)
-            return True
-        except (pickle.PicklingError, TypeError):
-            return False
 
     def __str__(self) -> str:
         return (

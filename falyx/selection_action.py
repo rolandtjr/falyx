@@ -1,5 +1,6 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """selection_action.py"""
+from pathlib import Path
 from typing import Any
 
 from prompt_toolkit import PromptSession
@@ -18,7 +19,7 @@ from falyx.selection import (
     render_selection_indexed_table,
 )
 from falyx.themes.colors import OneColors
-from falyx.utils import logger
+from falyx.utils import CaseInsensitiveDict, logger
 
 
 class SelectionAction(BaseAction):
@@ -45,7 +46,7 @@ class SelectionAction(BaseAction):
             inject_last_result_as=inject_last_result_as,
             never_prompt=never_prompt,
         )
-        self.selections = selections
+        self.selections: list[str] | CaseInsensitiveDict = selections
         self.return_key = return_key
         self.title = title
         self.columns = columns
@@ -54,6 +55,23 @@ class SelectionAction(BaseAction):
         self.default_selection = default_selection
         self.prompt_message = prompt_message
         self.show_table = show_table
+
+    @property
+    def selections(self) -> list[str] | CaseInsensitiveDict:
+        return self._selections
+
+    @selections.setter
+    def selections(self, value: list[str] | dict[str, SelectionOption]):
+        if isinstance(value, list):
+            self._selections: list[str] | CaseInsensitiveDict = value
+        elif isinstance(value, dict):
+            cid = CaseInsensitiveDict()
+            cid.update(value)
+            self._selections = cid
+        else:
+            raise TypeError(
+                f"'selections' must be a list[str] or dict[str, SelectionOption], got {type(value).__name__}"
+            )
 
     async def _run(self, *args, **kwargs) -> Any:
         kwargs = self._maybe_inject_last_result(kwargs)
@@ -168,3 +186,15 @@ class SelectionAction(BaseAction):
 
         if not parent:
             self.console.print(tree)
+
+    def __str__(self) -> str:
+        selection_type = (
+            "List"
+            if isinstance(self.selections, list)
+            else "Dict" if isinstance(self.selections, dict) else "Unknown"
+        )
+        return (
+            f"SelectionAction(name={self.name!r}, type={selection_type}, "
+            f"default_selection={self.default_selection!r}, "
+            f"return_key={self.return_key}, prompt={'off' if self.never_prompt else 'on'})"
+        )

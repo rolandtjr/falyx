@@ -122,7 +122,7 @@ class ExecutionContext(BaseModel):
             "extra": self.extra,
         }
 
-    def log_summary(self, logger=None):
+    def log_summary(self, logger=None) -> None:
         summary = self.as_dict()
         message = [f"[SUMMARY] {summary['name']} | "]
 

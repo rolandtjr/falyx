@@ -33,7 +33,8 @@ class DummyInputAction(BaseIOAction):
 
 
 # --- Tests ---
-def test_command_creation():
+@pytest.mark.asyncio
+async def test_command_creation():
     """Test if Command can be created with a callable."""
     action = Action("test_action", dummy_action)
     cmd = Command(key="TEST", description="Test Command", action=action)
@@ -41,12 +42,15 @@ def test_command_creation():
     assert cmd.description == "Test Command"
     assert cmd.action == action
 
+    result = await cmd()
+    assert result == "ok"
+    assert cmd.result == "ok"
+
 
 def test_command_str():
     """Test if Command string representation is correct."""
     action = Action("test_action", dummy_action)
     cmd = Command(key="TEST", description="Test Command", action=action)
-    print(cmd)
     assert (
         str(cmd)
         == "Command(key='TEST', description='Test Command' action='Action(name='test_action', action=dummy_action, args=(), kwargs={}, retry=False)')"
@@ -233,3 +237,26 @@ def test_chain_retry_all_not_base_action():
     with pytest.raises(Exception) as exc_info:
         assert cmd.action.retry_policy.enabled is False
     assert "'function' object has no attribute 'retry_policy'" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_command_exception_handling():
+    """Test if Command handles exceptions correctly."""
+
+    async def bad_action():
+        raise ZeroDivisionError("This is a test exception")
+
+    cmd = Command(key="TEST", description="Test Command", action=bad_action)
+
+    with pytest.raises(ZeroDivisionError):
+        await cmd()
+
+    assert cmd.result is None
+    assert isinstance(cmd._context.exception, ZeroDivisionError)
+
+
+def test_command_bad_action():
+    """Test if Command raises an exception when action is not callable."""
+    with pytest.raises(TypeError) as exc_info:
+        Command(key="TEST", description="Test Command", action="not_callable")
+    assert str(exc_info.value) == "Action must be a callable or an instance of BaseAction"

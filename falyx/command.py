@@ -123,6 +123,15 @@ class Command(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
+    @field_validator("action", mode="before")
+    @classmethod
+    def wrap_callable_as_async(cls, action: Any) -> Any:
+        if isinstance(action, BaseAction):
+            return action
+        elif callable(action):
+            return ensure_async(action)
+        raise TypeError("Action must be a callable or an instance of BaseAction")
+
     def model_post_init(self, __context: Any) -> None:
         """Post-initialization to set up the action and hooks."""
         if self.retry and isinstance(self.action, Action):
@@ -165,27 +174,12 @@ class Command(BaseModel):
             return any(isinstance(action, BaseIOAction) for action in self.action.actions)
         return False
 
-    @field_validator("action", mode="before")
-    @classmethod
-    def wrap_callable_as_async(cls, action: Any) -> Any:
-        if isinstance(action, BaseAction):
-            return action
-        elif callable(action):
-            return ensure_async(action)
-        raise TypeError("Action must be a callable or an instance of BaseAction")
-
-    def __str__(self):
-        return (
-            f"Command(key='{self.key}', description='{self.description}' "
-            f"action='{self.action}')"
-        )
-
-    def _inject_options_manager(self):
+    def _inject_options_manager(self) -> None:
         """Inject the options manager into the action if applicable."""
         if isinstance(self.action, BaseAction):
             self.action.set_options_manager(self.options_manager)
 
-    async def __call__(self, *args, **kwargs):
+    async def __call__(self, *args, **kwargs) -> Any:
         """Run the action with full hook lifecycle, timing, and error handling."""
         self._inject_options_manager()
         combined_args = args + self.args
@@ -245,18 +239,18 @@ class Command(BaseModel):
 
         return FormattedText(prompt)
 
-    def log_summary(self):
+    def log_summary(self) -> None:
         if self._context:
             self._context.log_summary()
 
-    async def preview(self):
+    async def preview(self) -> None:
         label = f"[{OneColors.GREEN_b}]Command:[/] '{self.key}' — {self.description}"
 
         if hasattr(self.action, "preview") and callable(self.action.preview):
             tree = Tree(label)
             await self.action.preview(parent=tree)
             console.print(tree)
-        elif callable(self.action):
+        elif callable(self.action) and not isinstance(self.action, BaseAction):
             console.print(f"{label}")
             console.print(
                 f"[{OneColors.LIGHT_RED_b}]→ Would call:[/] {self.action.__name__}"
@@ -267,3 +261,9 @@ class Command(BaseModel):
             console.print(
                 f"[{OneColors.DARK_RED}]⚠️ Action is not callable or lacks a preview method.[/]"
             )
+
+    def __str__(self) -> str:
+        return (
+            f"Command(key='{self.key}', description='{self.description}' "
+            f"action='{self.action}')"
+        )
