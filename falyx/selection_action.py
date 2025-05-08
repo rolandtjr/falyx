@@ -87,17 +87,23 @@ class SelectionAction(BaseAction):
         if isinstance(self.selections, dict):
             if maybe_result in self.selections:
                 effective_default = maybe_result
+            elif self.inject_last_result:
+                logger.warning(
+                    "[%s] Injected last result '%s' not found in selections",
+                    self.name,
+                    maybe_result,
+                )
         elif isinstance(self.selections, list):
             if maybe_result.isdigit() and int(maybe_result) in range(
                 len(self.selections)
             ):
                 effective_default = maybe_result
-        elif self.inject_last_result:
-            logger.warning(
-                "[%s] Injected last result '%s' not found in selections",
-                self.name,
-                maybe_result,
-            )
+            elif self.inject_last_result:
+                logger.warning(
+                    "[%s] Injected last result '%s' not found in selections",
+                    self.name,
+                    maybe_result,
+                )
 
         if self.never_prompt and not effective_default:
             raise ValueError(

@@ -97,14 +97,17 @@ class HTTPAction(Action):
         )
 
     async def _request(self, *args, **kwargs) -> dict[str, Any]:
-        assert self.shared_context is not None, "SharedContext is not set"
-        context: SharedContext = self.shared_context
+        # TODO: Add check for HOOK registration
+        if self.shared_context:
+            context: SharedContext = self.shared_context
+            session = context.get("http_session")
+            if session is None:
+                session = aiohttp.ClientSession()
+                context.set("http_session", session)
+                context.set("_session_should_close", True)
 
-        session = context.get("http_session")
-        if session is None:
+        else:
             session = aiohttp.ClientSession()
-            context.set("http_session", session)
-            context.set("_session_should_close", True)
 
         async with session.request(
             self.method,
@@ -121,6 +124,9 @@ class HTTPAction(Action):
                 "headers": dict(response.headers),
                 "body": body,
             }
+
+        if not self.shared_context:
+            await session.close()
 
     async def preview(self, parent: Tree | None = None):
         label = [

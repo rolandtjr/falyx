@@ -55,13 +55,7 @@ from falyx.parsers import get_arg_parsers
 from falyx.retry import RetryPolicy
 from falyx.signals import BackSignal, QuitSignal
 from falyx.themes.colors import OneColors, get_nord_theme
-from falyx.utils import (
-    CaseInsensitiveDict,
-    chunks,
-    confirm_async,
-    get_program_invocation,
-    logger,
-)
+from falyx.utils import CaseInsensitiveDict, chunks, get_program_invocation, logger
 from falyx.version import __version__
 
 
@@ -93,9 +87,8 @@ class Falyx:
         key_bindings (KeyBindings | None): Custom Prompt Toolkit key bindings.
         include_history_command (bool): Whether to add a built-in history viewer command.
         include_help_command (bool): Whether to add a built-in help viewer command.
-        confirm_on_error (bool): Whether to prompt the user after errors.
-        never_prompt (bool): Whether to skip confirmation prompts entirely.
-        always_confirm (bool): Whether to force confirmation prompts for all actions.
+        never_prompt (bool): Seed default for `OptionsManager["never_prompt"]`
+        force_confirm (bool): Seed default for `OptionsManager["force_confirm"]`
         cli_args (Namespace | None): Parsed CLI arguments, usually from argparse.
         options (OptionsManager | None): Declarative option mappings.
         custom_table (Callable[[Falyx], Table] | Table | None): Custom menu table generator.
@@ -123,9 +116,8 @@ class Falyx:
         key_bindings: KeyBindings | None = None,
         include_history_command: bool = True,
         include_help_command: bool = True,
-        confirm_on_error: bool = True,
         never_prompt: bool = False,
-        always_confirm: bool = False,
+        force_confirm: bool = False,
         cli_args: Namespace | None = None,
         options: OptionsManager | None = None,
         render_menu: Callable[["Falyx"], None] | None = None,
@@ -150,16 +142,15 @@ class Falyx:
         self.last_run_command: Command | None = None
         self.key_bindings: KeyBindings = key_bindings or KeyBindings()
         self.bottom_bar: BottomBar | str | Callable[[], None] = bottom_bar
-        self.confirm_on_error: bool = confirm_on_error
         self._never_prompt: bool = never_prompt
-        self._always_confirm: bool = always_confirm
+        self._force_confirm: bool = force_confirm
         self.cli_args: Namespace | None = cli_args
         self.render_menu: Callable[["Falyx"], None] | None = render_menu
         self.custom_table: Callable[["Falyx"], Table] | Table | None = custom_table
-        self.set_options(cli_args, options)
+        self.validate_options(cli_args, options)
         self._session: PromptSession | None = None
 
-    def set_options(
+    def validate_options(
         self,
         cli_args: Namespace | None,
         options: OptionsManager | None = None,
@@ -175,8 +166,6 @@ class Falyx:
         assert isinstance(
             cli_args, Namespace
         ), "CLI arguments must be a Namespace object."
-        if options is None:
-            self.options.from_namespace(cli_args, "cli_args")
 
         if not isinstance(self.options, OptionsManager):
             raise FalyxError("Options must be an instance of OptionsManager.")
@@ -705,32 +694,7 @@ class Falyx:
                 self.console.print(
                     f"[{OneColors.LIGHT_YELLOW}]⚠️ Unknown command '{choice}'[/]"
                 )
-        logger.warning(f"⚠️ Command '{choice}' not found.")
         return None
-
-    async def _should_run_action(self, selected_command: Command) -> bool:
-        if self._never_prompt:
-            return True
-
-        if self.cli_args and getattr(self.cli_args, "skip_confirm", False):
-            return True
-
-        if (
-            self._always_confirm
-            or selected_command.confirm
-            or self.cli_args
-            and getattr(self.cli_args, "force_confirm", False)
-        ):
-            if selected_command.preview_before_confirm:
-                await selected_command.preview()
-            confirm_answer = await confirm_async(selected_command.confirmation_prompt)
-
-            if confirm_answer:
-                logger.info(f"[{selected_command.description}]🔐 confirmed.")
-            else:
-                logger.info(f"[{selected_command.description}]❌ cancelled.")
-            return confirm_answer
-        return True
 
     def _create_context(self, selected_command: Command) -> ExecutionContext:
         """Creates a context dictionary for the selected command."""
@@ -740,16 +704,6 @@ class Falyx:
             kwargs={},
             action=selected_command,
         )
-
-    async def _run_action_with_spinner(self, command: Command) -> Any:
-        """Runs the action of the selected command with a spinner."""
-        with self.console.status(
-            command.spinner_message,
-            spinner=command.spinner_type,
-            spinner_style=command.spinner_style,
-            **command.spinner_kwargs,
-        ):
-            return await command()
 
     async def _handle_action_error(
         self, selected_command: Command, error: Exception
@@ -784,19 +738,12 @@ class Falyx:
             logger.info(f"🔙 Back selected: exiting {self.get_title()}")
             return False
 
-        if not await self._should_run_action(selected_command):
-            logger.info(f"{selected_command.description} cancelled.")
-            return True
-
         context = self._create_context(selected_command)
         context.start_timer()
         try:
             await self.hooks.trigger(HookType.BEFORE, context)
 
-            if selected_command.spinner:
-                result = await self._run_action_with_spinner(selected_command)
-            else:
-                result = await selected_command()
+            result = await selected_command()
             context.result = result
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
         except Exception as error:
@@ -824,22 +771,11 @@ class Falyx:
             selected_command.description,
         )
 
-        if not await self._should_run_action(selected_command):
-            logger.info("[run_key] ❌ Cancelled: %s", selected_command.description)
-            raise FalyxError(
-                f"[run_key] '{selected_command.description}' "
-                "cancelled by confirmation."
-            )
-
         context = self._create_context(selected_command)
         context.start_timer()
         try:
             await self.hooks.trigger(HookType.BEFORE, context)
-
-            if selected_command.spinner:
-                result = await self._run_action_with_spinner(selected_command)
-            else:
-                result = await selected_command()
+            result = await selected_command()
             context.result = result
 
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
@@ -939,6 +875,13 @@ class Falyx:
         """Run Falyx CLI with structured subcommands."""
         if not self.cli_args:
             self.cli_args = get_arg_parsers().root.parse_args()
+        self.options.from_namespace(self.cli_args, "cli_args")
+
+        if not self.options.get("never_prompt"):
+            self.options.set("never_prompt", self._never_prompt)
+
+        if not self.options.get("force_confirm"):
+            self.options.set("force_confirm", self._force_confirm)
 
         if self.cli_args.verbose:
             logging.getLogger("falyx").setLevel(logging.DEBUG)
@@ -946,9 +889,6 @@ class Falyx:
         if self.cli_args.debug_hooks:
             logger.debug("✅ Enabling global debug hooks for all commands")
             self.register_all_with_debug_hooks()
-
-        if self.cli_args.never_prompt:
-            self._never_prompt = True
 
         if self.cli_args.command == "list":
             await self._show_help()

@@ -145,7 +145,7 @@ def render_selection_indexed_table(
         chunks(range(len(selections)), columns), chunks(selections, columns)
     ):
         row = [
-            formatter(index, selection) if formatter else f"{index}: {selection}"
+            formatter(index, selection) if formatter else f"[{index}] {selection}"
             for index, selection in zip(indexes, chunk)
         ]
         table.add_row(*row)

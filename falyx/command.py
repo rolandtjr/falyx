@@ -29,14 +29,16 @@ from rich.tree import Tree
 from falyx.action import Action, ActionGroup, BaseAction, ChainedAction
 from falyx.context import ExecutionContext
 from falyx.debug import register_debug_hooks
+from falyx.exceptions import FalyxError
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
 from falyx.io_action import BaseIOAction
 from falyx.options_manager import OptionsManager
+from falyx.prompt_utils import should_prompt_user
 from falyx.retry import RetryPolicy
 from falyx.retry_utils import enable_retries_recursively
 from falyx.themes.colors import OneColors
-from falyx.utils import _noop, ensure_async, logger
+from falyx.utils import _noop, confirm_async, ensure_async, logger
 
 console = Console()
 
@@ -180,7 +182,10 @@ class Command(BaseModel):
             self.action.set_options_manager(self.options_manager)
 
     async def __call__(self, *args, **kwargs) -> Any:
-        """Run the action with full hook lifecycle, timing, and error handling."""
+        """
+        Run the action with full hook lifecycle, timing, error handling,
+        confirmation prompts, preview, and spinner integration.
+        """
         self._inject_options_manager()
         combined_args = args + self.args
         combined_kwargs = {**self.kwargs, **kwargs}
@@ -191,11 +196,29 @@ class Command(BaseModel):
             action=self,
         )
         self._context = context
+
+        if should_prompt_user(confirm=self.confirm, options=self.options_manager):
+            if self.preview_before_confirm:
+                await self.preview()
+            if not await confirm_async(self.confirmation_prompt):
+                logger.info(f"[Command:{self.key}] ❌ Cancelled by user.")
+                raise FalyxError(f"[Command:{self.key}] Cancelled by confirmation.")
+
         context.start_timer()
 
         try:
             await self.hooks.trigger(HookType.BEFORE, context)
-            result = await self.action(*combined_args, **combined_kwargs)
+            if self.spinner:
+                with console.status(
+                    self.spinner_message,
+                    spinner=self.spinner_type,
+                    spinner_style=self.spinner_style,
+                    **self.spinner_kwargs,
+                ):
+                    result = await self.action(*combined_args, **combined_kwargs)
+            else:
+                result = await self.action(*combined_args, **combined_kwargs)
+
             context.result = result
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
             return context.result

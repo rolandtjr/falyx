@@ -129,7 +129,7 @@ class ExecutionContext(BaseModel):
         if self.start_wall:
             message.append(f"Start: {self.start_wall.strftime('%H:%M:%S')} | ")
 
-        if self.end_time:
+        if self.end_wall:
             message.append(f"End: {self.end_wall.strftime('%H:%M:%S')} | ")
 
         message.append(f"Duration: {summary['duration']:.3f}s | ")
