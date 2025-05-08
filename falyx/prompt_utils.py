@@ -9,11 +9,10 @@ def should_prompt_user(
 ):
     """Determine whether to prompt the user for confirmation based on command and global options."""
     never_prompt = options.get("never_prompt", False, namespace)
-    always_confirm = options.get("always_confirm", False, namespace)
     force_confirm = options.get("force_confirm", False, namespace)
     skip_confirm = options.get("skip_confirm", False, namespace)
 
     if never_prompt or skip_confirm:
         return False
 
-    return confirm or always_confirm or force_confirm
+    return confirm or force_confirm
