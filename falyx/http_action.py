@@ -105,28 +105,28 @@ class HTTPAction(Action):
                 session = aiohttp.ClientSession()
                 context.set("http_session", session)
                 context.set("_session_should_close", True)
-
         else:
             session = aiohttp.ClientSession()
 
-        async with session.request(
-            self.method,
-            self.url,
-            headers=self.headers,
-            params=self.params,
-            json=self.json,
-            data=self.data,
-        ) as response:
-            body = await response.text()
-            return {
-                "status": response.status,
-                "url": str(response.url),
-                "headers": dict(response.headers),
-                "body": body,
-            }
-
-        if not self.shared_context:
-            await session.close()
+        try:
+            async with session.request(
+                self.method,
+                self.url,
+                headers=self.headers,
+                params=self.params,
+                json=self.json,
+                data=self.data,
+            ) as response:
+                body = await response.text()
+                return {
+                    "status": response.status,
+                    "url": str(response.url),
+                    "headers": dict(response.headers),
+                    "body": body,
+                }
+        finally:
+            if not self.shared_context:
+                await session.close()
 
     async def preview(self, parent: Tree | None = None):
         label = [
