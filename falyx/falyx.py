@@ -148,7 +148,7 @@ class Falyx:
         self.render_menu: Callable[["Falyx"], None] | None = render_menu
         self.custom_table: Callable[["Falyx"], Table] | Table | None = custom_table
         self.validate_options(cli_args, options)
-        self._session: PromptSession | None = None
+        self._prompt_session: PromptSession | None = None
 
     def validate_options(
         self,
@@ -337,11 +337,11 @@ class Falyx:
             move_cursor_to_end=True,
         )
 
-    def _invalidate_session_cache(self):
-        """Forces the session to be recreated on the next access."""
-        if hasattr(self, "session"):
-            del self.session
-        self._session = None
+    def _invalidate_prompt_session_cache(self):
+        """Forces the prompt session to be recreated on the next access."""
+        if hasattr(self, "prompt_session"):
+            del self.prompt_session
+        self._prompt_session = None
 
     def add_help_command(self):
         """Adds a help command to the menu if it doesn't already exist."""
@@ -375,7 +375,7 @@ class Falyx:
             raise FalyxError(
                 "Bottom bar must be a string, callable, or BottomBar instance."
             )
-        self._invalidate_session_cache()
+        self._invalidate_prompt_session_cache()
 
     def _get_bottom_bar_render(self) -> Callable[[], Any] | str | None:
         """Returns the bottom bar for the menu."""
@@ -390,10 +390,10 @@ class Falyx:
         return None
 
     @cached_property
-    def session(self) -> PromptSession:
+    def prompt_session(self) -> PromptSession:
         """Returns the prompt session for the menu."""
-        if self._session is None:
-            self._session = PromptSession(
+        if self._prompt_session is None:
+            self._prompt_session = PromptSession(
                 message=self.prompt,
                 multiline=False,
                 completer=self._get_completer(),
@@ -402,7 +402,7 @@ class Falyx:
                 bottom_toolbar=self._get_bottom_bar_render(),
                 key_bindings=self.key_bindings,
             )
-        return self._session
+        return self._prompt_session
 
     def register_all_hooks(self, hook_type: HookType, hooks: Hook | list[Hook]) -> None:
         """Registers hooks for all commands in the menu and actions recursively."""
@@ -717,7 +717,7 @@ class Falyx:
 
     async def process_command(self) -> bool:
         """Processes the action of the selected command."""
-        choice = await self.session.prompt_async()
+        choice = await self.prompt_session.prompt_async()
         selected_command = self.get_command(choice)
         if not selected_command:
             logger.info(f"Invalid command '{choice}'.")

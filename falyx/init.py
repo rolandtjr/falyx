@@ -33,8 +33,10 @@ async def cleanup():
 """
 
 GLOBAL_CONFIG = """\
-async def cleanup():
-    print("🧹 Cleaning temp files...")
+- key: C
+  description: Cleanup temp files
+  action: tasks.cleanup
+  aliases: [clean, cleanup]
 """
 
 console = Console(color_system="auto")

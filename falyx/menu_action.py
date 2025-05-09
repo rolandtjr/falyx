@@ -168,15 +168,13 @@ class MenuAction(BaseAction):
             await self.hooks.trigger(HookType.BEFORE, context)
             key = effective_default
             if not self.never_prompt:
-                console = self.console
-                session = self.prompt_session
                 table = self._build_table()
                 key = await prompt_for_selection(
                     self.menu_options.keys(),
                     table,
                     default_selection=self.default_selection,
-                    console=console,
-                    session=session,
+                    console=self.console,
+                    prompt_session=self.prompt_session,
                     prompt_message=self.prompt_message,
                     show_table=self.show_table,
                 )

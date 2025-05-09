@@ -26,7 +26,7 @@ class SelectionAction(BaseAction):
     def __init__(
         self,
         name: str,
-        selections: list[str] | dict[str, SelectionOption],
+        selections: list[str] | set[str] | tuple[str, ...] | dict[str, SelectionOption],
         *,
         title: str = "Select an option",
         columns: int = 2,
@@ -36,7 +36,7 @@ class SelectionAction(BaseAction):
         inject_last_result_as: str = "last_result",
         return_key: bool = False,
         console: Console | None = None,
-        session: PromptSession | None = None,
+        prompt_session: PromptSession | None = None,
         never_prompt: bool = False,
         show_table: bool = True,
     ):
@@ -51,7 +51,7 @@ class SelectionAction(BaseAction):
         self.title = title
         self.columns = columns
         self.console = console or Console(color_system="auto")
-        self.session = session or PromptSession()
+        self.prompt_session = prompt_session or PromptSession()
         self.default_selection = default_selection
         self.prompt_message = prompt_message
         self.show_table = show_table
@@ -61,9 +61,11 @@ class SelectionAction(BaseAction):
         return self._selections
 
     @selections.setter
-    def selections(self, value: list[str] | dict[str, SelectionOption]):
-        if isinstance(value, list):
-            self._selections: list[str] | CaseInsensitiveDict = value
+    def selections(
+        self, value: list[str] | set[str] | tuple[str, ...] | dict[str, SelectionOption]
+    ):
+        if isinstance(value, (list, tuple, set)):
+            self._selections: list[str] | CaseInsensitiveDict = list(value)
         elif isinstance(value, dict):
             cid = CaseInsensitiveDict()
             cid.update(value)
@@ -123,7 +125,7 @@ class SelectionAction(BaseAction):
                         table,
                         default_selection=effective_default,
                         console=self.console,
-                        session=self.session,
+                        prompt_session=self.prompt_session,
                         prompt_message=self.prompt_message,
                         show_table=self.show_table,
                     )
@@ -140,7 +142,7 @@ class SelectionAction(BaseAction):
                         table,
                         default_selection=effective_default,
                         console=self.console,
-                        session=self.session,
+                        prompt_session=self.prompt_session,
                         prompt_message=self.prompt_message,
                         show_table=self.show_table,
                     )

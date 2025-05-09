@@ -448,6 +448,8 @@ class ChainedAction(BaseAction, ActionListMixin):
         if self.actions and self.auto_inject and not action.inject_last_result:
             action.inject_last_result = True
         super().add_action(action)
+        if hasattr(action, "register_teardown") and callable(action.register_teardown):
+            action.register_teardown(self.hooks)
 
     async def _run(self, *args, **kwargs) -> list[Any]:
         if not self.actions:
@@ -616,6 +618,22 @@ class ActionGroup(BaseAction, ActionListMixin):
         ActionListMixin.__init__(self)
         if actions:
             self.set_actions(actions)
+
+    def _wrap_if_needed(self, action: BaseAction | Any) -> BaseAction:
+        if isinstance(action, BaseAction):
+            return action
+        elif callable(action):
+            return Action(name=action.__name__, action=action)
+        else:
+            raise TypeError(
+                f"ActionGroup only accepts BaseAction or callable, got {type(action).__name__}"
+            )
+
+    def add_action(self, action: BaseAction | Any) -> None:
+        action = self._wrap_if_needed(action)
+        super().add_action(action)
+        if hasattr(action, "register_teardown") and callable(action.register_teardown):
+            action.register_teardown(self.hooks)
 
     async def _run(self, *args, **kwargs) -> list[tuple[str, Any]]:
         shared_context = SharedContext(name=self.name, is_parallel=True)

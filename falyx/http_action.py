@@ -15,6 +15,7 @@ from rich.tree import Tree
 
 from falyx.action import Action
 from falyx.context import ExecutionContext, SharedContext
+from falyx.hook_manager import HookManager, HookType
 from falyx.themes.colors import OneColors
 from falyx.utils import logger
 
@@ -97,7 +98,6 @@ class HTTPAction(Action):
         )
 
     async def _request(self, *args, **kwargs) -> dict[str, Any]:
-        # TODO: Add check for HOOK registration
         if self.shared_context:
             context: SharedContext = self.shared_context
             session = context.get("http_session")
@@ -127,6 +127,9 @@ class HTTPAction(Action):
         finally:
             if not self.shared_context:
                 await session.close()
+
+    def register_teardown(self, hooks: HookManager):
+        hooks.register(HookType.ON_TEARDOWN, close_shared_http_session)
 
     async def preview(self, parent: Tree | None = None):
         label = [
