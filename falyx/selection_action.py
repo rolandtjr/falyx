@@ -1,6 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """selection_action.py"""
-from pathlib import Path
 from typing import Any
 
 from prompt_toolkit import PromptSession
@@ -117,7 +116,9 @@ class SelectionAction(BaseAction):
             await self.hooks.trigger(HookType.BEFORE, context)
             if isinstance(self.selections, list):
                 table = render_selection_indexed_table(
-                    self.title, self.selections, self.columns
+                    title=self.title,
+                    selections=self.selections,
+                    columns=self.columns,
                 )
                 if not self.never_prompt:
                     index = await prompt_for_index(
@@ -134,7 +135,7 @@ class SelectionAction(BaseAction):
                 result = self.selections[int(index)]
             elif isinstance(self.selections, dict):
                 table = render_selection_dict_table(
-                    self.title, self.selections, self.columns
+                    title=self.title, selections=self.selections, columns=self.columns
                 )
                 if not self.never_prompt:
                     key = await prompt_for_selection(

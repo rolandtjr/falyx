@@ -14,6 +14,7 @@ from typing import Any
 from falyx.config import loader
 from falyx.falyx import Falyx
 from falyx.parsers import FalyxParsers, get_arg_parsers
+from falyx.themes.colors import OneColors
 
 
 def find_falyx_config() -> Path | None:
@@ -71,6 +72,7 @@ def run(args: Namespace) -> Any:
         title="🛠️ Config-Driven CLI",
         cli_args=args,
         columns=4,
+        prompt=[(OneColors.BLUE_b, "FALYX > ")],
     )
     flx.add_commands(loader(bootstrap_path))
     return asyncio.run(flx.run())

@@ -272,15 +272,21 @@ class Command(BaseModel):
         if hasattr(self.action, "preview") and callable(self.action.preview):
             tree = Tree(label)
             await self.action.preview(parent=tree)
+            if self.help_text:
+                tree.add(f"[dim]💡 {self.help_text}[/dim]")
             console.print(tree)
         elif callable(self.action) and not isinstance(self.action, BaseAction):
             console.print(f"{label}")
+            if self.help_text:
+                console.print(f"[dim]💡 {self.help_text}[/dim]")
             console.print(
                 f"[{OneColors.LIGHT_RED_b}]→ Would call:[/] {self.action.__name__}"
                 f"[dim](args={self.args}, kwargs={self.kwargs})[/dim]"
             )
         else:
             console.print(f"{label}")
+            if self.help_text:
+                console.print(f"[dim]💡 {self.help_text}[/dim]")
             console.print(
                 f"[{OneColors.DARK_RED}]⚠️ Action is not callable or lacks a preview method.[/]"
             )

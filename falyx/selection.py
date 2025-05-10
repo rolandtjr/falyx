@@ -31,6 +31,7 @@ class SelectionOption:
 
 def render_table_base(
     title: str,
+    *,
     caption: str = "",
     columns: int = 4,
     box_style: box.Box = box.SIMPLE,
@@ -71,6 +72,7 @@ def render_table_base(
 def render_selection_grid(
     title: str,
     selections: Sequence[str],
+    *,
     columns: int = 4,
     caption: str = "",
     box_style: box.Box = box.SIMPLE,
@@ -86,19 +88,19 @@ def render_selection_grid(
 ) -> Table:
     """Create a selection table with the given parameters."""
     table = render_table_base(
-        title,
-        caption,
-        columns,
-        box_style,
-        show_lines,
-        show_header,
-        show_footer,
-        style,
-        header_style,
-        footer_style,
-        title_style,
-        caption_style,
-        highlight,
+        title=title,
+        caption=caption,
+        columns=columns,
+        box_style=box_style,
+        show_lines=show_lines,
+        show_header=show_header,
+        show_footer=show_footer,
+        style=style,
+        header_style=header_style,
+        footer_style=footer_style,
+        title_style=title_style,
+        caption_style=caption_style,
+        highlight=highlight,
     )
 
     for chunk in chunks(selections, columns):
@@ -110,6 +112,7 @@ def render_selection_grid(
 def render_selection_indexed_table(
     title: str,
     selections: Sequence[str],
+    *,
     columns: int = 4,
     caption: str = "",
     box_style: box.Box = box.SIMPLE,
@@ -126,19 +129,19 @@ def render_selection_indexed_table(
 ) -> Table:
     """Create a selection table with the given parameters."""
     table = render_table_base(
-        title,
-        caption,
-        columns,
-        box_style,
-        show_lines,
-        show_header,
-        show_footer,
-        style,
-        header_style,
-        footer_style,
-        title_style,
-        caption_style,
-        highlight,
+        title=title,
+        caption=caption,
+        columns=columns,
+        box_style=box_style,
+        show_lines=show_lines,
+        show_header=show_header,
+        show_footer=show_footer,
+        style=style,
+        header_style=header_style,
+        footer_style=footer_style,
+        title_style=title_style,
+        caption_style=caption_style,
+        highlight=highlight,
     )
 
     for indexes, chunk in zip(
@@ -156,6 +159,7 @@ def render_selection_indexed_table(
 def render_selection_dict_table(
     title: str,
     selections: dict[str, SelectionOption],
+    *,
     columns: int = 2,
     caption: str = "",
     box_style: box.Box = box.SIMPLE,
@@ -171,19 +175,19 @@ def render_selection_dict_table(
 ) -> Table:
     """Create a selection table with the given parameters."""
     table = render_table_base(
-        title,
-        caption,
-        columns,
-        box_style,
-        show_lines,
-        show_header,
-        show_footer,
-        style,
-        header_style,
-        footer_style,
-        title_style,
-        caption_style,
-        highlight,
+        title=title,
+        caption=caption,
+        columns=columns,
+        box_style=box_style,
+        show_lines=show_lines,
+        show_header=show_header,
+        show_footer=show_footer,
+        style=style,
+        header_style=header_style,
+        footer_style=footer_style,
+        title_style=title_style,
+        caption_style=caption_style,
+        highlight=highlight,
     )
 
     for chunk in chunks(selections.items(), columns):
@@ -200,6 +204,7 @@ def render_selection_dict_table(
 async def prompt_for_index(
     max_index: int,
     table: Table,
+    *,
     min_index: int = 0,
     default_selection: str = "",
     console: Console | None = None,
@@ -224,6 +229,7 @@ async def prompt_for_index(
 async def prompt_for_selection(
     keys: Sequence[str] | KeysView[str],
     table: Table,
+    *,
     default_selection: str = "",
     console: Console | None = None,
     prompt_session: PromptSession | None = None,
@@ -249,6 +255,7 @@ async def prompt_for_selection(
 async def select_value_from_list(
     title: str,
     selections: Sequence[str],
+    *,
     console: Console | None = None,
     prompt_session: PromptSession | None = None,
     prompt_message: str = "Select an option > ",
@@ -268,20 +275,20 @@ async def select_value_from_list(
 ):
     """Prompt for a selection. Return the selected item."""
     table = render_selection_indexed_table(
-        title,
-        selections,
-        columns,
-        caption,
-        box_style,
-        show_lines,
-        show_header,
-        show_footer,
-        style,
-        header_style,
-        footer_style,
-        title_style,
-        caption_style,
-        highlight,
+        title=title,
+        selections=selections,
+        columns=columns,
+        caption=caption,
+        box_style=box_style,
+        show_lines=show_lines,
+        show_header=show_header,
+        show_footer=show_footer,
+        style=style,
+        header_style=header_style,
+        footer_style=footer_style,
+        title_style=title_style,
+        caption_style=caption_style,
+        highlight=highlight,
     )
     prompt_session = prompt_session or PromptSession()
     console = console or Console(color_system="auto")
@@ -301,6 +308,7 @@ async def select_value_from_list(
 async def select_key_from_dict(
     selections: dict[str, SelectionOption],
     table: Table,
+    *,
     console: Console | None = None,
     prompt_session: PromptSession | None = None,
     prompt_message: str = "Select an option > ",
@@ -325,6 +333,7 @@ async def select_key_from_dict(
 async def select_value_from_dict(
     selections: dict[str, SelectionOption],
     table: Table,
+    *,
     console: Console | None = None,
     prompt_session: PromptSession | None = None,
     prompt_message: str = "Select an option > ",
@@ -351,6 +360,7 @@ async def select_value_from_dict(
 async def get_selection_from_dict_menu(
     title: str,
     selections: dict[str, SelectionOption],
+    *,
     console: Console | None = None,
     prompt_session: PromptSession | None = None,
     prompt_message: str = "Select an option > ",
@@ -363,10 +373,10 @@ async def get_selection_from_dict_menu(
     )
 
     return await select_value_from_dict(
-        selections,
-        table,
-        console,
-        prompt_session,
-        prompt_message,
-        default_selection,
+        selections=selections,
+        table=table,
+        console=console,
+        prompt_session=prompt_session,
+        prompt_message=prompt_message,
+        default_selection=default_selection,
     )

@@ -283,7 +283,7 @@ class Falyx:
         self.console.print(table, justify="center")
         if self.mode == FalyxMode.MENU:
             self.console.print(
-                f"📦 Tip: Type '[{OneColors.LIGHT_YELLOW}]?[KEY][/]' to preview a command before running it.\n",
+                f"📦 Tip: '[{OneColors.LIGHT_YELLOW}]?[KEY][/]' to preview a command before running it.\n",
                 justify="center",
             )
 
@@ -343,7 +343,9 @@ class Falyx:
         error_message = " ".join(message_lines)
 
         def validator(text):
-            _, choice = self.get_command(text, from_validate=True)
+            is_preview, choice = self.get_command(text, from_validate=True)
+            if is_preview and choice is None:
+                return True
             return True if choice else False
 
         return Validator.from_callable(
@@ -694,6 +696,13 @@ class Falyx:
     ) -> tuple[bool, Command | None]:
         """Returns the selected command based on user input. Supports keys, aliases, and abbreviations."""
         is_preview, choice = self.parse_preview_command(choice)
+        if is_preview and not choice:
+            if not from_validate:
+                self.console.print(
+                    f"[{OneColors.DARK_RED}]❌ You must enter a command for preview mode.[/]"
+                )
+            return is_preview, None
+
         choice = choice.upper()
         name_map = self._name_map
 
@@ -788,10 +797,15 @@ class Falyx:
     async def run_key(self, command_key: str, return_context: bool = False) -> Any:
         """Run a command by key without displaying the menu (non-interactive mode)."""
         self.debug_hooks()
-        _, selected_command = self.get_command(command_key)
+        is_preview, selected_command = self.get_command(command_key)
         self.last_run_command = selected_command
 
         if not selected_command:
+            return None
+
+        if is_preview:
+            logger.info(f"Preview command '{selected_command.key}' selected.")
+            await selected_command.preview()
             return None
 
         logger.info(
@@ -943,11 +957,14 @@ class Falyx:
 
         if self.cli_args.command == "run":
             self.mode = FalyxMode.RUN
-            _, command = self.get_command(self.cli_args.name)
+            is_preview, command = self.get_command(self.cli_args.name)
+            if is_preview:
+                if command is None:
+                    sys.exit(1)
+                logger.info(f"Preview command '{command.key}' selected.")
+                await command.preview()
+                sys.exit(0)
             if not command:
-                self.console.print(
-                    f"[{OneColors.DARK_RED}]❌ Command '{self.cli_args.name}' not found.[/]"
-                )
                 sys.exit(1)
             self._set_retry_policy(command)
             try:
@@ -955,6 +972,9 @@ class Falyx:
             except FalyxError as error:
                 self.console.print(f"[{OneColors.DARK_RED}]❌ Error: {error}[/]")
                 sys.exit(1)
+
+            if self.cli_args.summary:
+                er.summary()
             sys.exit(0)
 
         if self.cli_args.command == "run-all":
@@ -976,6 +996,10 @@ class Falyx:
             for cmd in matching:
                 self._set_retry_policy(cmd)
                 await self.run_key(cmd.key)
+
+            if self.cli_args.summary:
+                er.summary()
+
             sys.exit(0)
 
         await self.menu()

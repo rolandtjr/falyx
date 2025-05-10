@@ -36,7 +36,9 @@ def get_arg_parsers(
     prog: str | None = "falyx",
     usage: str | None = None,
     description: str | None = "Falyx CLI - Run structured async command workflows.",
-    epilog: str | None = None,
+    epilog: (
+        str | None
+    ) = "Tip: Use 'falyx run ?[COMMAND]' to preview any command from the CLI.",
     parents: Sequence[ArgumentParser] = [],
     prefix_chars: str = "-",
     fromfile_prefix_chars: str | None = None,
@@ -80,6 +82,11 @@ def get_arg_parsers(
     run_parser = subparsers.add_parser("run", help="Run a specific command")
     run_parser.add_argument("name", help="Key, alias, or description of the command")
     run_parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Print an execution summary after command completes",
+    )
+    run_parser.add_argument(
         "--retries", type=int, help="Number of retries on failure", default=0
     )
     run_parser.add_argument(
@@ -111,6 +118,11 @@ def get_arg_parsers(
         "run-all", help="Run all commands with a given tag"
     )
     run_all_parser.add_argument("-t", "--tag", required=True, help="Tag to match")
+    run_all_parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Print a summary after all tagged commands run",
+    )
     run_all_parser.add_argument(
         "--retries", type=int, help="Number of retries on failure", default=0
     )

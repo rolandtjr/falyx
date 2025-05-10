@@ -59,6 +59,7 @@ class BaseIOAction(BaseAction):
     def __init__(
         self,
         name: str,
+        *,
         hooks: HookManager | None = None,
         mode: str = "buffered",
         logging_hooks: bool = True,

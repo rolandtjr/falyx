@@ -3,15 +3,21 @@
 Configuration loader for Falyx CLI commands."""
 
 import importlib
+import sys
 from pathlib import Path
 from typing import Any
 
 import toml
 import yaml
+from rich.console import Console
 
 from falyx.action import Action, BaseAction
 from falyx.command import Command
 from falyx.retry import RetryPolicy
+from falyx.themes.colors import OneColors
+from falyx.utils import logger
+
+console = Console(color_system="auto")
 
 
 def wrap_if_needed(obj: Any, name=None) -> BaseAction | Command:
@@ -30,9 +36,28 @@ def import_action(dotted_path: str) -> Any:
     """Dynamically imports a callable from a dotted path like 'my.module.func'."""
     module_path, _, attr = dotted_path.rpartition(".")
     if not module_path:
-        raise ValueError(f"Invalid action path: {dotted_path}")
-    module = importlib.import_module(module_path)
-    return getattr(module, attr)
+        console.print(f"[{OneColors.DARK_RED}]❌ Invalid action path:[/] {dotted_path}")
+        sys.exit(1)
+    try:
+        module = importlib.import_module(module_path)
+    except ModuleNotFoundError as error:
+        logger.error("Failed to import module '%s': %s", module_path, error)
+        console.print(
+            f"[{OneColors.DARK_RED}]❌ Could not import '{dotted_path}': {error}[/]\n"
+            f"[{OneColors.COMMENT_GREY}]Ensure the module is installed and discoverable via PYTHONPATH."
+        )
+        sys.exit(1)
+    try:
+        action = getattr(module, attr)
+    except AttributeError as error:
+        logger.error(
+            "Module '%s' does not have attribute '%s': %s", module_path, attr, error
+        )
+        console.print(
+            f"[{OneColors.DARK_RED}]❌ Module '{module_path}' has no attribute '{attr}': {error}[/]"
+        )
+        sys.exit(1)
+    return action
 
 
 def loader(file_path: Path | str) -> list[dict[str, Any]]:

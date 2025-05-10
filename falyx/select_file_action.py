@@ -137,7 +137,9 @@ class SelectFileAction(BaseAction):
 
             options = self.get_options(files)
 
-            table = render_selection_dict_table(self.title, options, self.columns)
+            table = render_selection_dict_table(
+                title=self.title, selections=options, columns=self.columns
+            )
 
             key = await prompt_for_selection(
                 options.keys(),
