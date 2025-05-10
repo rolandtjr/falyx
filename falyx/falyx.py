@@ -110,12 +110,12 @@ class Falyx:
         register_all_hooks(): Register hooks across all commands and submenus.
         debug_hooks(): Log hook registration for debugging.
         build_default_table(): Construct the standard Rich table layout.
-
     """
 
     def __init__(
         self,
         title: str | Markdown = "Menu",
+        *,
         prompt: str | AnyFormattedText = "> ",
         columns: int = 3,
         bottom_bar: BottomBar | str | Callable[[], Any] | None = None,
@@ -143,7 +143,7 @@ class Falyx:
         self.help_command: Command | None = (
             self._get_help_command() if include_help_command else None
         )
-        self.console: Console = Console(color_system="truecolor", theme=get_nord_theme())
+        self.console: Console = Console(color_system="auto", theme=get_nord_theme())
         self.welcome_message: str | Markdown | dict[str, Any] = welcome_message
         self.exit_message: str | Markdown | dict[str, Any] = exit_message
         self.hooks: HookManager = HookManager()
@@ -549,7 +549,7 @@ class Falyx:
         )
 
     def add_submenu(
-        self, key: str, description: str, submenu: "Falyx", style: str = OneColors.CYAN
+        self, key: str, description: str, submenu: "Falyx", *, style: str = OneColors.CYAN
     ) -> None:
         """Adds a submenu to the menu."""
         if not isinstance(submenu, Falyx):
@@ -568,6 +568,7 @@ class Falyx:
         key: str,
         description: str,
         action: BaseAction | Callable[[], Any],
+        *,
         args: tuple = (),
         kwargs: dict[str, Any] = {},
         hidden: bool = False,

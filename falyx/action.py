@@ -64,6 +64,7 @@ class BaseAction(ABC):
     def __init__(
         self,
         name: str,
+        *,
         hooks: HookManager | None = None,
         inject_last_result: bool = False,
         inject_into: str = "last_result",
@@ -182,6 +183,7 @@ class Action(BaseAction):
         self,
         name: str,
         action: Callable[..., Any],
+        *,
         rollback: Callable[..., Any] | None = None,
         args: tuple[Any, ...] = (),
         kwargs: dict[str, Any] | None = None,
@@ -191,7 +193,12 @@ class Action(BaseAction):
         retry: bool = False,
         retry_policy: RetryPolicy | None = None,
     ) -> None:
-        super().__init__(name, hooks, inject_last_result, inject_into)
+        super().__init__(
+            name,
+            hooks=hooks,
+            inject_last_result=inject_last_result,
+            inject_into=inject_into,
+        )
         self.action = action
         self.rollback = rollback
         self.args = args
@@ -422,13 +429,19 @@ class ChainedAction(BaseAction, ActionListMixin):
         self,
         name: str,
         actions: list[BaseAction | Any] | None = None,
+        *,
         hooks: HookManager | None = None,
         inject_last_result: bool = False,
         inject_into: str = "last_result",
         auto_inject: bool = False,
         return_list: bool = False,
     ) -> None:
-        super().__init__(name, hooks, inject_last_result, inject_into)
+        super().__init__(
+            name,
+            hooks=hooks,
+            inject_last_result=inject_last_result,
+            inject_into=inject_into,
+        )
         ActionListMixin.__init__(self)
         self.auto_inject = auto_inject
         self.return_list = return_list
@@ -608,11 +621,17 @@ class ActionGroup(BaseAction, ActionListMixin):
         self,
         name: str,
         actions: list[BaseAction] | None = None,
+        *,
         hooks: HookManager | None = None,
         inject_last_result: bool = False,
         inject_into: str = "last_result",
     ):
-        super().__init__(name, hooks, inject_last_result, inject_into)
+        super().__init__(
+            name,
+            hooks=hooks,
+            inject_last_result=inject_last_result,
+            inject_into=inject_into,
+        )
         ActionListMixin.__init__(self)
         if actions:
             self.set_actions(actions)
@@ -730,7 +749,8 @@ class ProcessAction(BaseAction):
     def __init__(
         self,
         name: str,
-        func: Callable[..., Any],
+        action: Callable[..., Any],
+        *,
         args: tuple = (),
         kwargs: dict[str, Any] | None = None,
         hooks: HookManager | None = None,
@@ -738,8 +758,13 @@ class ProcessAction(BaseAction):
         inject_last_result: bool = False,
         inject_into: str = "last_result",
     ):
-        super().__init__(name, hooks, inject_last_result, inject_into)
-        self.func = func
+        super().__init__(
+            name,
+            hooks=hooks,
+            inject_last_result=inject_last_result,
+            inject_into=inject_into,
+        )
+        self.action = action
         self.args = args
         self.kwargs = kwargs or {}
         self.executor = executor or ProcessPoolExecutor()
@@ -767,7 +792,7 @@ class ProcessAction(BaseAction):
         try:
             await self.hooks.trigger(HookType.BEFORE, context)
             result = await loop.run_in_executor(
-                self.executor, partial(self.func, *combined_args, **combined_kwargs)
+                self.executor, partial(self.action, *combined_args, **combined_kwargs)
             )
             context.result = result
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
@@ -806,6 +831,6 @@ class ProcessAction(BaseAction):
 
     def __str__(self) -> str:
         return (
-            f"ProcessAction(name={self.name!r}, func={getattr(self.func, '__name__', repr(self.func))}, "
+            f"ProcessAction(name={self.name!r}, action={getattr(self.action, '__name__', repr(self.action))}, "
             f"args={self.args!r}, kwargs={self.kwargs!r})"
         )

@@ -30,7 +30,7 @@ class BottomBar:
         key_validator: Callable[[str], bool] | None = None,
     ) -> None:
         self.columns = columns
-        self.console = Console()
+        self.console = Console(color_system="auto")
         self._named_items: dict[str, Callable[[], HTML]] = {}
         self._value_getters: dict[str, Callable[[], Any]] = CaseInsensitiveDict()
         self.toggle_keys: list[str] = []

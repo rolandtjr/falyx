@@ -40,7 +40,7 @@ from falyx.retry_utils import enable_retries_recursively
 from falyx.themes.colors import OneColors
 from falyx.utils import _noop, confirm_async, ensure_async, logger
 
-console = Console()
+console = Console(color_system="auto")
 
 
 class Command(BaseModel):

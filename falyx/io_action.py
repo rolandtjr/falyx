@@ -20,7 +20,6 @@ import subprocess
 import sys
 from typing import Any
 
-from rich.console import Console
 from rich.tree import Tree
 
 from falyx.action import BaseAction
@@ -30,8 +29,6 @@ from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
 from falyx.themes.colors import OneColors
 from falyx.utils import logger
-
-console = Console()
 
 
 class BaseIOAction(BaseAction):
@@ -172,22 +169,7 @@ class BaseIOAction(BaseAction):
         if parent:
             parent.add("".join(label))
         else:
-            console.print(Tree("".join(label)))
-
-
-class UppercaseIO(BaseIOAction):
-    def from_input(self, raw: str | bytes) -> str:
-        if not isinstance(raw, (str, bytes)):
-            raise TypeError(
-                f"{self.name} expected str or bytes input, got {type(raw).__name__}"
-            )
-        return raw.strip() if isinstance(raw, str) else raw.decode("utf-8").strip()
-
-    async def _run(self, parsed_input: str, *args, **kwargs) -> str:
-        return parsed_input.upper()
-
-    def to_output(self, data: str) -> str:
-        return data + "\n"
+            self.console.print(Tree("".join(label)))
 
 
 class ShellAction(BaseIOAction):
@@ -247,41 +229,9 @@ class ShellAction(BaseIOAction):
         if parent:
             parent.add("".join(label))
         else:
-            console.print(Tree("".join(label)))
+            self.console.print(Tree("".join(label)))
 
     def __str__(self):
         return (
             f"ShellAction(name={self.name!r}, command_template={self.command_template!r})"
         )
-
-
-class GrepAction(BaseIOAction):
-    def __init__(self, name: str, pattern: str, **kwargs):
-        super().__init__(name=name, **kwargs)
-        self.pattern = pattern
-
-    def from_input(self, raw: str | bytes) -> str:
-        if not isinstance(raw, (str, bytes)):
-            raise TypeError(
-                f"{self.name} expected str or bytes input, got {type(raw).__name__}"
-            )
-        return raw.strip() if isinstance(raw, str) else raw.decode("utf-8").strip()
-
-    async def _run(self, parsed_input: str) -> str:
-        command = ["grep", "-n", self.pattern]
-        process = subprocess.Popen(
-            command,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        stdout, stderr = process.communicate(input=parsed_input)
-        if process.returncode == 1:
-            return ""
-        if process.returncode != 0:
-            raise RuntimeError(stderr.strip())
-        return stdout.strip()
-
-    def to_output(self, result: str) -> str:
-        return result

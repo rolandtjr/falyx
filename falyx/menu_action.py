@@ -45,7 +45,9 @@ class MenuOptionMap(CaseInsensitiveDict):
     RESERVED_KEYS = {"Q", "B"}
 
     def __init__(
-        self, options: dict[str, MenuOption] | None = None, allow_reserved: bool = False
+        self,
+        options: dict[str, MenuOption] | None = None,
+        allow_reserved: bool = False,
     ):
         super().__init__()
         self.allow_reserved = allow_reserved

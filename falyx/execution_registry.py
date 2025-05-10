@@ -15,7 +15,7 @@ from falyx.utils import logger
 class ExecutionRegistry:
     _store_by_name: Dict[str, List[ExecutionContext]] = defaultdict(list)
     _store_all: List[ExecutionContext] = []
-    _console = Console(color_system="truecolor")
+    _console = Console(color_system="auto")
 
     @classmethod
     def record(cls, context: ExecutionContext):
