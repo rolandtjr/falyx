@@ -56,7 +56,7 @@ class HTTPAction(Action):
         data (Any, optional): Raw data or form-encoded body.
         hooks (HookManager, optional): Hook manager for lifecycle events.
         inject_last_result (bool): Enable last_result injection.
-        inject_last_result_as (str): Name of injected key.
+        inject_into (str): Name of injected key.
         retry (bool): Enable retry logic.
         retry_policy (RetryPolicy): Retry settings.
     """
@@ -74,7 +74,7 @@ class HTTPAction(Action):
         data: Any = None,
         hooks=None,
         inject_last_result: bool = False,
-        inject_last_result_as: str = "last_result",
+        inject_into: str = "last_result",
         retry: bool = False,
         retry_policy=None,
     ):
@@ -92,7 +92,7 @@ class HTTPAction(Action):
             kwargs={},
             hooks=hooks,
             inject_last_result=inject_last_result,
-            inject_last_result_as=inject_last_result_as,
+            inject_into=inject_into,
             retry=retry,
             retry_policy=retry_policy,
         )
@@ -138,7 +138,7 @@ class HTTPAction(Action):
             f"\n[dim]URL:[/] {self.url}",
         ]
         if self.inject_last_result:
-            label.append(f"\n[dim]Injects:[/] '{self.inject_last_result_as}'")
+            label.append(f"\n[dim]Injects:[/] '{self.inject_into}'")
         if self.retry_policy and self.retry_policy.enabled:
             label.append(
                 f"\n[dim]↻ Retries:[/] {self.retry_policy.max_retries}x, "

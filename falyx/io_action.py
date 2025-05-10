@@ -83,7 +83,7 @@ class BaseIOAction(BaseAction):
         raise NotImplementedError
 
     async def _resolve_input(self, kwargs: dict[str, Any]) -> str | bytes:
-        last_result = kwargs.pop(self.inject_last_result_as, None)
+        last_result = kwargs.pop(self.inject_into, None)
 
         data = await self._read_stdin()
         if data:
@@ -168,7 +168,7 @@ class BaseIOAction(BaseAction):
     async def preview(self, parent: Tree | None = None):
         label = [f"[{OneColors.GREEN_b}]⚙ IOAction[/] '{self.name}'"]
         if self.inject_last_result:
-            label.append(f" [dim](injects '{self.inject_last_result_as}')[/dim]")
+            label.append(f" [dim](injects '{self.inject_into}')[/dim]")
         if parent:
             parent.add("".join(label))
         else:
@@ -243,7 +243,7 @@ class ShellAction(BaseIOAction):
     async def preview(self, parent: Tree | None = None):
         label = [f"[{OneColors.GREEN_b}]⚙ ShellAction[/] '{self.name}'"]
         if self.inject_last_result:
-            label.append(f" [dim](injects '{self.inject_last_result_as}')[/dim]")
+            label.append(f" [dim](injects '{self.inject_into}')[/dim]")
         if parent:
             parent.add("".join(label))
         else:

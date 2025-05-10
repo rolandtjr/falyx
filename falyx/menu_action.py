@@ -101,7 +101,7 @@ class MenuAction(BaseAction):
         prompt_message: str = "Select > ",
         default_selection: str = "",
         inject_last_result: bool = False,
-        inject_last_result_as: str = "last_result",
+        inject_into: str = "last_result",
         console: Console | None = None,
         prompt_session: PromptSession | None = None,
         never_prompt: bool = False,
@@ -111,7 +111,7 @@ class MenuAction(BaseAction):
         super().__init__(
             name,
             inject_last_result=inject_last_result,
-            inject_last_result_as=inject_last_result_as,
+            inject_into=inject_into,
             never_prompt=never_prompt,
         )
         self.menu_options = menu_options

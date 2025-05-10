@@ -56,7 +56,7 @@ class BaseAction(ABC):
     be run independently or as part of Falyx.
 
     inject_last_result (bool): Whether to inject the previous action's result into kwargs.
-    inject_last_result_as (str): The name of the kwarg key to inject the result as
+    inject_into (str): The name of the kwarg key to inject the result as
                                  (default: 'last_result').
     _requires_injection (bool): Whether the action requires input injection.
     """
@@ -66,7 +66,7 @@ class BaseAction(ABC):
         name: str,
         hooks: HookManager | None = None,
         inject_last_result: bool = False,
-        inject_last_result_as: str = "last_result",
+        inject_into: str = "last_result",
         never_prompt: bool = False,
         logging_hooks: bool = False,
     ) -> None:
@@ -75,7 +75,7 @@ class BaseAction(ABC):
         self.is_retryable: bool = False
         self.shared_context: SharedContext | None = None
         self.inject_last_result: bool = inject_last_result
-        self.inject_last_result_as: str = inject_last_result_as
+        self.inject_into: str = inject_into
         self._never_prompt: bool = never_prompt
         self._requires_injection: bool = False
         self._skip_in_chain: bool = False
@@ -133,7 +133,7 @@ class BaseAction(ABC):
 
     def _maybe_inject_last_result(self, kwargs: dict[str, Any]) -> dict[str, Any]:
         if self.inject_last_result and self.shared_context:
-            key = self.inject_last_result_as
+            key = self.inject_into
             if key in kwargs:
                 logger.warning("[%s] ⚠️ Overriding '%s' with last_result", self.name, key)
             kwargs = dict(kwargs)
@@ -173,7 +173,7 @@ class Action(BaseAction):
         kwargs (dict, optional): Static keyword arguments.
         hooks (HookManager, optional): Hook manager for lifecycle events.
         inject_last_result (bool, optional): Enable last_result injection.
-        inject_last_result_as (str, optional): Name of injected key.
+        inject_into (str, optional): Name of injected key.
         retry (bool, optional): Enable retry logic.
         retry_policy (RetryPolicy, optional): Retry settings.
     """
@@ -187,11 +187,11 @@ class Action(BaseAction):
         kwargs: dict[str, Any] | None = None,
         hooks: HookManager | None = None,
         inject_last_result: bool = False,
-        inject_last_result_as: str = "last_result",
+        inject_into: str = "last_result",
         retry: bool = False,
         retry_policy: RetryPolicy | None = None,
     ) -> None:
-        super().__init__(name, hooks, inject_last_result, inject_last_result_as)
+        super().__init__(name, hooks, inject_last_result, inject_into)
         self.action = action
         self.rollback = rollback
         self.args = args
@@ -257,7 +257,7 @@ class Action(BaseAction):
             if context.result is not None:
                 logger.info("[%s] ✅ Recovered: %s", self.name, self.name)
                 return context.result
-            raise error
+            raise
         finally:
             context.stop_timer()
             await self.hooks.trigger(HookType.AFTER, context)
@@ -267,7 +267,7 @@ class Action(BaseAction):
     async def preview(self, parent: Tree | None = None):
         label = [f"[{OneColors.GREEN_b}]⚙ Action[/] '{self.name}'"]
         if self.inject_last_result:
-            label.append(f" [dim](injects '{self.inject_last_result_as}')[/dim]")
+            label.append(f" [dim](injects '{self.inject_into}')[/dim]")
         if self.retry_policy.enabled:
             label.append(
                 f"\n[dim]↻ Retries:[/] {self.retry_policy.max_retries}x, "
@@ -413,7 +413,7 @@ class ChainedAction(BaseAction, ActionListMixin):
         actions (list): List of actions or literals to execute.
         hooks (HookManager, optional): Hooks for lifecycle events.
         inject_last_result (bool, optional): Whether to inject last results into kwargs by default.
-        inject_last_result_as (str, optional): Key name for injection.
+        inject_into (str, optional): Key name for injection.
         auto_inject (bool, optional): Auto-enable injection for subsequent actions.
         return_list (bool, optional): Whether to return a list of all results. False returns the last result.
     """
@@ -424,11 +424,11 @@ class ChainedAction(BaseAction, ActionListMixin):
         actions: list[BaseAction | Any] | None = None,
         hooks: HookManager | None = None,
         inject_last_result: bool = False,
-        inject_last_result_as: str = "last_result",
+        inject_into: str = "last_result",
         auto_inject: bool = False,
         return_list: bool = False,
     ) -> None:
-        super().__init__(name, hooks, inject_last_result, inject_last_result_as)
+        super().__init__(name, hooks, inject_last_result, inject_into)
         ActionListMixin.__init__(self)
         self.auto_inject = auto_inject
         self.return_list = return_list
@@ -482,9 +482,7 @@ class ChainedAction(BaseAction, ActionListMixin):
                 last_result = shared_context.last_result()
                 try:
                     if self.requires_io_injection() and last_result is not None:
-                        result = await prepared(
-                            **{prepared.inject_last_result_as: last_result}
-                        )
+                        result = await prepared(**{prepared.inject_into: last_result})
                     else:
                         result = await prepared(*args, **updated_kwargs)
                 except Exception as error:
@@ -559,7 +557,7 @@ class ChainedAction(BaseAction, ActionListMixin):
     async def preview(self, parent: Tree | None = None):
         label = [f"[{OneColors.CYAN_b}]⛓ ChainedAction[/] '{self.name}'"]
         if self.inject_last_result:
-            label.append(f" [dim](injects '{self.inject_last_result_as}')[/dim]")
+            label.append(f" [dim](injects '{self.inject_into}')[/dim]")
         tree = parent.add("".join(label)) if parent else Tree("".join(label))
         for action in self.actions:
             await action.preview(parent=tree)
@@ -603,7 +601,7 @@ class ActionGroup(BaseAction, ActionListMixin):
         actions (list): List of actions or literals to execute.
         hooks (HookManager, optional): Hooks for lifecycle events.
         inject_last_result (bool, optional): Whether to inject last results into kwargs by default.
-        inject_last_result_as (str, optional): Key name for injection.
+        inject_into (str, optional): Key name for injection.
     """
 
     def __init__(
@@ -612,9 +610,9 @@ class ActionGroup(BaseAction, ActionListMixin):
         actions: list[BaseAction] | None = None,
         hooks: HookManager | None = None,
         inject_last_result: bool = False,
-        inject_last_result_as: str = "last_result",
+        inject_into: str = "last_result",
     ):
-        super().__init__(name, hooks, inject_last_result, inject_last_result_as)
+        super().__init__(name, hooks, inject_last_result, inject_into)
         ActionListMixin.__init__(self)
         if actions:
             self.set_actions(actions)
@@ -694,7 +692,7 @@ class ActionGroup(BaseAction, ActionListMixin):
     async def preview(self, parent: Tree | None = None):
         label = [f"[{OneColors.MAGENTA_b}]⏩ ActionGroup (parallel)[/] '{self.name}'"]
         if self.inject_last_result:
-            label.append(f" [dim](receives '{self.inject_last_result_as}')[/dim]")
+            label.append(f" [dim](receives '{self.inject_into}')[/dim]")
         tree = parent.add("".join(label)) if parent else Tree("".join(label))
         actions = self.actions.copy()
         random.shuffle(actions)
@@ -726,7 +724,7 @@ class ProcessAction(BaseAction):
         hooks (HookManager, optional): Hook manager for lifecycle events.
         executor (ProcessPoolExecutor, optional): Custom executor if desired.
         inject_last_result (bool, optional): Inject last result into the function.
-        inject_last_result_as (str, optional): Name of the injected key.
+        inject_into (str, optional): Name of the injected key.
     """
 
     def __init__(
@@ -738,9 +736,9 @@ class ProcessAction(BaseAction):
         hooks: HookManager | None = None,
         executor: ProcessPoolExecutor | None = None,
         inject_last_result: bool = False,
-        inject_last_result_as: str = "last_result",
+        inject_into: str = "last_result",
     ):
-        super().__init__(name, hooks, inject_last_result, inject_last_result_as)
+        super().__init__(name, hooks, inject_last_result, inject_into)
         self.func = func
         self.args = args
         self.kwargs = kwargs or {}
@@ -800,7 +798,7 @@ class ProcessAction(BaseAction):
             f"[{OneColors.DARK_YELLOW_b}]🧠 ProcessAction (new process)[/] '{self.name}'"
         ]
         if self.inject_last_result:
-            label.append(f" [dim](injects '{self.inject_last_result_as}')[/dim]")
+            label.append(f" [dim](injects '{self.inject_into}')[/dim]")
         if parent:
             parent.add("".join(label))
         else:

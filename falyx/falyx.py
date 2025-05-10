@@ -24,6 +24,7 @@ import logging
 import sys
 from argparse import Namespace
 from difflib import get_close_matches
+from enum import Enum
 from functools import cached_property
 from typing import Any, Callable
 
@@ -57,6 +58,13 @@ from falyx.signals import BackSignal, QuitSignal
 from falyx.themes.colors import OneColors, get_nord_theme
 from falyx.utils import CaseInsensitiveDict, chunks, get_program_invocation, logger
 from falyx.version import __version__
+
+
+class FalyxMode(str, Enum):
+    MENU = "menu"
+    RUN = "run"
+    PREVIEW = "preview"
+    RUN_ALL = "run-all"
 
 
 class Falyx:
@@ -149,6 +157,7 @@ class Falyx:
         self.custom_table: Callable[["Falyx"], Table] | Table | None = custom_table
         self.validate_options(cli_args, options)
         self._prompt_session: PromptSession | None = None
+        self.mode = FalyxMode.MENU
 
     def validate_options(
         self,
@@ -272,6 +281,11 @@ class Falyx:
             )
 
         self.console.print(table, justify="center")
+        if self.mode == FalyxMode.MENU:
+            self.console.print(
+                f"📦 Tip: Type '[{OneColors.LIGHT_YELLOW}]?[KEY][/]' to preview a command before running it.\n",
+                justify="center",
+            )
 
     def _get_help_command(self) -> Command:
         """Returns the help command for the menu."""
@@ -329,7 +343,8 @@ class Falyx:
         error_message = " ".join(message_lines)
 
         def validator(text):
-            return True if self.get_command(text, from_validate=True) else False
+            _, choice = self.get_command(text, from_validate=True)
+            return True if choice else False
 
         return Validator.from_callable(
             validator,
@@ -668,17 +683,25 @@ class Falyx:
         else:
             return self.build_default_table()
 
-    def get_command(self, choice: str, from_validate=False) -> Command | None:
+    def parse_preview_command(self, input_str: str) -> tuple[bool, str]:
+        if input_str.startswith("?"):
+            return True, input_str[1:].strip()
+        return False, input_str.strip()
+
+    def get_command(
+        self, choice: str, from_validate=False
+    ) -> tuple[bool, Command | None]:
         """Returns the selected command based on user input. Supports keys, aliases, and abbreviations."""
+        is_preview, choice = self.parse_preview_command(choice)
         choice = choice.upper()
         name_map = self._name_map
 
         if choice in name_map:
-            return name_map[choice]
+            return is_preview, name_map[choice]
 
         prefix_matches = [cmd for key, cmd in name_map.items() if key.startswith(choice)]
         if len(prefix_matches) == 1:
-            return prefix_matches[0]
+            return is_preview, prefix_matches[0]
 
         fuzzy_matches = get_close_matches(choice, list(name_map.keys()), n=3, cutoff=0.7)
         if fuzzy_matches:
@@ -694,7 +717,7 @@ class Falyx:
                 self.console.print(
                     f"[{OneColors.LIGHT_YELLOW}]⚠️ Unknown command '{choice}'[/]"
                 )
-        return None
+        return is_preview, None
 
     def _create_context(self, selected_command: Command) -> ExecutionContext:
         """Creates a context dictionary for the selected command."""
@@ -718,9 +741,14 @@ class Falyx:
     async def process_command(self) -> bool:
         """Processes the action of the selected command."""
         choice = await self.prompt_session.prompt_async()
-        selected_command = self.get_command(choice)
+        is_preview, selected_command = self.get_command(choice)
         if not selected_command:
             logger.info(f"Invalid command '{choice}'.")
+            return True
+
+        if is_preview:
+            logger.info(f"Preview command '{selected_command.key}' selected.")
+            await selected_command.preview()
             return True
 
         if selected_command.requires_input:
@@ -759,7 +787,7 @@ class Falyx:
     async def run_key(self, command_key: str, return_context: bool = False) -> Any:
         """Run a command by key without displaying the menu (non-interactive mode)."""
         self.debug_hooks()
-        selected_command = self.get_command(command_key)
+        _, selected_command = self.get_command(command_key)
         self.last_run_command = selected_command
 
         if not selected_command:
@@ -899,7 +927,8 @@ class Falyx:
             sys.exit(0)
 
         if self.cli_args.command == "preview":
-            command = self.get_command(self.cli_args.name)
+            self.mode = FalyxMode.PREVIEW
+            _, command = self.get_command(self.cli_args.name)
             if not command:
                 self.console.print(
                     f"[{OneColors.DARK_RED}]❌ Command '{self.cli_args.name}' not found.[/]"
@@ -912,7 +941,8 @@ class Falyx:
             sys.exit(0)
 
         if self.cli_args.command == "run":
-            command = self.get_command(self.cli_args.name)
+            self.mode = FalyxMode.RUN
+            _, command = self.get_command(self.cli_args.name)
             if not command:
                 self.console.print(
                     f"[{OneColors.DARK_RED}]❌ Command '{self.cli_args.name}' not found.[/]"
@@ -927,6 +957,7 @@ class Falyx:
             sys.exit(0)
 
         if self.cli_args.command == "run-all":
+            self.mode = FalyxMode.RUN_ALL
             matching = [
                 cmd
                 for cmd in self.commands.values()

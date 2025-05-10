@@ -33,7 +33,7 @@ class SelectionAction(BaseAction):
         prompt_message: str = "Select > ",
         default_selection: str = "",
         inject_last_result: bool = False,
-        inject_last_result_as: str = "last_result",
+        inject_into: str = "last_result",
         return_key: bool = False,
         console: Console | None = None,
         prompt_session: PromptSession | None = None,
@@ -43,7 +43,7 @@ class SelectionAction(BaseAction):
         super().__init__(
             name,
             inject_last_result=inject_last_result,
-            inject_last_result_as=inject_last_result_as,
+            inject_into=inject_into,
             never_prompt=never_prompt,
         )
         self.selections: list[str] | CaseInsensitiveDict = selections
