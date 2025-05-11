@@ -28,7 +28,7 @@ class SelectionAction(BaseAction):
         selections: list[str] | set[str] | tuple[str, ...] | dict[str, SelectionOption],
         *,
         title: str = "Select an option",
-        columns: int = 2,
+        columns: int = 5,
         prompt_message: str = "Select > ",
         default_selection: str = "",
         inject_last_result: bool = False,
@@ -186,7 +186,7 @@ class SelectionAction(BaseAction):
             if len(self.selections) > 10:
                 sub.add(f"[dim]... ({len(self.selections) - 10} more)[/]")
         else:
-            tree.add("[bold red]Invalid selections type[/]")
+            tree.add(f"[{OneColors.DARK_RED_b}]Invalid selections type[/]")
             return
 
         tree.add(f"[dim]Default:[/] '{self.default_selection or self.last_result}'")

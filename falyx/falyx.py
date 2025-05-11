@@ -291,7 +291,7 @@ class Falyx:
         """Returns the help command for the menu."""
         return Command(
             key="H",
-            aliases=["HELP"],
+            aliases=["HELP", "?"],
             description="Help",
             action=self._show_help,
             style=OneColors.LIGHT_YELLOW,
@@ -560,10 +560,24 @@ class Falyx:
         self.add_command(key, description, submenu.menu, style=style)
         submenu.update_exit_command(key="B", description="Back", aliases=["BACK"])
 
-    def add_commands(self, commands: list[dict]) -> None:
-        """Adds multiple commands to the menu."""
+    def add_commands(self, commands: list[Command] | list[dict]) -> None:
+        """Adds a list of Command instances or config dicts."""
         for command in commands:
-            self.add_command(**command)
+            if isinstance(command, dict):
+                self.add_command(**command)
+            elif isinstance(command, Command):
+                self.add_command_from_command(command)
+            else:
+                raise FalyxError(
+                    "Command must be a dictionary or an instance of Command."
+                )
+
+    def add_command_from_command(self, command: Command) -> None:
+        """Adds a command to the menu from an existing Command object."""
+        if not isinstance(command, Command):
+            raise FalyxError("command must be an instance of Command.")
+        self._validate_command_key(command.key)
+        self.commands[command.key] = command
 
     def add_command(
         self,
@@ -696,7 +710,10 @@ class Falyx:
     ) -> tuple[bool, Command | None]:
         """Returns the selected command based on user input. Supports keys, aliases, and abbreviations."""
         is_preview, choice = self.parse_preview_command(choice)
-        if is_preview and not choice:
+        if is_preview and not choice and self.help_command:
+            is_preview = False
+            choice = "?"
+        elif is_preview and not choice:
             if not from_validate:
                 self.console.print(
                     f"[{OneColors.DARK_RED}]❌ You must enter a command for preview mode.[/]"
@@ -891,28 +908,29 @@ class Falyx:
         self.debug_hooks()
         if self.welcome_message:
             self.print_message(self.welcome_message)
-        while True:
-            if callable(self.render_menu):
-                self.render_menu(self)
-            else:
-                self.console.print(self.table, justify="center")
-            try:
-                task = asyncio.create_task(self.process_command())
-                should_continue = await task
-                if not should_continue:
+        try:
+            while True:
+                if callable(self.render_menu):
+                    self.render_menu(self)
+                else:
+                    self.console.print(self.table, justify="center")
+                try:
+                    task = asyncio.create_task(self.process_command())
+                    should_continue = await task
+                    if not should_continue:
+                        break
+                except (EOFError, KeyboardInterrupt):
+                    logger.info("EOF or KeyboardInterrupt. Exiting menu.")
                     break
-            except (EOFError, KeyboardInterrupt):
-                logger.info("EOF or KeyboardInterrupt. Exiting menu.")
-                break
-            except QuitSignal:
-                logger.info("QuitSignal received. Exiting menu.")
-                break
-            except BackSignal:
-                logger.info("BackSignal received.")
-            finally:
-                logger.info(f"Exiting menu: {self.get_title()}")
-                if self.exit_message:
-                    self.print_message(self.exit_message)
+                except QuitSignal:
+                    logger.info("QuitSignal received. Exiting menu.")
+                    break
+                except BackSignal:
+                    logger.info("BackSignal received.")
+        finally:
+            logger.info(f"Exiting menu: {self.get_title()}")
+            if self.exit_message:
+                self.print_message(self.exit_message)
 
     async def run(self) -> None:
         """Run Falyx CLI with structured subcommands."""

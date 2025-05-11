@@ -1,3 +1,4 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 from __future__ import annotations
 
 import csv
@@ -33,7 +34,29 @@ class FileReturnType(Enum):
     TOML = "toml"
     YAML = "yaml"
     CSV = "csv"
+    TSV = "tsv"
     XML = "xml"
+
+    @classmethod
+    def _get_alias(cls, value: str) -> str:
+        aliases = {
+            "yml": "yaml",
+            "txt": "text",
+            "file": "path",
+            "filepath": "path",
+        }
+        return aliases.get(value, value)
+
+    @classmethod
+    def _missing_(cls, value: object) -> FileReturnType:
+        if isinstance(value, str):
+            normalized = value.lower()
+            alias = cls._get_alias(normalized)
+            for member in cls:
+                if member.value == alias:
+                    return member
+        valid = ", ".join(member.value for member in cls)
+        raise ValueError(f"Invalid FileReturnType: '{value}'. Must be one of: {valid}")
 
 
 class SelectFileAction(BaseAction):
@@ -42,7 +65,7 @@ class SelectFileAction(BaseAction):
     - file content (as text, JSON, CSV, etc.)
     - or the file path itself.
 
-    Supported formats: text, json, yaml, toml, csv, xml.
+    Supported formats: text, json, yaml, toml, csv, tsv, xml.
 
     Useful for:
     - dynamically loading config files
@@ -72,7 +95,7 @@ class SelectFileAction(BaseAction):
         prompt_message: str = "Choose > ",
         style: str = OneColors.WHITE,
         suffix_filter: str | None = None,
-        return_type: FileReturnType = FileReturnType.PATH,
+        return_type: FileReturnType | str = FileReturnType.PATH,
         console: Console | None = None,
         prompt_session: PromptSession | None = None,
     ):
@@ -83,9 +106,14 @@ class SelectFileAction(BaseAction):
         self.prompt_message = prompt_message
         self.suffix_filter = suffix_filter
         self.style = style
-        self.return_type = return_type
         self.console = console or Console(color_system="auto")
         self.prompt_session = prompt_session or PromptSession()
+        self.return_type = self._coerce_return_type(return_type)
+
+    def _coerce_return_type(self, return_type: FileReturnType | str) -> FileReturnType:
+        if isinstance(return_type, FileReturnType):
+            return return_type
+        return FileReturnType(return_type)
 
     def get_options(self, files: list[Path]) -> dict[str, SelectionOption]:
         value: Any
@@ -105,6 +133,10 @@ class SelectFileAction(BaseAction):
                 elif self.return_type == FileReturnType.CSV:
                     with open(file, newline="", encoding="UTF-8") as csvfile:
                         reader = csv.reader(csvfile)
+                        value = list(reader)
+                elif self.return_type == FileReturnType.TSV:
+                    with open(file, newline="", encoding="UTF-8") as tsvfile:
+                        reader = csv.reader(tsvfile, delimiter="\t")
                         value = list(reader)
                 elif self.return_type == FileReturnType.XML:
                     tree = ET.parse(file, parser=ET.XMLParser(encoding="UTF-8"))
@@ -183,7 +215,7 @@ class SelectFileAction(BaseAction):
             if len(files) > 10:
                 file_list.add(f"[dim]... ({len(files) - 10} more)[/]")
         except Exception as error:
-            tree.add(f"[bold red]⚠️ Error scanning directory: {error}[/]")
+            tree.add(f"[{OneColors.DARK_RED_b}]⚠️ Error scanning directory: {error}[/]")
 
         if not parent:
             self.console.print(tree)

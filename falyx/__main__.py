@@ -6,6 +6,7 @@ Licensed under the MIT License. See LICENSE file for details.
 """
 
 import asyncio
+import os
 import sys
 from argparse import Namespace
 from pathlib import Path
@@ -14,7 +15,6 @@ from typing import Any
 from falyx.config import loader
 from falyx.falyx import Falyx
 from falyx.parsers import FalyxParsers, get_arg_parsers
-from falyx.themes.colors import OneColors
 
 
 def find_falyx_config() -> Path | None:
@@ -23,6 +23,7 @@ def find_falyx_config() -> Path | None:
         Path.cwd() / "falyx.toml",
         Path.cwd() / ".falyx.yaml",
         Path.cwd() / ".falyx.toml",
+        Path(os.environ.get("FALYX_CONFIG", "falyx.yaml")),
         Path.home() / ".config" / "falyx" / "falyx.yaml",
         Path.home() / ".config" / "falyx" / "falyx.toml",
         Path.home() / ".falyx.yaml",
@@ -68,13 +69,7 @@ def run(args: Namespace) -> Any:
         print("No Falyx config file found. Exiting.")
         return None
 
-    flx = Falyx(
-        title="🛠️ Config-Driven CLI",
-        cli_args=args,
-        columns=4,
-        prompt=[(OneColors.BLUE_b, "FALYX > ")],
-    )
-    flx.add_commands(loader(bootstrap_path))
+    flx: Falyx = loader(bootstrap_path)
     return asyncio.run(flx.run())
 
 

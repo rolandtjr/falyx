@@ -1,18 +1,21 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """config.py
 Configuration loader for Falyx CLI commands."""
+from __future__ import annotations
 
 import importlib
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import toml
 import yaml
+from pydantic import BaseModel, Field, field_validator, model_validator
 from rich.console import Console
 
 from falyx.action import Action, BaseAction
 from falyx.command import Command
+from falyx.falyx import Falyx
 from falyx.retry import RetryPolicy
 from falyx.themes.colors import OneColors
 from falyx.utils import logger
@@ -27,8 +30,8 @@ def wrap_if_needed(obj: Any, name=None) -> BaseAction | Command:
         return Action(name=name or getattr(obj, "__name__", "unnamed"), action=obj)
     else:
         raise TypeError(
-            f"Cannot wrap object of type '{type(obj).__name__}' as a BaseAction or Command. "
-            "It must be a callable or an instance of BaseAction."
+            f"Cannot wrap object of type '{type(obj).__name__}'. "
+            "Expected a function or BaseAction."
         )
 
 
@@ -60,7 +63,101 @@ def import_action(dotted_path: str) -> Any:
     return action
 
 
-def loader(file_path: Path | str) -> list[dict[str, Any]]:
+class RawCommand(BaseModel):
+    key: str
+    description: str
+    action: str
+
+    args: tuple[Any, ...] = ()
+    kwargs: dict[str, Any] = {}
+    aliases: list[str] = []
+    tags: list[str] = []
+    style: str = "white"
+
+    confirm: bool = False
+    confirm_message: str = "Are you sure?"
+    preview_before_confirm: bool = True
+
+    spinner: bool = False
+    spinner_message: str = "Processing..."
+    spinner_type: str = "dots"
+    spinner_style: str = "cyan"
+    spinner_kwargs: dict[str, Any] = {}
+
+    before_hooks: list[Callable] = []
+    success_hooks: list[Callable] = []
+    error_hooks: list[Callable] = []
+    after_hooks: list[Callable] = []
+    teardown_hooks: list[Callable] = []
+
+    logging_hooks: bool = False
+    retry: bool = False
+    retry_all: bool = False
+    retry_policy: RetryPolicy = Field(default_factory=RetryPolicy)
+    requires_input: bool | None = None
+    hidden: bool = False
+    help_text: str = ""
+
+    @field_validator("retry_policy")
+    @classmethod
+    def validate_retry_policy(cls, value: dict | RetryPolicy) -> RetryPolicy:
+        if isinstance(value, RetryPolicy):
+            return value
+        if not isinstance(value, dict):
+            raise ValueError("retry_policy must be a dictionary.")
+        return RetryPolicy(**value)
+
+
+def convert_commands(raw_commands: list[dict[str, Any]]) -> list[Command]:
+    commands = []
+    for entry in raw_commands:
+        raw_command = RawCommand(**entry)
+        commands.append(
+            Command.model_validate(
+                {
+                    **raw_command.model_dump(exclude={"action"}),
+                    "action": wrap_if_needed(
+                        import_action(raw_command.action), name=raw_command.description
+                    ),
+                }
+            )
+        )
+    return commands
+
+
+class FalyxConfig(BaseModel):
+    title: str = "Falyx CLI"
+    prompt: str | list[tuple[str, str]] | list[list[str]] = [
+        (OneColors.BLUE_b, "FALYX > ")
+    ]
+    columns: int = 4
+    welcome_message: str = ""
+    exit_message: str = ""
+    commands: list[Command] | list[dict] = []
+
+    @model_validator(mode="after")
+    def validate_prompt_format(self) -> FalyxConfig:
+        if isinstance(self.prompt, list):
+            for pair in self.prompt:
+                if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                    raise ValueError(
+                        "Prompt list must contain 2-element (style, text) pairs"
+                    )
+        return self
+
+    def to_falyx(self) -> Falyx:
+        flx = Falyx(
+            title=self.title,
+            prompt=self.prompt,
+            columns=self.columns,
+            welcome_message=self.welcome_message,
+            exit_message=self.exit_message,
+        )
+        flx.add_commands(self.commands)
+        return flx
+
+
+def loader(file_path: Path | str) -> Falyx:
     """
     Load command definitions from a YAML or TOML file.
 
@@ -73,15 +170,13 @@ def loader(file_path: Path | str) -> list[dict[str, Any]]:
         file_path (str): Path to the config file (YAML or TOML).
 
     Returns:
-        list[dict[str, Any]]: A list of command configuration dictionaries.
+        Falyx: An instance of the Falyx CLI with loaded commands.
 
     Raises:
         ValueError: If the file format is unsupported or file cannot be parsed.
     """
-    if isinstance(file_path, str):
+    if isinstance(file_path, (str, Path)):
         path = Path(file_path)
-    elif isinstance(file_path, Path):
-        path = file_path
     else:
         raise TypeError("file_path must be a string or Path object.")
 
@@ -97,48 +192,23 @@ def loader(file_path: Path | str) -> list[dict[str, Any]]:
         else:
             raise ValueError(f"Unsupported config format: {suffix}")
 
-    if not isinstance(raw_config, list):
-        raise ValueError("Configuration file must contain a list of command definitions.")
+    if not isinstance(raw_config, dict):
+        raise ValueError(
+            "Configuration file must contain a dictionary with a list of commands.\n"
+            "Example:\n"
+            "title: 'My CLI'\n"
+            "commands:\n"
+            "  - key: 'a'\n"
+            "    description: 'Example command'\n"
+            "    action: 'my_module.my_function'"
+        )
 
-    required = ["key", "description", "action"]
-    commands = []
-    for entry in raw_config:
-        for field in required:
-            if field not in entry:
-                raise ValueError(f"Missing '{field}' in command entry: {entry}")
-
-        command_dict = {
-            "key": entry["key"],
-            "description": entry["description"],
-            "action": wrap_if_needed(
-                import_action(entry["action"]), name=entry["description"]
-            ),
-            "args": tuple(entry.get("args", ())),
-            "kwargs": entry.get("kwargs", {}),
-            "hidden": entry.get("hidden", False),
-            "aliases": entry.get("aliases", []),
-            "help_text": entry.get("help_text", ""),
-            "style": entry.get("style", "white"),
-            "confirm": entry.get("confirm", False),
-            "confirm_message": entry.get("confirm_message", "Are you sure?"),
-            "preview_before_confirm": entry.get("preview_before_confirm", True),
-            "spinner": entry.get("spinner", False),
-            "spinner_message": entry.get("spinner_message", "Processing..."),
-            "spinner_type": entry.get("spinner_type", "dots"),
-            "spinner_style": entry.get("spinner_style", "cyan"),
-            "spinner_kwargs": entry.get("spinner_kwargs", {}),
-            "before_hooks": entry.get("before_hooks", []),
-            "success_hooks": entry.get("success_hooks", []),
-            "error_hooks": entry.get("error_hooks", []),
-            "after_hooks": entry.get("after_hooks", []),
-            "teardown_hooks": entry.get("teardown_hooks", []),
-            "retry": entry.get("retry", False),
-            "retry_all": entry.get("retry_all", False),
-            "retry_policy": RetryPolicy(**entry.get("retry_policy", {})),
-            "tags": entry.get("tags", []),
-            "logging_hooks": entry.get("logging_hooks", False),
-            "requires_input": entry.get("requires_input", None),
-        }
-        commands.append(command_dict)
-
-    return commands
+    commands = convert_commands(raw_config["commands"])
+    return FalyxConfig(
+        title=raw_config.get("title", f"[{OneColors.BLUE_b}]Falyx CLI"),
+        prompt=raw_config.get("prompt", [(OneColors.BLUE_b, "FALYX > ")]),
+        columns=raw_config.get("columns", 4),
+        welcome_message=raw_config.get("welcome_message", ""),
+        exit_message=raw_config.get("exit_message", ""),
+        commands=commands,
+    ).to_falyx()

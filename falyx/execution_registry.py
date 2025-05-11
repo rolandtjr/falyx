@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.table import Table
 
 from falyx.context import ExecutionContext
+from falyx.themes.colors import OneColors
 from falyx.utils import logger
 
 
@@ -66,10 +67,10 @@ class ExecutionRegistry:
             duration = f"{ctx.duration:.3f}s" if ctx.duration else "n/a"
 
             if ctx.exception:
-                status = "[bold red]❌ Error"
+                status = f"[{OneColors.DARK_RED}]❌ Error"
                 result = repr(ctx.exception)
             else:
-                status = "[green]✅ Success"
+                status = f"[{OneColors.GREEN}]✅ Success"
                 result = repr(ctx.result)
                 if len(result) > 1000:
                     result = f"{result[:1000]}..."

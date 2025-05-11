@@ -216,7 +216,7 @@ async def prompt_for_index(
     console = console or Console(color_system="auto")
 
     if show_table:
-        console.print(table)
+        console.print(table, justify="center")
 
     selection = await prompt_session.prompt_async(
         message=prompt_message,
@@ -318,7 +318,7 @@ async def select_key_from_dict(
     prompt_session = prompt_session or PromptSession()
     console = console or Console(color_system="auto")
 
-    console.print(table)
+    console.print(table, justify="center")
 
     return await prompt_for_selection(
         selections.keys(),
@@ -343,7 +343,7 @@ async def select_value_from_dict(
     prompt_session = prompt_session or PromptSession()
     console = console or Console(color_system="auto")
 
-    console.print(table)
+    console.print(table, justify="center")
 
     selection_key = await prompt_for_selection(
         selections.keys(),

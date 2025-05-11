@@ -4,27 +4,85 @@ from pathlib import Path
 from rich.console import Console
 
 TEMPLATE_TASKS = """\
-async def build():
-    print("🔨 Building project...")
-    return "Build complete!"
+# This file is used by falyx.yaml to define CLI actions.
+# You can run: falyx run [key] or falyx list to see available commands.
 
-async def test():
-    print("🧪 Running tests...")
-    return "Tests complete!"
+import asyncio
+import json
+
+from falyx.action import Action, ChainedAction
+from falyx.io_action import ShellAction
+from falyx.selection_action import SelectionAction
+
+
+post_ids = ["1", "2", "3", "4", "5"]
+
+pick_post = SelectionAction(
+    name="Pick Post ID",
+    selections=post_ids,
+    title="Choose a Post ID",
+    prompt_message="Select a post > ",
+)
+
+fetch_post = ShellAction(
+    name="Fetch Post via curl",
+    command_template="curl https://jsonplaceholder.typicode.com/posts/{}",
+)
+
+async def get_post_title(last_result):
+    return json.loads(last_result).get("title", "No title found")
+
+post_flow = ChainedAction(
+    name="Fetch and Parse Post",
+    actions=[pick_post, fetch_post, get_post_title],
+    auto_inject=True,
+)
+
+async def hello():
+    print("👋 Hello from Falyx!")
+    return "Hello Complete!"
+
+async def some_work():
+    await asyncio.sleep(2)
+    print("Work Finished!")
+    return "Work Complete!"
+
+work_action = Action(
+    name="Work Action",
+    action=some_work,
+)
 """
 
 TEMPLATE_CONFIG = """\
-- key: B
-  description: Build the project
-  action: tasks.build
-  aliases: [build]
-  spinner: true
+# falyx.yaml — Config-driven CLI definition
+# Define your commands here and point to Python callables in tasks.py
+title: Sample CLI Project
+prompt:
+  - ["#61AFEF bold", "FALYX > "]
+columns: 3
+welcome_message: "🚀 Welcome to your new CLI project!"
+exit_message: "👋 See you next time!"
+commands:
+  - key: S
+    description: Say Hello
+    action: tasks.hello
+    aliases: [hi, hello]
+    tags: [example]
 
-- key: T
-  description: Run tests
-  action: tasks.test
-  aliases: [test]
-  spinner: true
+  - key: P
+    description: Get Post Title
+    action: tasks.post_flow
+    aliases: [submit]
+    preview_before_confirm: true
+    confirm: true
+    tags: [demo, network]
+
+  - key: G
+    description: Do Some Work
+    action: tasks.work_action
+    aliases: [work]
+    spinner: true
+    spinner_message: "Working..."
 """
 
 GLOBAL_TEMPLATE_TASKS = """\
@@ -33,10 +91,12 @@ async def cleanup():
 """
 
 GLOBAL_CONFIG = """\
-- key: C
-  description: Cleanup temp files
-  action: tasks.cleanup
-  aliases: [clean, cleanup]
+title: Global Falyx Config
+commands:
+  - key: C
+    description: Cleanup temp files
+    action: tasks.cleanup
+    aliases: [clean, cleanup]
 """
 
 console = Console(color_system="auto")
@@ -56,7 +116,7 @@ def init_project(name: str = ".") -> None:
     tasks_path.write_text(TEMPLATE_TASKS)
     config_path.write_text(TEMPLATE_CONFIG)
 
-    print(f"✅ Initialized Falyx project in {target}")
+    console.print(f"✅ Initialized Falyx project in {target}")
 
 
 def init_global() -> None:
