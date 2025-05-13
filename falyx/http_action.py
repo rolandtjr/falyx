@@ -16,8 +16,8 @@ from rich.tree import Tree
 from falyx.action import Action
 from falyx.context import ExecutionContext, SharedContext
 from falyx.hook_manager import HookManager, HookType
+from falyx.logger import logger
 from falyx.themes.colors import OneColors
-from falyx.utils import logger
 
 
 async def close_shared_http_session(context: ExecutionContext) -> None:
@@ -35,9 +35,9 @@ class HTTPAction(Action):
     """
     An Action for executing HTTP requests using aiohttp with shared session reuse.
 
-    This action integrates seamlessly into Falyx pipelines, with automatic session management,
-    result injection, and lifecycle hook support. It is ideal for CLI-driven API workflows
-    where you need to call remote services and process their responses.
+    This action integrates seamlessly into Falyx pipelines, with automatic session
+    management, result injection, and lifecycle hook support. It is ideal for CLI-driven
+    API workflows where you need to call remote services and process their responses.
 
     Features:
     - Uses aiohttp for asynchronous HTTP requests
@@ -97,7 +97,7 @@ class HTTPAction(Action):
             retry_policy=retry_policy,
         )
 
-    async def _request(self, *args, **kwargs) -> dict[str, Any]:
+    async def _request(self, *_, **__) -> dict[str, Any]:
         if self.shared_context:
             context: SharedContext = self.shared_context
             session = context.get("http_session")
@@ -153,6 +153,7 @@ class HTTPAction(Action):
     def __str__(self):
         return (
             f"HTTPAction(name={self.name!r}, method={self.method!r}, url={self.url!r}, "
-            f"headers={self.headers!r}, params={self.params!r}, json={self.json!r}, data={self.data!r}, "
-            f"retry={self.retry_policy.enabled}, inject_last_result={self.inject_last_result})"
+            f"headers={self.headers!r}, params={self.params!r}, json={self.json!r}, "
+            f"data={self.data!r}, retry={self.retry_policy.enabled}, "
+            f"inject_last_result={self.inject_last_result})"
         )

@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Awaitable, Callable, Dict, List, Optional, Union
 
 from falyx.context import ExecutionContext
-from falyx.utils import logger
+from falyx.logger import logger
 
 Hook = Union[
     Callable[[ExecutionContext], None], Callable[[ExecutionContext], Awaitable[None]]
@@ -34,6 +34,8 @@ class HookType(Enum):
 
 
 class HookManager:
+    """HookManager"""
+
     def __init__(self) -> None:
         self._hooks: Dict[HookType, List[Hook]] = {
             hook_type: [] for hook_type in HookType
@@ -62,8 +64,11 @@ class HookManager:
                     hook(context)
             except Exception as hook_error:
                 logger.warning(
-                    f"⚠️ Hook '{hook.__name__}' raised an exception during '{hook_type}'"
-                    f" for '{context.name}': {hook_error}"
+                    "⚠️ Hook '%s' raised an exception during '%s' for '%s': %s",
+                    hook.__name__,
+                    hook_type,
+                    context.name,
+                    hook_error,
                 )
 
                 if hook_type == HookType.ON_ERROR:
@@ -71,3 +76,15 @@ class HookManager:
                         context.exception, Exception
                     ), "Context exception should be set for ON_ERROR hook"
                     raise context.exception from hook_error
+
+    def __str__(self) -> str:
+        """Return a formatted string of registered hooks grouped by hook type."""
+
+        def format_hook_list(hooks: list[Hook]) -> str:
+            return ", ".join(h.__name__ for h in hooks) if hooks else "—"
+
+        lines = ["<HookManager>"]
+        for hook_type in HookType:
+            hook_list = self._hooks.get(hook_type, [])
+            lines.append(f"  {hook_type.value}: {format_hook_list(hook_list)}")
+        return "\n".join(lines)

@@ -10,6 +10,7 @@ from falyx.action import BaseAction
 from falyx.context import ExecutionContext
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookType
+from falyx.logger import logger
 from falyx.selection import (
     SelectionOption,
     prompt_for_index,
@@ -18,10 +19,18 @@ from falyx.selection import (
     render_selection_indexed_table,
 )
 from falyx.themes.colors import OneColors
-from falyx.utils import CaseInsensitiveDict, logger
+from falyx.utils import CaseInsensitiveDict
 
 
 class SelectionAction(BaseAction):
+    """
+    A selection action that prompts the user to select an option from a list or
+    dictionary. The selected option is then returned as the result of the action.
+
+    If return_key is True, the key of the selected option is returned instead of
+    the value.
+    """
+
     def __init__(
         self,
         name: str,
@@ -45,7 +54,8 @@ class SelectionAction(BaseAction):
             inject_into=inject_into,
             never_prompt=never_prompt,
         )
-        self.selections: list[str] | CaseInsensitiveDict = selections
+        # Setter normalizes to correct type, mypy can't infer that
+        self.selections: list[str] | CaseInsensitiveDict = selections  # type: ignore[assignment]
         self.return_key = return_key
         self.title = title
         self.columns = columns
@@ -71,7 +81,8 @@ class SelectionAction(BaseAction):
             self._selections = cid
         else:
             raise TypeError(
-                f"'selections' must be a list[str] or dict[str, SelectionOption], got {type(value).__name__}"
+                "'selections' must be a list[str] or dict[str, SelectionOption], "
+                f"got {type(value).__name__}"
             )
 
     async def _run(self, *args, **kwargs) -> Any:
@@ -108,7 +119,8 @@ class SelectionAction(BaseAction):
 
         if self.never_prompt and not effective_default:
             raise ValueError(
-                f"[{self.name}] 'never_prompt' is True but no valid default_selection was provided."
+                f"[{self.name}] 'never_prompt' is True but no valid default_selection "
+                "was provided."
             )
 
         context.start_timer()
@@ -152,7 +164,8 @@ class SelectionAction(BaseAction):
                 result = key if self.return_key else self.selections[key].value
             else:
                 raise TypeError(
-                    f"'selections' must be a list[str] or dict[str, tuple[str, Any]], got {type(self.selections).__name__}"
+                    "'selections' must be a list[str] or dict[str, tuple[str, Any]], "
+                    f"got {type(self.selections).__name__}"
                 )
             context.result = result
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
@@ -205,5 +218,6 @@ class SelectionAction(BaseAction):
         return (
             f"SelectionAction(name={self.name!r}, type={selection_type}, "
             f"default_selection={self.default_selection!r}, "
-            f"return_key={self.return_key}, prompt={'off' if self.never_prompt else 'on'})"
+            f"return_key={self.return_key}, "
+            f"prompt={'off' if self.never_prompt else 'on'})"
         )

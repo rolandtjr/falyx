@@ -16,6 +16,8 @@ from falyx.validators import int_range_validator, key_validator
 
 @dataclass
 class SelectionOption:
+    """Represents a single selection option with a description and a value."""
+
     description: str
     value: Any
     style: str = OneColors.WHITE
@@ -26,7 +28,8 @@ class SelectionOption:
 
     def render(self, key: str) -> str:
         """Render the selection option for display."""
-        return f"[{OneColors.WHITE}][{key}][/] [{self.style}]{self.description}[/]"
+        key = escape(f"[{key}]")
+        return f"[{OneColors.WHITE}]{key}[/] [{self.style}]{self.description}[/]"
 
 
 def render_table_base(
@@ -194,7 +197,8 @@ def render_selection_dict_table(
         row = []
         for key, option in chunk:
             row.append(
-                f"[{OneColors.WHITE}][{key.upper()}] [{option.style}]{option.description}[/]"
+                f"[{OneColors.WHITE}][{key.upper()}] "
+                f"[{option.style}]{option.description}[/]"
             )
         table.add_row(*row)
 

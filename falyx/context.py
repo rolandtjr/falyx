@@ -29,10 +29,10 @@ class ExecutionContext(BaseModel):
     """
     Represents the runtime metadata and state for a single action execution.
 
-    The `ExecutionContext` tracks arguments, results, exceptions, timing, and additional
-    metadata for each invocation of a Falyx `BaseAction`. It provides integration with the
-    Falyx hook system and execution registry, enabling lifecycle management, diagnostics,
-    and structured logging.
+    The `ExecutionContext` tracks arguments, results, exceptions, timing, and
+    additional metadata for each invocation of a Falyx `BaseAction`. It provides
+    integration with the Falyx hook system and execution registry, enabling lifecycle
+    management, diagnostics, and structured logging.
 
     Attributes:
         name (str): The name of the action being executed.
@@ -47,7 +47,8 @@ class ExecutionContext(BaseModel):
         end_wall (datetime | None): Wall-clock timestamp when execution ended.
         extra (dict): Metadata for custom introspection or special use by Actions.
         console (Console): Rich console instance for logging or UI output.
-        shared_context (SharedContext | None): Optional shared context when running in a chain or group.
+        shared_context (SharedContext | None): Optional shared context when running in
+                                               a chain or group.
 
     Properties:
         duration (float | None): The execution duration in seconds.
@@ -95,7 +96,11 @@ class ExecutionContext(BaseModel):
         self.end_wall = datetime.now()
 
     def get_shared_context(self) -> SharedContext:
-        return self.shared_context or SharedContext(name="default")
+        if not self.shared_context:
+            raise ValueError(
+                "SharedContext is not set. This context is not part of a chain or group."
+            )
+        return self.shared_context
 
     @property
     def duration(self) -> float | None:
@@ -190,8 +195,10 @@ class SharedContext(BaseModel):
         errors (list[tuple[int, Exception]]): Indexed list of errors from failed actions.
         current_index (int): Index of the currently executing action (used in chains).
         is_parallel (bool): Whether the context is used in parallel mode (ActionGroup).
-        shared_result (Any | None): Optional shared value available to all actions in parallel mode.
-        share (dict[str, Any]): Custom shared key-value store for user-defined communication
+        shared_result (Any | None): Optional shared value available to all actions in
+                                    parallel mode.
+        share (dict[str, Any]): Custom shared key-value store for user-defined
+                                communication
             between actions (e.g., flags, intermediate data, settings).
 
     Note:
@@ -208,6 +215,7 @@ class SharedContext(BaseModel):
     """
 
     name: str
+    action: Any
     results: list[Any] = Field(default_factory=list)
     errors: list[tuple[int, Exception]] = Field(default_factory=list)
     current_index: int = -1

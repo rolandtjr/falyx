@@ -1,4 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""signal_action.py"""
 from falyx.action import Action
 from falyx.signals import FlowSignal
 

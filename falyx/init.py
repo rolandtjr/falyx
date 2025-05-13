@@ -1,4 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""init.py"""
 from pathlib import Path
 
 from rich.console import Console

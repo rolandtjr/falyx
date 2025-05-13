@@ -5,12 +5,14 @@ from argparse import Namespace
 from collections import defaultdict
 from typing import Any, Callable
 
-from falyx.utils import logger
+from falyx.logger import logger
 
 
 class OptionsManager:
+    """OptionsManager"""
+
     def __init__(self, namespaces: list[tuple[str, Namespace]] | None = None) -> None:
-        self.options: defaultdict = defaultdict(lambda: Namespace())
+        self.options: defaultdict = defaultdict(Namespace)
         if namespaces:
             for namespace_name, namespace in namespaces:
                 self.from_namespace(namespace, namespace_name)
@@ -42,7 +44,9 @@ class OptionsManager:
                 f"Cannot toggle non-boolean option: '{option_name}' in '{namespace_name}'"
             )
         self.set(option_name, not current, namespace_name=namespace_name)
-        logger.debug(f"Toggled '{option_name}' in '{namespace_name}' to {not current}")
+        logger.debug(
+            "Toggled '%s' in '%s' to %s", option_name, namespace_name, not current
+        )
 
     def get_value_getter(
         self, option_name: str, namespace_name: str = "cli_args"

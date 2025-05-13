@@ -12,15 +12,18 @@ from falyx.action import BaseAction
 from falyx.context import ExecutionContext
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookType
+from falyx.logger import logger
 from falyx.selection import prompt_for_selection, render_table_base
 from falyx.signal_action import SignalAction
 from falyx.signals import BackSignal, QuitSignal
 from falyx.themes.colors import OneColors
-from falyx.utils import CaseInsensitiveDict, chunks, logger
+from falyx.utils import CaseInsensitiveDict, chunks
 
 
 @dataclass
 class MenuOption:
+    """Represents a single menu option with a description and an action to execute."""
+
     description: str
     action: BaseAction
     style: str = OneColors.WHITE
@@ -93,6 +96,8 @@ class MenuOptionMap(CaseInsensitiveDict):
 
 
 class MenuAction(BaseAction):
+    """MenuAction class for creating single use menu actions."""
+
     def __init__(
         self,
         name: str,
@@ -162,7 +167,8 @@ class MenuAction(BaseAction):
 
         if self.never_prompt and not effective_default:
             raise ValueError(
-                f"[{self.name}] 'never_prompt' is True but no valid default_selection was provided."
+                f"[{self.name}] 'never_prompt' is True but no valid default_selection"
+                " was provided."
             )
 
         context.start_timer()

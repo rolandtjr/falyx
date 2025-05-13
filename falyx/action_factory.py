@@ -1,4 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""action_factory.py"""
 from typing import Any
 
 from rich.tree import Tree
@@ -7,6 +8,7 @@ from falyx.action import BaseAction
 from falyx.context import ExecutionContext
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookType
+from falyx.logger import logger
 from falyx.protocols import ActionFactoryProtocol
 from falyx.themes.colors import OneColors
 
@@ -33,7 +35,7 @@ class ActionFactoryAction(BaseAction):
         inject_last_result: bool = False,
         inject_into: str = "last_result",
         preview_args: tuple[Any, ...] = (),
-        preview_kwargs: dict[str, Any] = {},
+        preview_kwargs: dict[str, Any] | None = None,
     ):
         super().__init__(
             name=name,
@@ -42,7 +44,7 @@ class ActionFactoryAction(BaseAction):
         )
         self.factory = factory
         self.preview_args = preview_args
-        self.preview_kwargs = preview_kwargs
+        self.preview_kwargs = preview_kwargs or {}
 
     async def _run(self, *args, **kwargs) -> Any:
         updated_kwargs = self._maybe_inject_last_result(kwargs)
@@ -58,10 +60,20 @@ class ActionFactoryAction(BaseAction):
             generated_action = self.factory(*args, **updated_kwargs)
             if not isinstance(generated_action, BaseAction):
                 raise TypeError(
-                    f"[{self.name}] Factory must return a BaseAction, got {type(generated_action).__name__}"
+                    f"[{self.name}] Factory must return a BaseAction, got "
+                    f"{type(generated_action).__name__}"
                 )
             if self.shared_context:
                 generated_action.set_shared_context(self.shared_context)
+                if hasattr(generated_action, "register_teardown") and callable(
+                    generated_action.register_teardown
+                ):
+                    generated_action.register_teardown(self.shared_context.action.hooks)
+                    logger.debug(
+                        "[%s] Registered teardown for %s",
+                        self.name,
+                        generated_action.name,
+                    )
             if self.options_manager:
                 generated_action.set_options_manager(self.options_manager)
             context.result = await generated_action(*args, **kwargs)

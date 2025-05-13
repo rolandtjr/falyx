@@ -8,10 +8,12 @@ import random
 from pydantic import BaseModel, Field
 
 from falyx.context import ExecutionContext
-from falyx.utils import logger
+from falyx.logger import logger
 
 
 class RetryPolicy(BaseModel):
+    """RetryPolicy"""
+
     max_retries: int = Field(default=3, ge=0)
     delay: float = Field(default=1.0, ge=0.0)
     backoff: float = Field(default=2.0, ge=1.0)
@@ -34,6 +36,8 @@ class RetryPolicy(BaseModel):
 
 
 class RetryHandler:
+    """RetryHandler class to manage retry policies for actions."""
+
     def __init__(self, policy: RetryPolicy = RetryPolicy()):
         self.policy = policy
 
@@ -49,7 +53,7 @@ class RetryHandler:
         self.policy.delay = delay
         self.policy.backoff = backoff
         self.policy.jitter = jitter
-        logger.info(f"🔄 Retry policy enabled: {self.policy}")
+        logger.info("🔄 Retry policy enabled: %s", self.policy)
 
     async def retry_on_error(self, context: ExecutionContext) -> None:
         from falyx.action import Action
@@ -63,21 +67,21 @@ class RetryHandler:
         last_error = error
 
         if not target:
-            logger.warning(f"[{name}] ⚠️ No action target. Cannot retry.")
+            logger.warning("[%s] ⚠️ No action target. Cannot retry.", name)
             return None
 
         if not isinstance(target, Action):
             logger.warning(
-                f"[{name}] ❌ RetryHandler only supports only supports Action objects."
+                "[%s] ❌ RetryHandler only supports only supports Action objects.", name
             )
             return None
 
         if not getattr(target, "is_retryable", False):
-            logger.warning(f"[{name}] ❌ Not retryable.")
+            logger.warning("[%s] ❌ Not retryable.", name)
             return None
 
         if not self.policy.enabled:
-            logger.warning(f"[{name}] ❌ Retry policy is disabled.")
+            logger.warning("[%s] ❌ Retry policy is disabled.", name)
             return None
 
         while retries_done < self.policy.max_retries:
@@ -88,23 +92,30 @@ class RetryHandler:
                 sleep_delay += random.uniform(-self.policy.jitter, self.policy.jitter)
 
             logger.info(
-                f"[{name}] 🔄 Retrying ({retries_done}/{self.policy.max_retries}) "
-                f"in {current_delay}s due to '{last_error}'..."
+                "[%s] 🔄 Retrying (%s/%s) in %ss due to '%s'...",
+                name,
+                retries_done,
+                self.policy.max_retries,
+                current_delay,
+                last_error,
             )
             await asyncio.sleep(current_delay)
             try:
                 result = await target.action(*context.args, **context.kwargs)
                 context.result = result
                 context.exception = None
-                logger.info(f"[{name}] ✅ Retry succeeded on attempt {retries_done}.")
+                logger.info("[%s] ✅ Retry succeeded on attempt %s.", name, retries_done)
                 return None
             except Exception as retry_error:
                 last_error = retry_error
                 current_delay *= self.policy.backoff
                 logger.warning(
-                    f"[{name}] ⚠️ Retry attempt {retries_done}/{self.policy.max_retries} "
-                    f"failed due to '{retry_error}'."
+                    "[%s] ⚠️ Retry attempt %s/%s failed due to '%s'.",
+                    name,
+                    retries_done,
+                    self.policy.max_retries,
+                    retry_error,
                 )
 
         context.exception = last_error
-        logger.error(f"[{name}] ❌ All {self.policy.max_retries} retries failed.")
+        logger.error("[%s] ❌ All %s retries failed.", name, self.policy.max_retries)

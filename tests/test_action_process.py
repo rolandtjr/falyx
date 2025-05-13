@@ -33,7 +33,7 @@ async def test_process_action_executes_correctly():
         assert result == 5
 
 
-unpickleable = lambda x: x + 1
+unpickleable = lambda x: x + 1  # noqa: E731
 
 
 @pytest.mark.asyncio

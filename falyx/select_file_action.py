@@ -1,4 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""select_file_action.py"""
 from __future__ import annotations
 
 import csv
@@ -18,16 +19,18 @@ from falyx.action import BaseAction
 from falyx.context import ExecutionContext
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookType
+from falyx.logger import logger
 from falyx.selection import (
     SelectionOption,
     prompt_for_selection,
     render_selection_dict_table,
 )
 from falyx.themes.colors import OneColors
-from falyx.utils import logger
 
 
 class FileReturnType(Enum):
+    """Enum for file return types."""
+
     TEXT = "text"
     PATH = "path"
     JSON = "json"

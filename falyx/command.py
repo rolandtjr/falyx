@@ -33,12 +33,13 @@ from falyx.exceptions import FalyxError
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
 from falyx.io_action import BaseIOAction
+from falyx.logger import logger
 from falyx.options_manager import OptionsManager
-from falyx.prompt_utils import should_prompt_user
+from falyx.prompt_utils import confirm_async, should_prompt_user
 from falyx.retry import RetryPolicy
 from falyx.retry_utils import enable_retries_recursively
 from falyx.themes.colors import OneColors
-from falyx.utils import _noop, confirm_async, ensure_async, logger
+from falyx.utils import _noop, ensure_async
 
 console = Console(color_system="auto")
 
@@ -134,7 +135,7 @@ class Command(BaseModel):
             return ensure_async(action)
         raise TypeError("Action must be a callable or an instance of BaseAction")
 
-    def model_post_init(self, __context: Any) -> None:
+    def model_post_init(self, _: Any) -> None:
         """Post-initialization to set up the action and hooks."""
         if self.retry and isinstance(self.action, Action):
             self.action.enable_retry()
@@ -142,14 +143,16 @@ class Command(BaseModel):
             self.action.set_retry_policy(self.retry_policy)
         elif self.retry:
             logger.warning(
-                f"[Command:{self.key}] Retry requested, but action is not an Action instance."
+                "[Command:%s] Retry requested, but action is not an Action instance.",
+                self.key,
             )
         if self.retry_all and isinstance(self.action, BaseAction):
             self.retry_policy.enabled = True
             enable_retries_recursively(self.action, self.retry_policy)
         elif self.retry_all:
             logger.warning(
-                f"[Command:{self.key}] Retry all requested, but action is not a BaseAction instance."
+                "[Command:%s] Retry all requested, but action is not a BaseAction.",
+                self.key,
             )
 
         if self.logging_hooks and isinstance(self.action, BaseAction):
@@ -201,7 +204,7 @@ class Command(BaseModel):
             if self.preview_before_confirm:
                 await self.preview()
             if not await confirm_async(self.confirmation_prompt):
-                logger.info(f"[Command:{self.key}] ❌ Cancelled by user.")
+                logger.info("[Command:%s] ❌ Cancelled by user.", self.key)
                 raise FalyxError(f"[Command:{self.key}] Cancelled by confirmation.")
 
         context.start_timer()
@@ -288,7 +291,7 @@ class Command(BaseModel):
             if self.help_text:
                 console.print(f"[dim]💡 {self.help_text}[/dim]")
             console.print(
-                f"[{OneColors.DARK_RED}]⚠️ Action is not callable or lacks a preview method.[/]"
+                f"[{OneColors.DARK_RED}]⚠️ No preview available for this action.[/]"
             )
 
     def __str__(self) -> str:

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "falyx"
-version = "0.1.23"
+version = "0.1.24"
 description = "Reliable and introspectable async CLI action framework."
 authors = ["Roland Thomas Jr <roland@rtj.dev>"]
 license = "MIT"
@@ -17,7 +17,7 @@ toml = "^0.10"
 pyyaml = "^6.0"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^7.0"
+pytest = "^8.3.5"
 pytest-asyncio = "^0.20"
 ruff = "^0.3"
 toml = "^0.10"
@@ -36,7 +36,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
+#asyncio_default_fixture_loop_scope = "function"
 
 [tool.pylint."MESSAGES CONTROL"]
 disable = ["broad-exception-caught"]

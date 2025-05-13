@@ -28,8 +28,8 @@ from falyx.context import ExecutionContext
 from falyx.exceptions import FalyxError
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
+from falyx.logger import logger
 from falyx.themes.colors import OneColors
-from falyx.utils import logger
 
 
 class BaseIOAction(BaseAction):
@@ -78,7 +78,7 @@ class BaseIOAction(BaseAction):
     def from_input(self, raw: str | bytes) -> Any:
         raise NotImplementedError
 
-    def to_output(self, data: Any) -> str | bytes:
+    def to_output(self, result: Any) -> str | bytes:
         raise NotImplementedError
 
     async def _resolve_input(self, kwargs: dict[str, Any]) -> str | bytes:
@@ -113,7 +113,7 @@ class BaseIOAction(BaseAction):
         try:
             if self.mode == "stream":
                 line_gen = await self._read_stdin_stream()
-                async for line in self._stream_lines(line_gen, args, kwargs):
+                async for _ in self._stream_lines(line_gen, args, kwargs):
                     pass
                 result = getattr(self, "_last_result", None)
             else:
@@ -185,8 +185,9 @@ class ShellAction(BaseIOAction):
     Designed for quick integration with shell tools like `grep`, `ping`, `jq`, etc.
 
     ⚠️ Security Warning:
-    By default, ShellAction uses `shell=True`, which can be dangerous with unsanitized input.
-    To mitigate this, set `safe_mode=True` to use `shell=False` with `shlex.split()`.
+    By default, ShellAction uses `shell=True`, which can be dangerous with
+    unsanitized input. To mitigate this, set `safe_mode=True` to use `shell=False`
+    with `shlex.split()`.
 
     Features:
     - Automatically handles input parsing (str/bytes)
@@ -198,9 +199,11 @@ class ShellAction(BaseIOAction):
 
     Args:
         name (str): Name of the action.
-        command_template (str): Shell command to execute. Must include `{}` to include input.
-                                If no placeholder is present, the input is not included.
-        safe_mode (bool): If True, runs with `shell=False` using shlex parsing (default: False).
+        command_template (str): Shell command to execute. Must include `{}` to include
+                                input. If no placeholder is present, the input is not
+                                included.
+        safe_mode (bool): If True, runs with `shell=False` using shlex parsing
+                          (default: False).
     """
 
     def __init__(
@@ -222,9 +225,11 @@ class ShellAction(BaseIOAction):
         command = self.command_template.format(parsed_input)
         if self.safe_mode:
             args = shlex.split(command)
-            result = subprocess.run(args, capture_output=True, text=True)
+            result = subprocess.run(args, capture_output=True, text=True, check=True)
         else:
-            result = subprocess.run(command, shell=True, text=True, capture_output=True)
+            result = subprocess.run(
+                command, shell=True, text=True, capture_output=True, check=True
+            )
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip())
         return result.stdout.strip()
@@ -246,6 +251,6 @@ class ShellAction(BaseIOAction):
 
     def __str__(self):
         return (
-            f"ShellAction(name={self.name!r}, command_template={self.command_template!r}, "
-            f"safe_mode={self.safe_mode})"
+            f"ShellAction(name={self.name!r}, command_template={self.command_template!r},"
+            f" safe_mode={self.safe_mode})"
         )

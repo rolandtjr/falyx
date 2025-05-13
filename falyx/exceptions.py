@@ -1,4 +1,7 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""exceptions.py"""
+
+
 class FalyxError(Exception):
     """Custom exception for the Menu class."""
 

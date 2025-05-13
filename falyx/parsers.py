@@ -39,7 +39,7 @@ def get_arg_parsers(
     epilog: (
         str | None
     ) = "Tip: Use 'falyx run ?[COMMAND]' to preview any command from the CLI.",
-    parents: Sequence[ArgumentParser] = [],
+    parents: Sequence[ArgumentParser] | None = None,
     prefix_chars: str = "-",
     fromfile_prefix_chars: str | None = None,
     argument_default: Any = None,
@@ -54,7 +54,7 @@ def get_arg_parsers(
         usage=usage,
         description=description,
         epilog=epilog,
-        parents=parents,
+        parents=parents if parents else [],
         prefix_chars=prefix_chars,
         fromfile_prefix_chars=fromfile_prefix_chars,
         argument_default=argument_default,

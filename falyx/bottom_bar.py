@@ -146,7 +146,7 @@ class BottomBar:
         for k in (key.upper(), key.lower()):
 
             @self.key_bindings.add(k)
-            def _(event):
+            def _(_):
                 toggle_state()
 
     def add_toggle_from_option(
@@ -204,6 +204,6 @@ class BottomBar:
         """Render the bottom bar."""
         lines = []
         for chunk in chunks(self._named_items.values(), self.columns):
-            lines.extend([fn for fn in chunk])
+            lines.extend(list(chunk))
             lines.append(lambda: HTML("\n"))
         return merge_formatted_text([fn() for fn in lines[:-1]])

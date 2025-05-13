@@ -1,4 +1,7 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""signals.py"""
+
+
 class FlowSignal(BaseException):
     """Base class for all flow control signals in Falyx.
 

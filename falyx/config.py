@@ -16,9 +16,9 @@ from rich.console import Console
 from falyx.action import Action, BaseAction
 from falyx.command import Command
 from falyx.falyx import Falyx
+from falyx.logger import logger
 from falyx.retry import RetryPolicy
 from falyx.themes.colors import OneColors
-from falyx.utils import logger
 
 console = Console(color_system="auto")
 
@@ -47,7 +47,8 @@ def import_action(dotted_path: str) -> Any:
         logger.error("Failed to import module '%s': %s", module_path, error)
         console.print(
             f"[{OneColors.DARK_RED}]❌ Could not import '{dotted_path}': {error}[/]\n"
-            f"[{OneColors.COMMENT_GREY}]Ensure the module is installed and discoverable via PYTHONPATH."
+            f"[{OneColors.COMMENT_GREY}]Ensure the module is installed and discoverable "
+            "via PYTHONPATH."
         )
         sys.exit(1)
     try:
@@ -57,13 +58,16 @@ def import_action(dotted_path: str) -> Any:
             "Module '%s' does not have attribute '%s': %s", module_path, attr, error
         )
         console.print(
-            f"[{OneColors.DARK_RED}]❌ Module '{module_path}' has no attribute '{attr}': {error}[/]"
+            f"[{OneColors.DARK_RED}]❌ Module '{module_path}' has no attribute "
+            f"'{attr}': {error}[/]"
         )
         sys.exit(1)
     return action
 
 
 class RawCommand(BaseModel):
+    """Raw command model for Falyx CLI configuration."""
+
     key: str
     description: str
     action: str
@@ -72,7 +76,7 @@ class RawCommand(BaseModel):
     kwargs: dict[str, Any] = {}
     aliases: list[str] = []
     tags: list[str] = []
-    style: str = "white"
+    style: str = OneColors.WHITE
 
     confirm: bool = False
     confirm_message: str = "Are you sure?"
@@ -81,7 +85,7 @@ class RawCommand(BaseModel):
     spinner: bool = False
     spinner_message: str = "Processing..."
     spinner_type: str = "dots"
-    spinner_style: str = "cyan"
+    spinner_style: str = OneColors.CYAN
     spinner_kwargs: dict[str, Any] = {}
 
     before_hooks: list[Callable] = []
@@ -126,6 +130,8 @@ def convert_commands(raw_commands: list[dict[str, Any]]) -> list[Command]:
 
 
 class FalyxConfig(BaseModel):
+    """Falyx CLI configuration model."""
+
     title: str = "Falyx CLI"
     prompt: str | list[tuple[str, str]] | list[list[str]] = [
         (OneColors.BLUE_b, "FALYX > ")
@@ -148,7 +154,7 @@ class FalyxConfig(BaseModel):
     def to_falyx(self) -> Falyx:
         flx = Falyx(
             title=self.title,
-            prompt=self.prompt,
+            prompt=self.prompt,  # type: ignore[arg-type]
             columns=self.columns,
             welcome_message=self.welcome_message,
             exit_message=self.exit_message,
@@ -159,7 +165,9 @@ class FalyxConfig(BaseModel):
 
 def loader(file_path: Path | str) -> Falyx:
     """
-    Load command definitions from a YAML or TOML file.
+    Load Falyx CLI configuration from a YAML or TOML file.
+
+    The file should contain a dictionary with a list of commands.
 
     Each command should be defined as a dictionary with at least:
     - key: a unique single-character key

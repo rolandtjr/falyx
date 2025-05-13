@@ -1,7 +1,8 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""debug.py"""
 from falyx.context import ExecutionContext
 from falyx.hook_manager import HookManager, HookType
-from falyx.utils import logger
+from falyx.logger import logger
 
 
 def log_before(context: ExecutionContext):

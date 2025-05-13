@@ -1,4 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""tagged_table.py"""
 from collections import defaultdict
 
 from rich import box
@@ -10,7 +11,7 @@ from falyx.falyx import Falyx
 
 def build_tagged_table(flx: Falyx) -> Table:
     """Custom table builder that groups commands by tags."""
-    table = Table(title=flx.title, show_header=False, box=box.SIMPLE)
+    table = Table(title=flx.title, show_header=False, box=box.SIMPLE)  # type: ignore[arg-type]
 
     # Group commands by first tag
     grouped: dict[str, list[Command]] = defaultdict(list)

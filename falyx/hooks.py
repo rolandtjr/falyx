@@ -5,11 +5,13 @@ from typing import Any, Callable
 
 from falyx.context import ExecutionContext
 from falyx.exceptions import CircuitBreakerOpen
+from falyx.logger import logger
 from falyx.themes.colors import OneColors
-from falyx.utils import logger
 
 
 class ResultReporter:
+    """Reports the success of an action."""
+
     def __init__(self, formatter: Callable[[Any], str] | None = None):
         """
         Optional result formatter. If not provided, uses repr(result).
@@ -41,6 +43,8 @@ class ResultReporter:
 
 
 class CircuitBreaker:
+    """Circuit Breaker pattern to prevent repeated failures."""
+
     def __init__(self, max_failures=3, reset_timeout=10):
         self.max_failures = max_failures
         self.reset_timeout = reset_timeout
@@ -55,7 +59,7 @@ class CircuitBreaker:
                     f"🔴 Circuit open for '{name}' until {time.ctime(self.open_until)}."
                 )
             else:
-                logger.info(f"🟢 Circuit closed again for '{name}'.")
+                logger.info("🟢 Circuit closed again for '%s'.")
                 self.failures = 0
                 self.open_until = None
 
@@ -63,15 +67,18 @@ class CircuitBreaker:
         name = context.name
         self.failures += 1
         logger.warning(
-            f"⚠️ CircuitBreaker: '{name}' failure {self.failures}/{self.max_failures}."
+            "⚠️ CircuitBreaker: '%s' failure %s/%s.",
+            name,
+            self.failures,
+            self.max_failures,
         )
         if self.failures >= self.max_failures:
             self.open_until = time.time() + self.reset_timeout
             logger.error(
-                f"🔴 Circuit opened for '{name}' until {time.ctime(self.open_until)}."
+                "🔴 Circuit opened for '%s' until %s.", name, time.ctime(self.open_until)
             )
 
-    def after_hook(self, context: ExecutionContext):
+    def after_hook(self, _: ExecutionContext):
         self.failures = 0
 
     def is_open(self):

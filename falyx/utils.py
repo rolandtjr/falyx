@@ -1,5 +1,7 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """utils.py"""
+from __future__ import annotations
+
 import functools
 import inspect
 import logging
@@ -10,23 +12,12 @@ from itertools import islice
 from typing import Any, Awaitable, Callable, TypeVar
 
 import pythonjsonlogger.json
-from prompt_toolkit import PromptSession
-from prompt_toolkit.formatted_text import (
-    AnyFormattedText,
-    FormattedText,
-    merge_formatted_text,
-)
 from rich.logging import RichHandler
-
-from falyx.themes.colors import OneColors
-from falyx.validators import yes_no_validator
-
-logger = logging.getLogger("falyx")
 
 T = TypeVar("T")
 
 
-async def _noop(*args, **kwargs):
+async def _noop(*_, **__):
     pass
 
 
@@ -70,22 +61,6 @@ def chunks(iterator, size):
         yield chunk
 
 
-async def confirm_async(
-    message: AnyFormattedText = "Are you sure?",
-    prefix: AnyFormattedText = FormattedText([(OneColors.CYAN, "❓ ")]),
-    suffix: AnyFormattedText = FormattedText([(OneColors.LIGHT_YELLOW_b, " [Y/n] > ")]),
-    session: PromptSession | None = None,
-) -> bool:
-    """Prompt the user with a yes/no async confirmation and return True for 'Y'."""
-    session = session or PromptSession()
-    merged_message: AnyFormattedText = merge_formatted_text([prefix, message, suffix])
-    answer = await session.prompt_async(
-        merged_message,
-        validator=yes_no_validator(),
-    )
-    return True if answer.upper() == "Y" else False
-
-
 class CaseInsensitiveDict(dict):
     """A case-insensitive dictionary that treats all keys as uppercase."""
 
@@ -114,12 +89,6 @@ class CaseInsensitiveDict(dict):
         items.update({self._normalize_key(k): v for k, v in kwargs.items()})
         super().update(items)
 
-    def __iter__(self):
-        return super().__iter__()
-
-    def keys(self):
-        return super().keys()
-
 
 def running_in_container() -> bool:
     try:
@@ -143,11 +112,13 @@ def setup_logging(
     console_log_level: int = logging.WARNING,
 ):
     """
-    Configure logging for Falyx with support for both CLI-friendly and structured JSON output.
+    Configure logging for Falyx with support for both CLI-friendly and structured
+    JSON output.
 
-    This function sets up separate logging handlers for console and file output, with optional
-    support for JSON formatting. It also auto-detects whether the application is running inside
-    a container to default to machine-readable logs when appropriate.
+    This function sets up separate logging handlers for console and file output,
+    with optional support for JSON formatting. It also auto-detects whether the
+    application is running inside a container to default to machine-readable logs
+    when appropriate.
 
     Args:
         mode (str | None):
@@ -170,7 +141,8 @@ def setup_logging(
         - Clears existing root handlers before setup.
         - Configures console logging using either Rich (for CLI) or JSON formatting.
         - Configures file logging in plain text or JSON based on `json_log_to_file`.
-        - Automatically sets logging levels for noisy third-party modules (`urllib3`, `asyncio`).
+        - Automatically sets logging levels for noisy third-party modules
+          (`urllib3`, `asyncio`, `markdown_it`).
         - Propagates logs from the "falyx" logger to ensure centralized output.
 
     Raises:

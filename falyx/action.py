@@ -4,7 +4,8 @@
 Core action system for Falyx.
 
 This module defines the building blocks for executable actions and workflows,
-providing a structured way to compose, execute, recover, and manage sequences of operations.
+providing a structured way to compose, execute, recover, and manage sequences of
+operations.
 
 All actions are callable and follow a unified signature:
     result = action(*args, **kwargs)
@@ -14,7 +15,8 @@ Core guarantees:
 - Consistent timing and execution context tracking for each run.
 - Unified, predictable result handling and error propagation.
 - Optional last_result injection to enable flexible, data-driven workflows.
-- Built-in support for retries, rollbacks, parallel groups, chaining, and fallback recovery.
+- Built-in support for retries, rollbacks, parallel groups, chaining, and fallback
+  recovery.
 
 Key components:
 - Action: wraps a function or coroutine into a standard executable unit.
@@ -43,10 +45,11 @@ from falyx.debug import register_debug_hooks
 from falyx.exceptions import EmptyChainError
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import Hook, HookManager, HookType
+from falyx.logger import logger
 from falyx.options_manager import OptionsManager
 from falyx.retry import RetryHandler, RetryPolicy
 from falyx.themes.colors import OneColors
-from falyx.utils import ensure_async, logger
+from falyx.utils import ensure_async
 
 
 class BaseAction(ABC):
@@ -55,7 +58,8 @@ class BaseAction(ABC):
     complex actions like `ChainedAction` or `ActionGroup`. They can also
     be run independently or as part of Falyx.
 
-    inject_last_result (bool): Whether to inject the previous action's result into kwargs.
+    inject_last_result (bool): Whether to inject the previous action's result
+                               into kwargs.
     inject_into (str): The name of the kwarg key to inject the result as
                                  (default: 'last_result').
     _requires_injection (bool): Whether the action requires input injection.
@@ -104,7 +108,9 @@ class BaseAction(ABC):
         self.shared_context = shared_context
 
     def get_option(self, option_name: str, default: Any = None) -> Any:
-        """Resolve an option from the OptionsManager if present, otherwise use the fallback."""
+        """
+        Resolve an option from the OptionsManager if present, otherwise use the fallback.
+        """
         if self.options_manager:
             return self.options_manager.get(option_name, default)
         return default
@@ -288,8 +294,10 @@ class Action(BaseAction):
 
     def __str__(self):
         return (
-            f"Action(name={self.name!r}, action={getattr(self._action, '__name__', repr(self._action))}, "
-            f"args={self.args!r}, kwargs={self.kwargs!r}, retry={self.retry_policy.enabled})"
+            f"Action(name={self.name!r}, action="
+            f"{getattr(self._action, '__name__', repr(self._action))}, "
+            f"args={self.args!r}, kwargs={self.kwargs!r}, "
+            f"retry={self.retry_policy.enabled})"
         )
 
 
@@ -309,7 +317,7 @@ class LiteralInputAction(Action):
     def __init__(self, value: Any):
         self._value = value
 
-        async def literal(*args, **kwargs):
+        async def literal(*_, **__):
             return value
 
         super().__init__("Input", literal)
@@ -333,14 +341,16 @@ class LiteralInputAction(Action):
 
 class FallbackAction(Action):
     """
-    FallbackAction provides a default value if the previous action failed or returned None.
+    FallbackAction provides a default value if the previous action failed or
+    returned None.
 
     It injects the last result and checks:
     - If last_result is not None, it passes it through unchanged.
     - If last_result is None (e.g., due to failure), it replaces it with a fallback value.
 
     Used in ChainedAction pipelines to gracefully recover from errors or missing data.
-    When activated, it consumes the preceding error and allows the chain to continue normally.
+    When activated, it consumes the preceding error and allows the chain to continue
+    normally.
 
     Args:
         fallback (Any): The fallback value to use if last_result is None.
@@ -413,16 +423,19 @@ class ChainedAction(BaseAction, ActionListMixin):
     - Rolls back all previously executed actions if a failure occurs.
     - Handles literal values with LiteralInputAction.
 
-    Best used for defining robust, ordered workflows where each step can depend on previous results.
+    Best used for defining robust, ordered workflows where each step can depend on
+    previous results.
 
     Args:
         name (str): Name of the chain.
         actions (list): List of actions or literals to execute.
         hooks (HookManager, optional): Hooks for lifecycle events.
-        inject_last_result (bool, optional): Whether to inject last results into kwargs by default.
+        inject_last_result (bool, optional): Whether to inject last results into kwargs
+                                             by default.
         inject_into (str, optional): Key name for injection.
         auto_inject (bool, optional): Auto-enable injection for subsequent actions.
-        return_list (bool, optional): Whether to return a list of all results. False returns the last result.
+        return_list (bool, optional): Whether to return a list of all results. False
+                                      returns the last result.
     """
 
     def __init__(
@@ -468,7 +481,7 @@ class ChainedAction(BaseAction, ActionListMixin):
         if not self.actions:
             raise EmptyChainError(f"[{self.name}] No actions to execute.")
 
-        shared_context = SharedContext(name=self.name)
+        shared_context = SharedContext(name=self.name, action=self)
         if self.shared_context:
             shared_context.add_result(self.shared_context.last_result())
         updated_kwargs = self._maybe_inject_last_result(kwargs)
@@ -503,7 +516,8 @@ class ChainedAction(BaseAction, ActionListMixin):
                         self.actions[index + 1], FallbackAction
                     ):
                         logger.warning(
-                            "[%s] ⚠️ Fallback triggered: %s, recovering with fallback '%s'.",
+                            "[%s] ⚠️ Fallback triggered: %s, recovering with fallback "
+                            "'%s'.",
                             self.name,
                             error,
                             self.actions[index + 1].name,
@@ -579,7 +593,8 @@ class ChainedAction(BaseAction, ActionListMixin):
 
     def __str__(self):
         return (
-            f"ChainedAction(name={self.name!r}, actions={[a.name for a in self.actions]!r}, "
+            f"ChainedAction(name={self.name!r}, "
+            f"actions={[a.name for a in self.actions]!r}, "
             f"auto_inject={self.auto_inject}, return_list={self.return_list})"
         )
 
@@ -613,7 +628,8 @@ class ActionGroup(BaseAction, ActionListMixin):
         name (str): Name of the chain.
         actions (list): List of actions or literals to execute.
         hooks (HookManager, optional): Hooks for lifecycle events.
-        inject_last_result (bool, optional): Whether to inject last results into kwargs by default.
+        inject_last_result (bool, optional): Whether to inject last results into kwargs
+                                             by default.
         inject_into (str, optional): Key name for injection.
     """
 
@@ -643,7 +659,8 @@ class ActionGroup(BaseAction, ActionListMixin):
             return Action(name=action.__name__, action=action)
         else:
             raise TypeError(
-                f"ActionGroup only accepts BaseAction or callable, got {type(action).__name__}"
+                "ActionGroup only accepts BaseAction or callable, got "
+                f"{type(action).__name__}"
             )
 
     def add_action(self, action: BaseAction | Any) -> None:
@@ -653,7 +670,7 @@ class ActionGroup(BaseAction, ActionListMixin):
             action.register_teardown(self.hooks)
 
     async def _run(self, *args, **kwargs) -> list[tuple[str, Any]]:
-        shared_context = SharedContext(name=self.name, is_parallel=True)
+        shared_context = SharedContext(name=self.name, action=self, is_parallel=True)
         if self.shared_context:
             shared_context.set_shared_result(self.shared_context.last_result())
         updated_kwargs = self._maybe_inject_last_result(kwargs)
@@ -721,8 +738,8 @@ class ActionGroup(BaseAction, ActionListMixin):
 
     def __str__(self):
         return (
-            f"ActionGroup(name={self.name!r}, actions={[a.name for a in self.actions]!r}, "
-            f"inject_last_result={self.inject_last_result})"
+            f"ActionGroup(name={self.name!r}, actions={[a.name for a in self.actions]!r},"
+            f" inject_last_result={self.inject_last_result})"
         )
 
 
@@ -831,6 +848,7 @@ class ProcessAction(BaseAction):
 
     def __str__(self) -> str:
         return (
-            f"ProcessAction(name={self.name!r}, action={getattr(self.action, '__name__', repr(self.action))}, "
+            f"ProcessAction(name={self.name!r}, "
+            f"action={getattr(self.action, '__name__', repr(self.action))}, "
             f"args={self.args!r}, kwargs={self.kwargs!r})"
         )
