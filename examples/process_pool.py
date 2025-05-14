@@ -1,7 +1,7 @@
 from rich.console import Console
 
 from falyx import Falyx, ProcessAction
-from falyx.themes.colors import NordColors as nc
+from falyx.themes import NordColors as nc
 
 console = Console()
 falyx = Falyx(title="🚀 Process Pool Demo")

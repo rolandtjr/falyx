@@ -48,7 +48,7 @@ from falyx.hook_manager import Hook, HookManager, HookType
 from falyx.logger import logger
 from falyx.options_manager import OptionsManager
 from falyx.retry import RetryHandler, RetryPolicy
-from falyx.themes.colors import OneColors
+from falyx.themes import OneColors
 from falyx.utils import ensure_async
 
 

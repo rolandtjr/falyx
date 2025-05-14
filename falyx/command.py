@@ -26,19 +26,19 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 from rich.console import Console
 from rich.tree import Tree
 
-from falyx.action import Action, ActionGroup, BaseAction, ChainedAction
+from falyx.action.action import Action, ActionGroup, BaseAction, ChainedAction
+from falyx.action.io_action import BaseIOAction
 from falyx.context import ExecutionContext
 from falyx.debug import register_debug_hooks
 from falyx.exceptions import FalyxError
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
-from falyx.io_action import BaseIOAction
 from falyx.logger import logger
 from falyx.options_manager import OptionsManager
 from falyx.prompt_utils import confirm_async, should_prompt_user
 from falyx.retry import RetryPolicy
 from falyx.retry_utils import enable_retries_recursively
-from falyx.themes.colors import OneColors
+from falyx.themes import OneColors
 from falyx.utils import _noop, ensure_async
 
 console = Console(color_system="auto")

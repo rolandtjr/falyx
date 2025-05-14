@@ -6,7 +6,7 @@ from typing import Any, Callable
 from falyx.context import ExecutionContext
 from falyx.exceptions import CircuitBreakerOpen
 from falyx.logger import logger
-from falyx.themes.colors import OneColors
+from falyx.themes import OneColors
 
 
 class ResultReporter:

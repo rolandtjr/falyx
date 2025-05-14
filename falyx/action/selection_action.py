@@ -6,7 +6,7 @@ from prompt_toolkit import PromptSession
 from rich.console import Console
 from rich.tree import Tree
 
-from falyx.action import BaseAction
+from falyx.action.action import BaseAction
 from falyx.context import ExecutionContext
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookType
@@ -18,7 +18,7 @@ from falyx.selection import (
     render_selection_dict_table,
     render_selection_indexed_table,
 )
-from falyx.themes.colors import OneColors
+from falyx.themes import OneColors
 from falyx.utils import CaseInsensitiveDict
 
 

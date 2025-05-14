@@ -9,7 +9,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from falyx.themes.colors import OneColors
+from falyx.themes import OneColors
 from falyx.utils import chunks
 from falyx.validators import int_range_validator, key_validator
 

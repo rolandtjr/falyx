@@ -8,7 +8,7 @@ from prompt_toolkit.key_binding import KeyBindings
 from rich.console import Console
 
 from falyx.options_manager import OptionsManager
-from falyx.themes.colors import OneColors
+from falyx.themes import OneColors
 from falyx.utils import CaseInsensitiveDict, chunks
 
 

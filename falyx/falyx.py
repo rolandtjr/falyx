@@ -38,7 +38,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
 
-from falyx.action import Action, BaseAction
+from falyx.action.action import Action, BaseAction
 from falyx.bottom_bar import BottomBar
 from falyx.command import Command
 from falyx.context import ExecutionContext
@@ -56,7 +56,7 @@ from falyx.options_manager import OptionsManager
 from falyx.parsers import get_arg_parsers
 from falyx.retry import RetryPolicy
 from falyx.signals import BackSignal, QuitSignal
-from falyx.themes.colors import OneColors, get_nord_theme
+from falyx.themes import OneColors, get_nord_theme
 from falyx.utils import CaseInsensitiveDict, chunks, get_program_invocation
 from falyx.version import __version__
 

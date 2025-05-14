@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from falyx.action import BaseAction
+from falyx.action.action import BaseAction
 
 
 class ActionFactoryProtocol(Protocol):

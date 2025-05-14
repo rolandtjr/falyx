@@ -8,7 +8,7 @@ from prompt_toolkit.formatted_text import (
 )
 
 from falyx.options_manager import OptionsManager
-from falyx.themes.colors import OneColors
+from falyx.themes import OneColors
 from falyx.validators import yes_no_validator
 
 

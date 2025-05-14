@@ -23,13 +23,13 @@ from typing import Any
 
 from rich.tree import Tree
 
-from falyx.action import BaseAction
+from falyx.action.action import BaseAction
 from falyx.context import ExecutionContext
 from falyx.exceptions import FalyxError
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
 from falyx.logger import logger
-from falyx.themes.colors import OneColors
+from falyx.themes import OneColors
 
 
 class BaseIOAction(BaseAction):

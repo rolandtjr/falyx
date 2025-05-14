@@ -37,7 +37,7 @@ from rich.table import Table
 
 from falyx.context import ExecutionContext
 from falyx.logger import logger
-from falyx.themes.colors import OneColors
+from falyx.themes import OneColors
 
 
 class ExecutionRegistry:

@@ -1,6 +1,6 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """retry_utils.py"""
-from falyx.action import Action, BaseAction
+from falyx.action.action import Action, BaseAction
 from falyx.hook_manager import HookType
 from falyx.retry import RetryHandler, RetryPolicy
 

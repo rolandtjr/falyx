@@ -13,11 +13,11 @@ from typing import Any
 import aiohttp
 from rich.tree import Tree
 
-from falyx.action import Action
+from falyx.action.action import Action
 from falyx.context import ExecutionContext, SharedContext
 from falyx.hook_manager import HookManager, HookType
 from falyx.logger import logger
-from falyx.themes.colors import OneColors
+from falyx.themes import OneColors
 
 
 async def close_shared_http_session(context: ExecutionContext) -> None:

@@ -1,0 +1,22 @@
+commands:
+  - key: P
+    description: Pipeline Demo
+    action: pipeline_demo.pipeline
+    tags: [pipeline, demo]
+    help_text: Run Demployment Pipeline with retries.
+
+  - key: G
+    description: Run HTTP Action Group
+    action: http_demo.action_group
+    tags: [http, demo]
+
+  - key: S
+    description: Select a file
+    action: file_select.sf
+    tags: [file, select, demo]
+
+  - key: M
+    description: Menu Demo
+    action: menu_demo.menu
+    tags: [menu, demo]
+    help_text: Run a menu demo with multiple options.

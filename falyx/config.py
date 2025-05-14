@@ -13,12 +13,12 @@ import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
 from rich.console import Console
 
-from falyx.action import Action, BaseAction
+from falyx.action.action import Action, BaseAction
 from falyx.command import Command
 from falyx.falyx import Falyx
 from falyx.logger import logger
 from falyx.retry import RetryPolicy
-from falyx.themes.colors import OneColors
+from falyx.themes import OneColors
 
 console = Console(color_system="auto")
 
