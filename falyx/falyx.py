@@ -19,6 +19,8 @@ for running commands, actions, and workflows. It supports:
 Falyx enables building flexible, robust, and user-friendly
 terminal applications with minimal boilerplate.
 """
+from __future__ import annotations
+
 import asyncio
 import logging
 import sys
@@ -528,14 +530,15 @@ class Falyx:
         )
 
     def add_submenu(
-        self, key: str, description: str, submenu: "Falyx", *, style: str = OneColors.CYAN
+        self, key: str, description: str, submenu: Falyx, *, style: str = OneColors.CYAN
     ) -> None:
         """Adds a submenu to the menu."""
         if not isinstance(submenu, Falyx):
             raise NotAFalyxError("submenu must be an instance of Falyx.")
         self._validate_command_key(key)
         self.add_command(key, description, submenu.menu, style=style)
-        submenu.update_exit_command(key="B", description="Back", aliases=["BACK"])
+        if submenu.exit_command.key == "Q":
+            submenu.update_exit_command(key="B", description="Back", aliases=["BACK"])
 
     def add_commands(self, commands: list[Command] | list[dict]) -> None:
         """Adds a list of Command instances or config dicts."""

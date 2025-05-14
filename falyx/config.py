@@ -72,10 +72,10 @@ class RawCommand(BaseModel):
     description: str
     action: str
 
-    args: tuple[Any, ...] = ()
-    kwargs: dict[str, Any] = {}
-    aliases: list[str] = []
-    tags: list[str] = []
+    args: tuple[Any, ...] = Field(default_factory=tuple)
+    kwargs: dict[str, Any] = Field(default_factory=dict)
+    aliases: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
     style: str = OneColors.WHITE
 
     confirm: bool = False
@@ -86,13 +86,13 @@ class RawCommand(BaseModel):
     spinner_message: str = "Processing..."
     spinner_type: str = "dots"
     spinner_style: str = OneColors.CYAN
-    spinner_kwargs: dict[str, Any] = {}
+    spinner_kwargs: dict[str, Any] = Field(default_factory=dict)
 
-    before_hooks: list[Callable] = []
-    success_hooks: list[Callable] = []
-    error_hooks: list[Callable] = []
-    after_hooks: list[Callable] = []
-    teardown_hooks: list[Callable] = []
+    before_hooks: list[Callable] = Field(default_factory=list)
+    success_hooks: list[Callable] = Field(default_factory=list)
+    error_hooks: list[Callable] = Field(default_factory=list)
+    after_hooks: list[Callable] = Field(default_factory=list)
+    teardown_hooks: list[Callable] = Field(default_factory=list)
 
     logging_hooks: bool = False
     retry: bool = False
@@ -129,6 +129,60 @@ def convert_commands(raw_commands: list[dict[str, Any]]) -> list[Command]:
     return commands
 
 
+def convert_submenus(
+    raw_submenus: list[dict[str, Any]], *, parent_path: Path | None = None, depth: int = 0
+) -> list[dict[str, Any]]:
+    submenus: list[dict[str, Any]] = []
+    for raw_submenu in raw_submenus:
+        if raw_submenu.get("config"):
+            config_path = Path(raw_submenu["config"])
+            if parent_path:
+                config_path = (parent_path.parent / config_path).resolve()
+            submenu = loader(config_path, _depth=depth + 1)
+        else:
+            submenu_module_path = raw_submenu.get("submenu")
+            if not isinstance(submenu_module_path, str):
+                console.print(
+                    f"[{OneColors.DARK_RED}]❌ Invalid submenu path:[/] {submenu_module_path}"
+                )
+                sys.exit(1)
+            submenu = import_action(submenu_module_path)
+        if not isinstance(submenu, Falyx):
+            console.print(f"[{OneColors.DARK_RED}]❌ Invalid submenu:[/] {submenu}")
+            sys.exit(1)
+
+        key = raw_submenu.get("key")
+        if not isinstance(key, str):
+            console.print(f"[{OneColors.DARK_RED}]❌ Invalid submenu key:[/] {key}")
+            sys.exit(1)
+
+        description = raw_submenu.get("description")
+        if not isinstance(description, str):
+            console.print(
+                f"[{OneColors.DARK_RED}]❌ Invalid submenu description:[/] {description}"
+            )
+            sys.exit(1)
+
+        submenus.append(
+            Submenu(
+                key=key,
+                description=description,
+                submenu=submenu,
+                style=raw_submenu.get("style", OneColors.CYAN),
+            ).model_dump()
+        )
+    return submenus
+
+
+class Submenu(BaseModel):
+    """Submenu model for Falyx CLI configuration."""
+
+    key: str
+    description: str
+    submenu: Any
+    style: str = OneColors.CYAN
+
+
 class FalyxConfig(BaseModel):
     """Falyx CLI configuration model."""
 
@@ -140,6 +194,7 @@ class FalyxConfig(BaseModel):
     welcome_message: str = ""
     exit_message: str = ""
     commands: list[Command] | list[dict] = []
+    submenus: list[dict[str, Any]] = []
 
     @model_validator(mode="after")
     def validate_prompt_format(self) -> FalyxConfig:
@@ -160,10 +215,12 @@ class FalyxConfig(BaseModel):
             exit_message=self.exit_message,
         )
         flx.add_commands(self.commands)
+        for submenu in self.submenus:
+            flx.add_submenu(**submenu)
         return flx
 
 
-def loader(file_path: Path | str) -> Falyx:
+def loader(file_path: Path | str, _depth: int = 0) -> Falyx:
     """
     Load Falyx CLI configuration from a YAML or TOML file.
 
@@ -183,6 +240,9 @@ def loader(file_path: Path | str) -> Falyx:
     Raises:
         ValueError: If the file format is unsupported or file cannot be parsed.
     """
+    if _depth > 5:
+        raise ValueError("Maximum submenu depth exceeded (5 levels deep)")
+
     if isinstance(file_path, (str, Path)):
         path = Path(file_path)
     else:
@@ -212,6 +272,7 @@ def loader(file_path: Path | str) -> Falyx:
         )
 
     commands = convert_commands(raw_config["commands"])
+    submenus = convert_submenus(raw_config.get("submenus", []))
     return FalyxConfig(
         title=raw_config.get("title", f"[{OneColors.BLUE_b}]Falyx CLI"),
         prompt=raw_config.get("prompt", [(OneColors.BLUE_b, "FALYX > ")]),
@@ -219,4 +280,5 @@ def loader(file_path: Path | str) -> Falyx:
         welcome_message=raw_config.get("welcome_message", ""),
         exit_message=raw_config.get("exit_message", ""),
         commands=commands,
+        submenus=submenus,
     ).to_falyx()

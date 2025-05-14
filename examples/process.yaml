@@ -1,0 +1,11 @@
+commands:
+  - key: P
+    description: Pipeline Demo
+    action: pipeline_demo.pipeline
+    tags: [pipeline, demo]
+    help_text: Run Demployment Pipeline with retries.
+
+submenus:
+  - key: C
+    description: HTTP Test (Nested From Config)
+    config: http.yaml

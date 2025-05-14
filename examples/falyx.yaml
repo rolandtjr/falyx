@@ -20,3 +20,12 @@ commands:
     action: menu_demo.menu
     tags: [menu, demo]
     help_text: Run a menu demo with multiple options.
+
+submenus:
+  - key: C
+    description: Process Menu (From Config)
+    config: process.yaml
+
+  - key: U
+    description: Submenu From Python
+    submenu: submenu.submenu

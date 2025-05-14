@@ -1,0 +1,6 @@
+commands:
+  - key: T
+    description: HTTP Test
+    action: single_http.http_action
+    tags: [http, demo]
+    help_text: Run HTTP test.
