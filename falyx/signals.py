@@ -22,3 +22,10 @@ class BackSignal(FlowSignal):
 
     def __init__(self, message: str = "Back signal received."):
         super().__init__(message)
+
+
+class CancelSignal(FlowSignal):
+    """Raised to cancel the current command or action."""
+
+    def __init__(self, message: str = "Cancel signal received."):
+        super().__init__(message)

@@ -21,6 +21,7 @@ from .menu_action import MenuAction
 from .select_file_action import SelectFileAction
 from .selection_action import SelectionAction
 from .signal_action import SignalAction
+from .user_input_action import UserInputAction
 
 __all__ = [
     "Action",
@@ -38,4 +39,5 @@ __all__ = [
     "SignalAction",
     "FallbackAction",
     "LiteralInputAction",
+    "UserInputAction",
 ]

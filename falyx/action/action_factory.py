@@ -11,6 +11,7 @@ from falyx.hook_manager import HookType
 from falyx.logger import logger
 from falyx.protocols import ActionFactoryProtocol
 from falyx.themes import OneColors
+from falyx.utils import ensure_async
 
 
 class ActionFactoryAction(BaseAction):
@@ -46,6 +47,14 @@ class ActionFactoryAction(BaseAction):
         self.preview_args = preview_args
         self.preview_kwargs = preview_kwargs or {}
 
+    @property
+    def factory(self) -> ActionFactoryProtocol:
+        return self._factory  # type: ignore[return-value]
+
+    @factory.setter
+    def factory(self, value: ActionFactoryProtocol):
+        self._factory = ensure_async(value)
+
     async def _run(self, *args, **kwargs) -> Any:
         updated_kwargs = self._maybe_inject_last_result(kwargs)
         context = ExecutionContext(
@@ -57,7 +66,7 @@ class ActionFactoryAction(BaseAction):
         context.start_timer()
         try:
             await self.hooks.trigger(HookType.BEFORE, context)
-            generated_action = self.factory(*args, **updated_kwargs)
+            generated_action = await self.factory(*args, **updated_kwargs)
             if not isinstance(generated_action, BaseAction):
                 raise TypeError(
                     f"[{self.name}] Factory must return a BaseAction, got "
@@ -94,7 +103,7 @@ class ActionFactoryAction(BaseAction):
         tree = parent.add(label) if parent else Tree(label)
 
         try:
-            generated = self.factory(*self.preview_args, **self.preview_kwargs)
+            generated = await self.factory(*self.preview_args, **self.preview_kwargs)
             if isinstance(generated, BaseAction):
                 await generated.preview(parent=tree)
             else:

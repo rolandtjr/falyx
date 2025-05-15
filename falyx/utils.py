@@ -48,6 +48,7 @@ def ensure_async(function: Callable[..., T]) -> Callable[..., Awaitable[T]]:
 
     if not callable(function):
         raise TypeError(f"{function} is not callable")
+
     return async_wrapper
 
 

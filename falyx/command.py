@@ -30,7 +30,6 @@ from falyx.action.action import Action, ActionGroup, BaseAction, ChainedAction
 from falyx.action.io_action import BaseIOAction
 from falyx.context import ExecutionContext
 from falyx.debug import register_debug_hooks
-from falyx.exceptions import FalyxError
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
 from falyx.logger import logger
@@ -38,8 +37,9 @@ from falyx.options_manager import OptionsManager
 from falyx.prompt_utils import confirm_async, should_prompt_user
 from falyx.retry import RetryPolicy
 from falyx.retry_utils import enable_retries_recursively
+from falyx.signals import CancelSignal
 from falyx.themes import OneColors
-from falyx.utils import _noop, ensure_async
+from falyx.utils import ensure_async
 
 console = Console(color_system="auto")
 
@@ -98,7 +98,7 @@ class Command(BaseModel):
 
     key: str
     description: str
-    action: BaseAction | Callable[[], Any] = _noop
+    action: BaseAction | Callable[[], Any]
     args: tuple = ()
     kwargs: dict[str, Any] = Field(default_factory=dict)
     hidden: bool = False
@@ -205,7 +205,7 @@ class Command(BaseModel):
                 await self.preview()
             if not await confirm_async(self.confirmation_prompt):
                 logger.info("[Command:%s] ❌ Cancelled by user.", self.key)
-                raise FalyxError(f"[Command:{self.key}] Cancelled by confirmation.")
+                raise CancelSignal(f"[Command:{self.key}] Cancelled by confirmation.")
 
         context.start_timer()
 

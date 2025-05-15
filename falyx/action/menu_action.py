@@ -38,6 +38,7 @@ class MenuAction(BaseAction):
         never_prompt: bool = False,
         include_reserved: bool = True,
         show_table: bool = True,
+        custom_table: Table | None = None,
     ):
         super().__init__(
             name,
@@ -54,8 +55,11 @@ class MenuAction(BaseAction):
         self.prompt_session = prompt_session or PromptSession()
         self.include_reserved = include_reserved
         self.show_table = show_table
+        self.custom_table = custom_table
 
     def _build_table(self) -> Table:
+        if self.custom_table:
+            return self.custom_table
         table = render_table_base(
             title=self.title,
             columns=self.columns,

@@ -100,7 +100,7 @@ class ExecutionRegistry:
 
     @classmethod
     def summary(cls):
-        table = Table(title="[📊] Execution History", expand=True, box=box.SIMPLE)
+        table = Table(title="📊 Execution History", expand=True, box=box.SIMPLE)
 
         table.add_column("Name", style="bold cyan")
         table.add_column("Start", justify="right", style="dim")

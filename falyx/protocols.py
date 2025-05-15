@@ -2,10 +2,10 @@
 """protocols.py"""
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any, Awaitable, Protocol
 
 from falyx.action.action import BaseAction
 
 
 class ActionFactoryProtocol(Protocol):
-    def __call__(self, *args: Any, **kwargs: Any) -> BaseAction: ...
+    async def __call__(self, *args: Any, **kwargs: Any) -> Awaitable[BaseAction]: ...

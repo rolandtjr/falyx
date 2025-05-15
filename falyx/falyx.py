@@ -57,9 +57,9 @@ from falyx.logger import logger
 from falyx.options_manager import OptionsManager
 from falyx.parsers import get_arg_parsers
 from falyx.retry import RetryPolicy
-from falyx.signals import BackSignal, QuitSignal
+from falyx.signals import BackSignal, CancelSignal, QuitSignal
 from falyx.themes import OneColors, get_nord_theme
-from falyx.utils import CaseInsensitiveDict, chunks, get_program_invocation
+from falyx.utils import CaseInsensitiveDict, _noop, chunks, get_program_invocation
 from falyx.version import __version__
 
 
@@ -237,8 +237,9 @@ class Falyx:
     def _get_exit_command(self) -> Command:
         """Returns the back command for the menu."""
         return Command(
-            key="Q",
+            key="X",
             description="Exit",
+            action=Action("Exit", action=_noop),
             aliases=["EXIT", "QUIT"],
             style=OneColors.DARK_RED,
         )
@@ -266,9 +267,9 @@ class Falyx:
                 help_text += " [dim](requires input)[/dim]"
             table.add_row(
                 f"[{command.style}]{command.key}[/]",
-                ", ".join(command.aliases) if command.aliases else "None",
+                ", ".join(command.aliases) if command.aliases else "",
                 help_text,
-                ", ".join(command.tags) if command.tags else "None",
+                ", ".join(command.tags) if command.tags else "",
             )
 
         table.add_row(
@@ -305,7 +306,7 @@ class Falyx:
             key="H",
             aliases=["HELP", "?"],
             description="Help",
-            action=self._show_help,
+            action=Action("Help", self._show_help),
             style=OneColors.LIGHT_YELLOW,
         )
 
@@ -507,18 +508,19 @@ class Falyx:
 
     def update_exit_command(
         self,
-        key: str = "Q",
+        key: str = "X",
         description: str = "Exit",
         aliases: list[str] | None = None,
-        action: Callable[[], Any] = lambda: None,
+        action: Callable[[], Any] | None = None,
         style: str = OneColors.DARK_RED,
         confirm: bool = False,
         confirm_message: str = "Are you sure?",
     ) -> None:
         """Updates the back command of the menu."""
+        self._validate_command_key(key)
+        action = action or Action(description, action=_noop)
         if not callable(action):
             raise InvalidActionError("Action must be a callable.")
-        self._validate_command_key(key)
         self.exit_command = Command(
             key=key,
             description=description,
@@ -537,7 +539,7 @@ class Falyx:
             raise NotAFalyxError("submenu must be an instance of Falyx.")
         self._validate_command_key(key)
         self.add_command(key, description, submenu.menu, style=style)
-        if submenu.exit_command.key == "Q":
+        if submenu.exit_command.key == "X":
             submenu.update_exit_command(key="B", description="Back", aliases=["BACK"])
 
     def add_commands(self, commands: list[Command] | list[dict]) -> None:
@@ -918,6 +920,8 @@ class Falyx:
                     break
                 except BackSignal:
                     logger.info("BackSignal received.")
+                except CancelSignal:
+                    logger.info("CancelSignal received.")
         finally:
             logger.info("Exiting menu: %s", self.get_title())
             if self.exit_message:
