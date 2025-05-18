@@ -18,6 +18,7 @@ in building robust interactive menus.
 """
 from __future__ import annotations
 
+import shlex
 from functools import cached_property
 from typing import Any, Callable
 
@@ -28,6 +29,7 @@ from rich.tree import Tree
 
 from falyx.action.action import Action, ActionGroup, BaseAction, ChainedAction
 from falyx.action.io_action import BaseIOAction
+from falyx.argparse import CommandArgumentParser
 from falyx.context import ExecutionContext
 from falyx.debug import register_debug_hooks
 from falyx.execution_registry import ExecutionRegistry as er
@@ -35,6 +37,7 @@ from falyx.hook_manager import HookManager, HookType
 from falyx.logger import logger
 from falyx.options_manager import OptionsManager
 from falyx.prompt_utils import confirm_async, should_prompt_user
+from falyx.protocols import ArgParserProtocol
 from falyx.retry import RetryPolicy
 from falyx.retry_utils import enable_retries_recursively
 from falyx.signals import CancelSignal
@@ -121,10 +124,23 @@ class Command(BaseModel):
     logging_hooks: bool = False
     requires_input: bool | None = None
     options_manager: OptionsManager = Field(default_factory=OptionsManager)
+    arg_parser: CommandArgumentParser = Field(default_factory=CommandArgumentParser)
+    custom_parser: ArgParserProtocol | None = None
+    custom_help: Callable[[], str | None] | None = None
 
     _context: ExecutionContext | None = PrivateAttr(default=None)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def parse_args(self, raw_args: list[str] | str) -> tuple[tuple, dict]:
+        if self.custom_parser:
+            if isinstance(raw_args, str):
+                raw_args = shlex.split(raw_args)
+            return self.custom_parser(raw_args)
+
+        if isinstance(raw_args, str):
+            raw_args = shlex.split(raw_args)
+        return self.arg_parser.parse_args_split(raw_args)
 
     @field_validator("action", mode="before")
     @classmethod
@@ -137,6 +153,9 @@ class Command(BaseModel):
 
     def model_post_init(self, _: Any) -> None:
         """Post-initialization to set up the action and hooks."""
+        if isinstance(self.arg_parser, CommandArgumentParser):
+            self.arg_parser.command_description = self.description
+
         if self.retry and isinstance(self.action, Action):
             self.action.enable_retry()
         elif self.retry_policy and isinstance(self.action, Action):
@@ -268,6 +287,18 @@ class Command(BaseModel):
     def log_summary(self) -> None:
         if self._context:
             self._context.log_summary()
+
+    def show_help(self) -> bool:
+        """Display the help message for the command."""
+        if self.custom_help:
+            output = self.custom_help()
+            if output:
+                console.print(output)
+            return True
+        if isinstance(self.arg_parser, CommandArgumentParser):
+            self.arg_parser.render_help()
+            return True
+        return False
 
     async def preview(self) -> None:
         label = f"[{OneColors.GREEN_b}]Command:[/] '{self.key}' — {self.description}"

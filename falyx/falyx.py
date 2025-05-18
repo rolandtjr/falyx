@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shlex
 import sys
 from argparse import Namespace
 from difflib import get_close_matches
@@ -34,7 +35,8 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.formatted_text import AnyFormattedText
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.validation import Validator
+from prompt_toolkit.patch_stdout import patch_stdout
+from prompt_toolkit.validation import ValidationError, Validator
 from rich import box
 from rich.console import Console
 from rich.markdown import Markdown
@@ -47,6 +49,7 @@ from falyx.context import ExecutionContext
 from falyx.debug import log_after, log_before, log_error, log_success
 from falyx.exceptions import (
     CommandAlreadyExistsError,
+    CommandArgumentError,
     FalyxError,
     InvalidActionError,
     NotAFalyxError,
@@ -57,17 +60,37 @@ from falyx.logger import logger
 from falyx.options_manager import OptionsManager
 from falyx.parsers import get_arg_parsers
 from falyx.retry import RetryPolicy
-from falyx.signals import BackSignal, CancelSignal, QuitSignal
+from falyx.signals import BackSignal, CancelSignal, HelpSignal, QuitSignal
 from falyx.themes import OneColors, get_nord_theme
 from falyx.utils import CaseInsensitiveDict, _noop, chunks, get_program_invocation
 from falyx.version import __version__
 
 
-class FalyxMode(str, Enum):
+class FalyxMode(Enum):
     MENU = "menu"
     RUN = "run"
     PREVIEW = "preview"
     RUN_ALL = "run-all"
+
+
+class CommandValidator(Validator):
+    """Validator to check if the input is a valid command or toggle key."""
+
+    def __init__(self, falyx: Falyx, error_message: str) -> None:
+        super().__init__()
+        self.falyx = falyx
+        self.error_message = error_message
+
+    def validate(self, document) -> None:
+        text = document.text
+        is_preview, choice, _, __ = self.falyx.get_command(text, from_validate=True)
+        if is_preview:
+            return None
+        if not choice:
+            raise ValidationError(
+                message=self.error_message,
+                cursor_position=document.get_end_of_document_position(),
+            )
 
 
 class Falyx:
@@ -325,7 +348,7 @@ class Falyx:
             keys.extend(cmd.aliases)
         return WordCompleter(keys, ignore_case=True)
 
-    def _get_validator(self) -> Validator:
+    def _get_validator_error_message(self) -> str:
         """Validator to check if the input is a valid command or toggle key."""
         keys = {self.exit_command.key.upper()}
         keys.update({alias.upper() for alias in self.exit_command.aliases})
@@ -354,18 +377,7 @@ class Falyx:
         if toggle_keys:
             message_lines.append(f"  Toggles: {toggles_str}")
         error_message = " ".join(message_lines)
-
-        def validator(text):
-            is_preview, choice = self.get_command(text, from_validate=True)
-            if is_preview and choice is None:
-                return True
-            return bool(choice)
-
-        return Validator.from_callable(
-            validator,
-            error_message=error_message,
-            move_cursor_to_end=True,
-        )
+        return error_message
 
     def _invalidate_prompt_session_cache(self):
         """Forces the prompt session to be recreated on the next access."""
@@ -428,9 +440,10 @@ class Falyx:
                 multiline=False,
                 completer=self._get_completer(),
                 reserve_space_for_menu=1,
-                validator=self._get_validator(),
+                validator=CommandValidator(self, self._get_validator_error_message()),
                 bottom_toolbar=self._get_bottom_bar_render(),
                 key_bindings=self.key_bindings,
+                validate_while_typing=False,
             )
         return self._prompt_session
 
@@ -694,32 +707,52 @@ class Falyx:
         return False, input_str.strip()
 
     def get_command(
-        self, choice: str, from_validate=False
-    ) -> tuple[bool, Command | None]:
+        self, raw_choices: str, from_validate=False
+    ) -> tuple[bool, Command | None, tuple, dict[str, Any]]:
         """
         Returns the selected command based on user input.
         Supports keys, aliases, and abbreviations.
         """
+        args = ()
+        kwargs: dict[str, Any] = {}
+        choice, *input_args = shlex.split(raw_choices)
         is_preview, choice = self.parse_preview_command(choice)
         if is_preview and not choice and self.help_command:
             is_preview = False
             choice = "?"
         elif is_preview and not choice:
+            # No help command enabled
             if not from_validate:
                 self.console.print(
                     f"[{OneColors.DARK_RED}]❌ You must enter a command for preview mode."
                 )
-            return is_preview, None
+            return is_preview, None, args, kwargs
 
         choice = choice.upper()
         name_map = self._name_map
-
         if choice in name_map:
-            return is_preview, name_map[choice]
+            if not from_validate:
+                logger.info("Command '%s' selected.", choice)
+            if input_args and name_map[choice].arg_parser:
+                try:
+                    args, kwargs = name_map[choice].parse_args(input_args)
+                except CommandArgumentError as error:
+                    if not from_validate:
+                        if not name_map[choice].show_help():
+                            self.console.print(
+                                f"[{OneColors.DARK_RED}]❌ Invalid arguments for '{choice}': {error}"
+                            )
+                    else:
+                        name_map[choice].show_help()
+                        raise ValidationError(
+                            message=str(error), cursor_position=len(raw_choices)
+                        )
+                    return is_preview, None, args, kwargs
+            return is_preview, name_map[choice], args, kwargs
 
         prefix_matches = [cmd for key, cmd in name_map.items() if key.startswith(choice)]
         if len(prefix_matches) == 1:
-            return is_preview, prefix_matches[0]
+            return is_preview, prefix_matches[0], args, kwargs
 
         fuzzy_matches = get_close_matches(choice, list(name_map.keys()), n=3, cutoff=0.7)
         if fuzzy_matches:
@@ -736,7 +769,7 @@ class Falyx:
                 self.console.print(
                     f"[{OneColors.LIGHT_YELLOW}]⚠️ Unknown command '{choice}'[/]"
                 )
-        return is_preview, None
+        return is_preview, None, args, kwargs
 
     def _create_context(self, selected_command: Command) -> ExecutionContext:
         """Creates a context dictionary for the selected command."""
@@ -759,8 +792,9 @@ class Falyx:
 
     async def process_command(self) -> bool:
         """Processes the action of the selected command."""
-        choice = await self.prompt_session.prompt_async()
-        is_preview, selected_command = self.get_command(choice)
+        with patch_stdout(raw=True):
+            choice = await self.prompt_session.prompt_async()
+        is_preview, selected_command, args, kwargs = self.get_command(choice)
         if not selected_command:
             logger.info("Invalid command '%s'.", choice)
             return True
@@ -789,8 +823,8 @@ class Falyx:
         context.start_timer()
         try:
             await self.hooks.trigger(HookType.BEFORE, context)
-
-            result = await selected_command()
+            print(args, kwargs)
+            result = await selected_command(*args, **kwargs)
             context.result = result
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
         except Exception as error:
@@ -803,10 +837,18 @@ class Falyx:
             await self.hooks.trigger(HookType.ON_TEARDOWN, context)
         return True
 
-    async def run_key(self, command_key: str, return_context: bool = False) -> Any:
+    async def run_key(
+        self,
+        command_key: str,
+        return_context: bool = False,
+        args: tuple = (),
+        kwargs: dict[str, Any] | None = None,
+    ) -> Any:
         """Run a command by key without displaying the menu (non-interactive mode)."""
         self.debug_hooks()
-        is_preview, selected_command = self.get_command(command_key)
+        is_preview, selected_command, _, __ = self.get_command(command_key)
+        kwargs = kwargs or {}
+
         self.last_run_command = selected_command
 
         if not selected_command:
@@ -827,7 +869,7 @@ class Falyx:
         context.start_timer()
         try:
             await self.hooks.trigger(HookType.BEFORE, context)
-            result = await selected_command()
+            result = await selected_command(*args, **kwargs)
             context.result = result
 
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
@@ -922,6 +964,8 @@ class Falyx:
                     logger.info("BackSignal received.")
                 except CancelSignal:
                     logger.info("CancelSignal received.")
+                except HelpSignal:
+                    logger.info("HelpSignal received.")
         finally:
             logger.info("Exiting menu: %s", self.get_title())
             if self.exit_message:
@@ -956,7 +1000,7 @@ class Falyx:
 
         if self.cli_args.command == "preview":
             self.mode = FalyxMode.PREVIEW
-            _, command = self.get_command(self.cli_args.name)
+            _, command, args, kwargs = self.get_command(self.cli_args.name)
             if not command:
                 self.console.print(
                     f"[{OneColors.DARK_RED}]❌ Command '{self.cli_args.name}' not found."
@@ -970,7 +1014,7 @@ class Falyx:
 
         if self.cli_args.command == "run":
             self.mode = FalyxMode.RUN
-            is_preview, command = self.get_command(self.cli_args.name)
+            is_preview, command, _, __ = self.get_command(self.cli_args.name)
             if is_preview:
                 if command is None:
                     sys.exit(1)
@@ -981,7 +1025,11 @@ class Falyx:
                 sys.exit(1)
             self._set_retry_policy(command)
             try:
-                await self.run_key(self.cli_args.name)
+                args, kwargs = command.parse_args(self.cli_args.command_args)
+            except HelpSignal:
+                sys.exit(0)
+            try:
+                await self.run_key(self.cli_args.name, args=args, kwargs=kwargs)
             except FalyxError as error:
                 self.console.print(f"[{OneColors.DARK_RED}]❌ Error: {error}[/]")
                 sys.exit(1)

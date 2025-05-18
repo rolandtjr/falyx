@@ -29,3 +29,10 @@ class CancelSignal(FlowSignal):
 
     def __init__(self, message: str = "Cancel signal received."):
         super().__init__(message)
+
+
+class HelpSignal(FlowSignal):
+    """Raised to display help information."""
+
+    def __init__(self, message: str = "Help signal received."):
+        super().__init__(message)
