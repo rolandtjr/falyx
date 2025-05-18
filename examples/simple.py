@@ -8,9 +8,9 @@ setup_logging()
 
 
 # A flaky async step that fails randomly
-async def flaky_step():
+async def flaky_step() -> str:
     await asyncio.sleep(0.2)
-    if random.random() < 0.5:
+    if random.random() < 0.3:
         raise RuntimeError("Random failure!")
     print("Flaky step succeeded!")
     return "ok"

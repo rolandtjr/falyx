@@ -2,7 +2,7 @@
 """parsers.py
 This module contains the argument parsers used for the Falyx CLI.
 """
-from argparse import ArgumentParser, Namespace, _SubParsersAction
+from argparse import REMAINDER, ArgumentParser, Namespace, _SubParsersAction
 from dataclasses import asdict, dataclass
 from typing import Any, Sequence
 
@@ -112,6 +112,12 @@ def get_arg_parsers(
         dest="skip_confirm",
         action="store_true",
         help="Skip confirmation prompts",
+    )
+
+    run_group.add_argument(
+        "command_args",
+        nargs=REMAINDER,
+        help="Arguments to pass to the command (if applicable)",
     )
 
     run_all_parser = subparsers.add_parser(
