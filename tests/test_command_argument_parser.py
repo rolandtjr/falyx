@@ -1,7 +1,7 @@
 import pytest
 
-from falyx.argparse import ArgumentAction, CommandArgumentParser
 from falyx.exceptions import CommandArgumentError
+from falyx.parsers import ArgumentAction, CommandArgumentParser
 from falyx.signals import HelpSignal
 
 

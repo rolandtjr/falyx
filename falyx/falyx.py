@@ -58,9 +58,10 @@ from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import Hook, HookManager, HookType
 from falyx.logger import logger
 from falyx.options_manager import OptionsManager
-from falyx.parsers import get_arg_parsers
+from falyx.parsers import CommandArgumentParser, get_arg_parsers
+from falyx.protocols import ArgParserProtocol
 from falyx.retry import RetryPolicy
-from falyx.signals import BackSignal, CancelSignal, HelpSignal, QuitSignal
+from falyx.signals import BackSignal, CancelSignal, FlowSignal, HelpSignal, QuitSignal
 from falyx.themes import OneColors, get_nord_theme
 from falyx.utils import CaseInsensitiveDict, _noop, chunks, get_program_invocation
 from falyx.version import __version__
@@ -444,6 +445,7 @@ class Falyx:
                 bottom_toolbar=self._get_bottom_bar_render(),
                 key_bindings=self.key_bindings,
                 validate_while_typing=False,
+                interrupt_exception=FlowSignal,
             )
         return self._prompt_session
 
@@ -524,7 +526,7 @@ class Falyx:
         key: str = "X",
         description: str = "Exit",
         aliases: list[str] | None = None,
-        action: Callable[[], Any] | None = None,
+        action: Callable[[Any], Any] | None = None,
         style: str = OneColors.DARK_RED,
         confirm: bool = False,
         confirm_message: str = "Are you sure?",
@@ -578,13 +580,14 @@ class Falyx:
         self,
         key: str,
         description: str,
-        action: BaseAction | Callable[[], Any],
+        action: BaseAction | Callable[[Any], Any],
         *,
         args: tuple = (),
         kwargs: dict[str, Any] | None = None,
         hidden: bool = False,
         aliases: list[str] | None = None,
         help_text: str = "",
+        help_epilogue: str = "",
         style: str = OneColors.WHITE,
         confirm: bool = False,
         confirm_message: str = "Are you sure?",
@@ -606,9 +609,33 @@ class Falyx:
         retry_all: bool = False,
         retry_policy: RetryPolicy | None = None,
         requires_input: bool | None = None,
+        arg_parser: CommandArgumentParser | None = None,
+        arguments: list[dict[str, Any]] | None = None,
+        argument_config: Callable[[CommandArgumentParser], None] | None = None,
+        custom_parser: ArgParserProtocol | None = None,
+        custom_help: Callable[[], str | None] | None = None,
+        auto_args: bool = False,
+        arg_metadata: dict[str, str | dict[str, Any]] | None = None,
     ) -> Command:
         """Adds an command to the menu, preventing duplicates."""
         self._validate_command_key(key)
+
+        if arg_parser:
+            if not isinstance(arg_parser, CommandArgumentParser):
+                raise NotAFalyxError(
+                    "arg_parser must be an instance of CommandArgumentParser."
+                )
+            arg_parser = arg_parser
+        else:
+            arg_parser = CommandArgumentParser(
+                command_key=key,
+                command_description=description,
+                command_style=style,
+                help_text=help_text,
+                help_epilogue=help_epilogue,
+                aliases=aliases,
+            )
+
         command = Command(
             key=key,
             description=description,
@@ -618,6 +645,7 @@ class Falyx:
             hidden=hidden,
             aliases=aliases if aliases else [],
             help_text=help_text,
+            help_epilogue=help_epilogue,
             style=style,
             confirm=confirm,
             confirm_message=confirm_message,
@@ -634,6 +662,13 @@ class Falyx:
             retry_policy=retry_policy or RetryPolicy(),
             requires_input=requires_input,
             options_manager=self.options,
+            arg_parser=arg_parser,
+            arguments=arguments or [],
+            argument_config=argument_config,
+            custom_parser=custom_parser,
+            custom_help=custom_help,
+            auto_args=auto_args,
+            arg_metadata=arg_metadata or {},
         )
 
         if hooks:
@@ -715,7 +750,10 @@ class Falyx:
         """
         args = ()
         kwargs: dict[str, Any] = {}
-        choice, *input_args = shlex.split(raw_choices)
+        try:
+            choice, *input_args = shlex.split(raw_choices)
+        except ValueError:
+            return False, None, args, kwargs
         is_preview, choice = self.parse_preview_command(choice)
         if is_preview and not choice and self.help_command:
             is_preview = False
@@ -735,7 +773,7 @@ class Falyx:
                 logger.info("Command '%s' selected.", choice)
             if input_args and name_map[choice].arg_parser:
                 try:
-                    args, kwargs = name_map[choice].parse_args(input_args)
+                    args, kwargs = name_map[choice].parse_args(input_args, from_validate)
                 except CommandArgumentError as error:
                     if not from_validate:
                         if not name_map[choice].show_help():
@@ -748,6 +786,8 @@ class Falyx:
                             message=str(error), cursor_position=len(raw_choices)
                         )
                     return is_preview, None, args, kwargs
+                except HelpSignal:
+                    return True, None, args, kwargs
             return is_preview, name_map[choice], args, kwargs
 
         prefix_matches = [cmd for key, cmd in name_map.items() if key.startswith(choice)]
@@ -823,7 +863,6 @@ class Falyx:
         context.start_timer()
         try:
             await self.hooks.trigger(HookType.BEFORE, context)
-            print(args, kwargs)
             result = await selected_command(*args, **kwargs)
             context.result = result
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
@@ -964,8 +1003,6 @@ class Falyx:
                     logger.info("BackSignal received.")
                 except CancelSignal:
                     logger.info("CancelSignal received.")
-                except HelpSignal:
-                    logger.info("HelpSignal received.")
         finally:
             logger.info("Exiting menu: %s", self.get_title())
             if self.exit_message:
@@ -995,7 +1032,7 @@ class Falyx:
             sys.exit(0)
 
         if self.cli_args.command == "version" or self.cli_args.version:
-            self.console.print(f"[{OneColors.GREEN_b}]Falyx CLI v{__version__}[/]")
+            self.console.print(f"[{OneColors.BLUE_b}]Falyx CLI v{__version__}[/]")
             sys.exit(0)
 
         if self.cli_args.command == "preview":

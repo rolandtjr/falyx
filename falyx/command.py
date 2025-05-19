@@ -27,15 +27,25 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 from rich.console import Console
 from rich.tree import Tree
 
-from falyx.action.action import Action, ActionGroup, BaseAction, ChainedAction
+from falyx.action.action import (
+    Action,
+    ActionGroup,
+    BaseAction,
+    ChainedAction,
+    ProcessAction,
+)
 from falyx.action.io_action import BaseIOAction
-from falyx.argparse import CommandArgumentParser
 from falyx.context import ExecutionContext
 from falyx.debug import register_debug_hooks
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
 from falyx.logger import logger
 from falyx.options_manager import OptionsManager
+from falyx.parsers import (
+    CommandArgumentParser,
+    infer_args_from_func,
+    same_argument_definitions,
+)
 from falyx.prompt_utils import confirm_async, should_prompt_user
 from falyx.protocols import ArgParserProtocol
 from falyx.retry import RetryPolicy
@@ -90,6 +100,11 @@ class Command(BaseModel):
         tags (list[str]): Organizational tags for the command.
         logging_hooks (bool): Whether to attach logging hooks automatically.
         requires_input (bool | None): Indicates if the action needs input.
+        options_manager (OptionsManager): Manages global command-line options.
+        arg_parser (CommandArgumentParser): Parses command arguments.
+        custom_parser (ArgParserProtocol | None): Custom argument parser.
+        custom_help (Callable[[], str | None] | None): Custom help message generator.
+        auto_args (bool): Automatically infer arguments from the action.
 
     Methods:
         __call__(): Executes the command, respecting hooks and retries.
@@ -101,12 +116,13 @@ class Command(BaseModel):
 
     key: str
     description: str
-    action: BaseAction | Callable[[], Any]
+    action: BaseAction | Callable[[Any], Any]
     args: tuple = ()
     kwargs: dict[str, Any] = Field(default_factory=dict)
     hidden: bool = False
     aliases: list[str] = Field(default_factory=list)
     help_text: str = ""
+    help_epilogue: str = ""
     style: str = OneColors.WHITE
     confirm: bool = False
     confirm_message: str = "Are you sure?"
@@ -125,22 +141,44 @@ class Command(BaseModel):
     requires_input: bool | None = None
     options_manager: OptionsManager = Field(default_factory=OptionsManager)
     arg_parser: CommandArgumentParser = Field(default_factory=CommandArgumentParser)
+    arguments: list[dict[str, Any]] = Field(default_factory=list)
+    argument_config: Callable[[CommandArgumentParser], None] | None = None
     custom_parser: ArgParserProtocol | None = None
     custom_help: Callable[[], str | None] | None = None
+    auto_args: bool = False
+    arg_metadata: dict[str, str | dict[str, Any]] = Field(default_factory=dict)
 
     _context: ExecutionContext | None = PrivateAttr(default=None)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    def parse_args(self, raw_args: list[str] | str) -> tuple[tuple, dict]:
+    def parse_args(
+        self, raw_args: list[str] | str, from_validate: bool = False
+    ) -> tuple[tuple, dict]:
         if self.custom_parser:
             if isinstance(raw_args, str):
-                raw_args = shlex.split(raw_args)
+                try:
+                    raw_args = shlex.split(raw_args)
+                except ValueError:
+                    logger.warning(
+                        "[Command:%s] Failed to split arguments: %s",
+                        self.key,
+                        raw_args,
+                    )
+                    return ((), {})
             return self.custom_parser(raw_args)
 
         if isinstance(raw_args, str):
-            raw_args = shlex.split(raw_args)
-        return self.arg_parser.parse_args_split(raw_args)
+            try:
+                raw_args = shlex.split(raw_args)
+            except ValueError:
+                logger.warning(
+                    "[Command:%s] Failed to split arguments: %s",
+                    self.key,
+                    raw_args,
+                )
+                return ((), {})
+        return self.arg_parser.parse_args_split(raw_args, from_validate=from_validate)
 
     @field_validator("action", mode="before")
     @classmethod
@@ -151,11 +189,37 @@ class Command(BaseModel):
             return ensure_async(action)
         raise TypeError("Action must be a callable or an instance of BaseAction")
 
+    def get_argument_definitions(self) -> list[dict[str, Any]]:
+        if self.arguments:
+            return self.arguments
+        elif self.argument_config:
+            self.argument_config(self.arg_parser)
+        elif self.auto_args:
+            if isinstance(self.action, (Action, ProcessAction)):
+                return infer_args_from_func(self.action.action, self.arg_metadata)
+            elif isinstance(self.action, ChainedAction):
+                if self.action.actions:
+                    action = self.action.actions[0]
+                    if isinstance(action, Action):
+                        return infer_args_from_func(action.action, self.arg_metadata)
+                    elif callable(action):
+                        return infer_args_from_func(action, self.arg_metadata)
+            elif isinstance(self.action, ActionGroup):
+                arg_defs = same_argument_definitions(
+                    self.action.actions, self.arg_metadata
+                )
+                if arg_defs:
+                    return arg_defs
+                logger.debug(
+                    "[Command:%s] auto_args disabled: mismatched ActionGroup arguments",
+                    self.key,
+                )
+            elif callable(self.action):
+                return infer_args_from_func(self.action, self.arg_metadata)
+        return []
+
     def model_post_init(self, _: Any) -> None:
         """Post-initialization to set up the action and hooks."""
-        if isinstance(self.arg_parser, CommandArgumentParser):
-            self.arg_parser.command_description = self.description
-
         if self.retry and isinstance(self.action, Action):
             self.action.enable_retry()
         elif self.retry_policy and isinstance(self.action, Action):
@@ -182,6 +246,9 @@ class Command(BaseModel):
             self.hidden = True
         elif self.requires_input is None:
             self.requires_input = False
+
+        for arg_def in self.get_argument_definitions():
+            self.arg_parser.add_argument(*arg_def.pop("flags"), **arg_def)
 
     @cached_property
     def detect_requires_input(self) -> bool:

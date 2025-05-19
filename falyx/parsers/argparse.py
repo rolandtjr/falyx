@@ -5,7 +5,8 @@ from enum import Enum
 from typing import Any, Iterable
 
 from rich.console import Console
-from rich.table import Table
+from rich.markup import escape
+from rich.text import Text
 
 from falyx.exceptions import CommandArgumentError
 from falyx.signals import HelpSignal
@@ -40,6 +41,70 @@ class Argument:
     nargs: int | str = 1  # int, '?', '*', '+'
     positional: bool = False  # True if no leading - or -- in flags
 
+    def get_positional_text(self) -> str:
+        """Get the positional text for the argument."""
+        text = ""
+        if self.positional:
+            if self.choices:
+                text = f"{{{','.join([str(choice) for choice in self.choices])}}}"
+            else:
+                text = self.dest
+        return text
+
+    def get_choice_text(self) -> str:
+        """Get the choice text for the argument."""
+        choice_text = ""
+        if self.choices:
+            choice_text = f"{{{','.join([str(choice) for choice in self.choices])}}}"
+        elif (
+            self.action
+            in (
+                ArgumentAction.STORE,
+                ArgumentAction.APPEND,
+                ArgumentAction.EXTEND,
+            )
+            and not self.positional
+        ):
+            choice_text = self.dest.upper()
+        elif isinstance(self.nargs, str):
+            choice_text = self.dest
+
+        if self.nargs == "?":
+            choice_text = f"[{choice_text}]"
+        elif self.nargs == "*":
+            choice_text = f"[{choice_text} ...]"
+        elif self.nargs == "+":
+            choice_text = f"{choice_text} [{choice_text} ...]"
+        return choice_text
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Argument):
+            return False
+        return (
+            self.flags == other.flags
+            and self.dest == other.dest
+            and self.action == other.action
+            and self.type == other.type
+            and self.choices == other.choices
+            and self.required == other.required
+            and self.nargs == other.nargs
+            and self.positional == other.positional
+        )
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                tuple(self.flags),
+                self.dest,
+                self.action,
+                self.type,
+                tuple(self.choices or []),
+                self.required,
+                self.nargs,
+                self.positional,
+            )
+        )
+
 
 class CommandArgumentParser:
     """
@@ -61,10 +126,25 @@ class CommandArgumentParser:
     - Render Help using Rich library.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        command_key: str = "",
+        command_description: str = "",
+        command_style: str = "bold",
+        help_text: str = "",
+        help_epilogue: str = "",
+        aliases: list[str] | None = None,
+    ) -> None:
         """Initialize the CommandArgumentParser."""
-        self.command_description: str = ""
+        self.command_key: str = command_key
+        self.command_description: str = command_description
+        self.command_style: str = command_style
+        self.help_text: str = help_text
+        self.help_epilogue: str = help_epilogue
+        self.aliases: list[str] = aliases or []
         self._arguments: list[Argument] = []
+        self._positional: list[Argument] = []
+        self._keyword: list[Argument] = []
         self._flag_map: dict[str, Argument] = {}
         self._dest_set: set[str] = set()
         self._add_help()
@@ -73,10 +153,10 @@ class CommandArgumentParser:
     def _add_help(self):
         """Add help argument to the parser."""
         self.add_argument(
-            "--help",
             "-h",
+            "--help",
             action=ArgumentAction.HELP,
-            help="Show this help message and exit.",
+            help="Show this help message.",
             dest="help",
         )
 
@@ -304,9 +384,30 @@ class CommandArgumentParser:
                 )
             self._flag_map[flag] = argument
         self._arguments.append(argument)
+        if positional:
+            self._positional.append(argument)
+        else:
+            self._keyword.append(argument)
 
     def get_argument(self, dest: str) -> Argument | None:
         return next((a for a in self._arguments if a.dest == dest), None)
+
+    def to_definition_list(self) -> list[dict[str, Any]]:
+        defs = []
+        for arg in self._arguments:
+            defs.append(
+                {
+                    "flags": arg.flags,
+                    "dest": arg.dest,
+                    "action": arg.action,
+                    "type": arg.type,
+                    "choices": arg.choices,
+                    "required": arg.required,
+                    "nargs": arg.nargs,
+                    "positional": arg.positional,
+                }
+            )
+        return defs
 
     def _consume_nargs(
         self, args: list[str], start: int, spec: Argument
@@ -405,7 +506,9 @@ class CommandArgumentParser:
 
         return i
 
-    def parse_args(self, args: list[str] | None = None) -> dict[str, Any]:
+    def parse_args(
+        self, args: list[str] | None = None, from_validate: bool = False
+    ) -> dict[str, Any]:
         """Parse Falyx Command arguments."""
         if args is None:
             args = []
@@ -423,7 +526,8 @@ class CommandArgumentParser:
                 action = spec.action
 
                 if action == ArgumentAction.HELP:
-                    self.render_help()
+                    if not from_validate:
+                        self.render_help()
                     raise HelpSignal()
                 elif action == ArgumentAction.STORE_TRUE:
                     result[spec.dest] = True
@@ -550,13 +654,15 @@ class CommandArgumentParser:
         result.pop("help", None)
         return result
 
-    def parse_args_split(self, args: list[str]) -> tuple[tuple[Any, ...], dict[str, Any]]:
+    def parse_args_split(
+        self, args: list[str], from_validate: bool = False
+    ) -> tuple[tuple[Any, ...], dict[str, Any]]:
         """
         Returns:
             tuple[args, kwargs] - Positional arguments in defined order,
             followed by keyword argument mapping.
         """
-        parsed = self.parse_args(args)
+        parsed = self.parse_args(args, from_validate)
         args_list = []
         kwargs_dict = {}
         for arg in self._arguments:
@@ -568,20 +674,74 @@ class CommandArgumentParser:
                 kwargs_dict[arg.dest] = parsed[arg.dest]
         return tuple(args_list), kwargs_dict
 
-    def render_help(self):
-        table = Table(title=f"{self.command_description} Help")
-        table.add_column("Flags")
-        table.add_column("Help")
-        for arg in self._arguments:
-            if arg.dest == "help":
-                continue
-            flag_str = ", ".join(arg.flags) if not arg.positional else arg.dest
-            table.add_row(flag_str, arg.help or "")
-        table.add_section()
-        arg = self.get_argument("help")
-        flag_str = ", ".join(arg.flags) if not arg.positional else arg.dest
-        table.add_row(flag_str, arg.help or "")
-        self.console.print(table)
+    def render_help(self) -> None:
+        # Options
+        # Add all keyword arguments to the options list
+        options_list = []
+        for arg in self._keyword:
+            choice_text = arg.get_choice_text()
+            if choice_text:
+                options_list.extend([f"[{arg.flags[0]} {choice_text}]"])
+            else:
+                options_list.extend([f"[{arg.flags[0]}]"])
+
+        # Add positional arguments to the options list
+        for arg in self._positional:
+            choice_text = arg.get_choice_text()
+            if isinstance(arg.nargs, int):
+                choice_text = " ".join([choice_text] * arg.nargs)
+            options_list.append(escape(choice_text))
+
+        options_text = " ".join(options_list)
+        command_keys = " | ".join(
+            [f"[{self.command_style}]{self.command_key}[/{self.command_style}]"]
+            + [
+                f"[{self.command_style}]{alias}[/{self.command_style}]"
+                for alias in self.aliases
+            ]
+        )
+
+        usage = f"usage: {command_keys} {options_text}"
+        self.console.print(f"[bold]{usage}[/bold]\n")
+
+        # Description
+        if self.help_text:
+            self.console.print(self.help_text + "\n")
+
+        # Arguments
+        if self._arguments:
+            if self._positional:
+                self.console.print("[bold]positional:[/bold]")
+                for arg in self._positional:
+                    flags = arg.get_positional_text()
+                    arg_line = Text(f"  {flags:<30} ")
+                    help_text = arg.help or ""
+                    arg_line.append(help_text)
+                    self.console.print(arg_line)
+            self.console.print("[bold]options:[/bold]")
+            for arg in self._keyword:
+                flags = ", ".join(arg.flags)
+                flags_choice = f"{flags} {arg.get_choice_text()}"
+                arg_line = Text(f"  {flags_choice:<30} ")
+                help_text = arg.help or ""
+                arg_line.append(help_text)
+                self.console.print(arg_line)
+
+        # Epilogue
+        if self.help_epilogue:
+            self.console.print("\n" + self.help_epilogue, style="dim")
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, CommandArgumentParser):
+            return False
+
+        def sorted_args(parser):
+            return sorted(parser._arguments, key=lambda a: a.dest)
+
+        return sorted_args(self) == sorted_args(other)
+
+    def __hash__(self) -> int:
+        return hash(tuple(sorted(self._arguments, key=lambda a: a.dest)))
 
     def __str__(self) -> str:
         positional = sum(arg.positional for arg in self._arguments)
