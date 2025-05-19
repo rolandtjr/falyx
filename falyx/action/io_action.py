@@ -224,7 +224,10 @@ class ShellAction(BaseIOAction):
         # Replace placeholder in template, or use raw input as full command
         command = self.command_template.format(parsed_input)
         if self.safe_mode:
-            args = shlex.split(command)
+            try:
+                args = shlex.split(command)
+            except ValueError as error:
+                raise FalyxError(f"Invalid command template: {error}")
             result = subprocess.run(args, capture_output=True, text=True, check=True)
         else:
             result = subprocess.run(
