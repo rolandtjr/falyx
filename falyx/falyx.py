@@ -63,7 +63,7 @@ from falyx.protocols import ArgParserProtocol
 from falyx.retry import RetryPolicy
 from falyx.signals import BackSignal, CancelSignal, FlowSignal, HelpSignal, QuitSignal
 from falyx.themes import OneColors, get_nord_theme
-from falyx.utils import CaseInsensitiveDict, _noop, chunks, get_program_invocation
+from falyx.utils import CaseInsensitiveDict, _noop, chunks
 from falyx.version import __version__
 
 
@@ -158,8 +158,8 @@ class Falyx:
         force_confirm: bool = False,
         cli_args: Namespace | None = None,
         options: OptionsManager | None = None,
-        render_menu: Callable[["Falyx"], None] | None = None,
-        custom_table: Callable[["Falyx"], Table] | Table | None = None,
+        render_menu: Callable[[Falyx], None] | None = None,
+        custom_table: Callable[[Falyx], Table] | Table | None = None,
     ) -> None:
         """Initializes the Falyx object."""
         self.title: str | Markdown = title
@@ -183,8 +183,8 @@ class Falyx:
         self._never_prompt: bool = never_prompt
         self._force_confirm: bool = force_confirm
         self.cli_args: Namespace | None = cli_args
-        self.render_menu: Callable[["Falyx"], None] | None = render_menu
-        self.custom_table: Callable[["Falyx"], Table] | Table | None = custom_table
+        self.render_menu: Callable[[Falyx], None] | None = render_menu
+        self.custom_table: Callable[[Falyx], Table] | Table | None = custom_table
         self.validate_options(cli_args, options)
         self._prompt_session: PromptSession | None = None
         self.mode = FalyxMode.MENU
@@ -526,7 +526,7 @@ class Falyx:
         key: str = "X",
         description: str = "Exit",
         aliases: list[str] | None = None,
-        action: Callable[[Any], Any] | None = None,
+        action: Callable[..., Any] | None = None,
         style: str = OneColors.DARK_RED,
         confirm: bool = False,
         confirm_message: str = "Are you sure?",
@@ -580,7 +580,7 @@ class Falyx:
         self,
         key: str,
         description: str,
-        action: BaseAction | Callable[[Any], Any],
+        action: BaseAction | Callable[..., Any],
         *,
         args: tuple = (),
         kwargs: dict[str, Any] | None = None,
@@ -614,7 +614,7 @@ class Falyx:
         argument_config: Callable[[CommandArgumentParser], None] | None = None,
         custom_parser: ArgParserProtocol | None = None,
         custom_help: Callable[[], str | None] | None = None,
-        auto_args: bool = False,
+        auto_args: bool = True,
         arg_metadata: dict[str, str | dict[str, Any]] | None = None,
     ) -> Command:
         """Adds an command to the menu, preventing duplicates."""
@@ -842,15 +842,6 @@ class Falyx:
         if is_preview:
             logger.info("Preview command '%s' selected.", selected_command.key)
             await selected_command.preview()
-            return True
-
-        if selected_command.requires_input:
-            program = get_program_invocation()
-            self.console.print(
-                f"[{OneColors.LIGHT_YELLOW}]⚠️ Command '{selected_command.key}' requires"
-                f" input and must be run via [{OneColors.MAGENTA}]'{program} run"
-                f"'[{OneColors.LIGHT_YELLOW}] with proper piping or arguments.[/]"
-            )
             return True
 
         self.last_run_command = selected_command

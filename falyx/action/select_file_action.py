@@ -121,6 +121,9 @@ class SelectFileAction(BaseAction):
                 logger.warning("[ERROR] Failed to parse %s: %s", file.name, error)
         return options
 
+    def get_infer_target(self) -> None:
+        return None
+
     async def _run(self, *args, **kwargs) -> Any:
         context = ExecutionContext(name=self.name, args=args, kwargs=kwargs, action=self)
         context.start_timer()

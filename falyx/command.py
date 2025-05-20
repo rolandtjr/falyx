@@ -27,13 +27,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 from rich.console import Console
 from rich.tree import Tree
 
-from falyx.action.action import (
-    Action,
-    ActionGroup,
-    BaseAction,
-    ChainedAction,
-    ProcessAction,
-)
+from falyx.action.action import Action, ActionGroup, BaseAction, ChainedAction
 from falyx.action.io_action import BaseIOAction
 from falyx.context import ExecutionContext
 from falyx.debug import register_debug_hooks
@@ -41,11 +35,8 @@ from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
 from falyx.logger import logger
 from falyx.options_manager import OptionsManager
-from falyx.parsers import (
-    CommandArgumentParser,
-    infer_args_from_func,
-    same_argument_definitions,
-)
+from falyx.parsers.argparse import CommandArgumentParser
+from falyx.parsers.signature import infer_args_from_func
 from falyx.prompt_utils import confirm_async, should_prompt_user
 from falyx.protocols import ArgParserProtocol
 from falyx.retry import RetryPolicy
@@ -116,7 +107,7 @@ class Command(BaseModel):
 
     key: str
     description: str
-    action: BaseAction | Callable[[Any], Any]
+    action: BaseAction | Callable[..., Any]
     args: tuple = ()
     kwargs: dict[str, Any] = Field(default_factory=dict)
     hidden: bool = False
@@ -145,7 +136,7 @@ class Command(BaseModel):
     argument_config: Callable[[CommandArgumentParser], None] | None = None
     custom_parser: ArgParserProtocol | None = None
     custom_help: Callable[[], str | None] | None = None
-    auto_args: bool = False
+    auto_args: bool = True
     arg_metadata: dict[str, str | dict[str, Any]] = Field(default_factory=dict)
 
     _context: ExecutionContext | None = PrivateAttr(default=None)
@@ -195,24 +186,9 @@ class Command(BaseModel):
         elif self.argument_config:
             self.argument_config(self.arg_parser)
         elif self.auto_args:
-            if isinstance(self.action, (Action, ProcessAction)):
-                return infer_args_from_func(self.action.action, self.arg_metadata)
-            elif isinstance(self.action, ChainedAction):
-                if self.action.actions:
-                    action = self.action.actions[0]
-                    if isinstance(action, Action):
-                        return infer_args_from_func(action.action, self.arg_metadata)
-                    elif callable(action):
-                        return infer_args_from_func(action, self.arg_metadata)
-            elif isinstance(self.action, ActionGroup):
-                arg_defs = same_argument_definitions(
-                    self.action.actions, self.arg_metadata
-                )
-                if arg_defs:
-                    return arg_defs
-                logger.debug(
-                    "[Command:%s] auto_args disabled: mismatched ActionGroup arguments",
-                    self.key,
+            if isinstance(self.action, BaseAction):
+                return infer_args_from_func(
+                    self.action.get_infer_target(), self.arg_metadata
                 )
             elif callable(self.action):
                 return infer_args_from_func(self.action, self.arg_metadata)

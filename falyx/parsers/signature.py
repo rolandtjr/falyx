@@ -1,17 +1,20 @@
 import inspect
 from typing import Any, Callable
 
-from falyx import logger
+from falyx.logger import logger
 
 
 def infer_args_from_func(
-    func: Callable[[Any], Any],
+    func: Callable[[Any], Any] | None,
     arg_metadata: dict[str, str | dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """
     Infer argument definitions from a callable's signature.
     Returns a list of kwargs suitable for CommandArgumentParser.add_argument.
     """
+    if not callable(func):
+        logger.debug("Provided argument is not callable: %s", func)
+        return []
     arg_metadata = arg_metadata or {}
     signature = inspect.signature(func)
     arg_defs = []

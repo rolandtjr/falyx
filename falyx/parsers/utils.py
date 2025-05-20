@@ -1,7 +1,6 @@
 from typing import Any
 
 from falyx import logger
-from falyx.action.action import Action, ChainedAction, ProcessAction
 from falyx.parsers.signature import infer_args_from_func
 
 
@@ -9,17 +8,12 @@ def same_argument_definitions(
     actions: list[Any],
     arg_metadata: dict[str, str | dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]] | None:
+    from falyx.action.action import BaseAction
+
     arg_sets = []
     for action in actions:
-        if isinstance(action, (Action, ProcessAction)):
-            arg_defs = infer_args_from_func(action.action, arg_metadata)
-        elif isinstance(action, ChainedAction):
-            if action.actions:
-                action = action.actions[0]
-                if isinstance(action, Action):
-                    arg_defs = infer_args_from_func(action.action, arg_metadata)
-                elif callable(action):
-                    arg_defs = infer_args_from_func(action, arg_metadata)
+        if isinstance(action, BaseAction):
+            arg_defs = infer_args_from_func(action.get_infer_target(), arg_metadata)
         elif callable(action):
             arg_defs = infer_args_from_func(action, arg_metadata)
         else:

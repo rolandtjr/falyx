@@ -47,6 +47,7 @@ from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import Hook, HookManager, HookType
 from falyx.logger import logger
 from falyx.options_manager import OptionsManager
+from falyx.parsers.utils import same_argument_definitions
 from falyx.retry import RetryHandler, RetryPolicy
 from falyx.themes import OneColors
 from falyx.utils import ensure_async
@@ -100,6 +101,14 @@ class BaseAction(ABC):
     @abstractmethod
     async def preview(self, parent: Tree | None = None):
         raise NotImplementedError("preview must be implemented by subclasses")
+
+    @abstractmethod
+    def get_infer_target(self) -> Callable[..., Any] | None:
+        """
+        Returns the callable to be used for argument inference.
+        By default, it returns None.
+        """
+        raise NotImplementedError("get_infer_target must be implemented by subclasses")
 
     def set_options_manager(self, options_manager: OptionsManager) -> None:
         self.options_manager = options_manager
@@ -245,6 +254,13 @@ class Action(BaseAction):
         self.retry_policy = policy
         if policy.enabled:
             self.enable_retry()
+
+    def get_infer_target(self) -> Callable[..., Any]:
+        """
+        Returns the callable to be used for argument inference.
+        By default, it returns the action itself.
+        """
+        return self.action
 
     async def _run(self, *args, **kwargs) -> Any:
         combined_args = args + self.args
@@ -477,6 +493,14 @@ class ChainedAction(BaseAction, ActionListMixin):
         if hasattr(action, "register_teardown") and callable(action.register_teardown):
             action.register_teardown(self.hooks)
 
+    def get_infer_target(self) -> Callable[..., Any] | None:
+        if self.actions:
+            return self.actions[0].get_infer_target()
+        return None
+
+    def _clear_args(self):
+        return (), {}
+
     async def _run(self, *args, **kwargs) -> list[Any]:
         if not self.actions:
             raise EmptyChainError(f"[{self.name}] No actions to execute.")
@@ -505,12 +529,8 @@ class ChainedAction(BaseAction, ActionListMixin):
                     continue
                 shared_context.current_index = index
                 prepared = action.prepare(shared_context, self.options_manager)
-                last_result = shared_context.last_result()
                 try:
-                    if self.requires_io_injection() and last_result is not None:
-                        result = await prepared(**{prepared.inject_into: last_result})
-                    else:
-                        result = await prepared(*args, **updated_kwargs)
+                    result = await prepared(*args, **updated_kwargs)
                 except Exception as error:
                     if index + 1 < len(self.actions) and isinstance(
                         self.actions[index + 1], FallbackAction
@@ -529,6 +549,7 @@ class ChainedAction(BaseAction, ActionListMixin):
                         fallback._skip_in_chain = True
                     else:
                         raise
+                args, updated_kwargs = self._clear_args()
                 shared_context.add_result(result)
                 context.extra["results"].append(result)
                 context.extra["rollback_stack"].append(prepared)
@@ -669,6 +690,16 @@ class ActionGroup(BaseAction, ActionListMixin):
         if hasattr(action, "register_teardown") and callable(action.register_teardown):
             action.register_teardown(self.hooks)
 
+    def get_infer_target(self) -> Callable[..., Any] | None:
+        arg_defs = same_argument_definitions(self.actions)
+        if arg_defs:
+            return self.actions[0].get_infer_target()
+        logger.debug(
+            "[%s] auto_args disabled: mismatched ActionGroup arguments",
+            self.name,
+        )
+        return None
+
     async def _run(self, *args, **kwargs) -> list[tuple[str, Any]]:
         shared_context = SharedContext(name=self.name, action=self, is_parallel=True)
         if self.shared_context:
@@ -787,8 +818,11 @@ class ProcessAction(BaseAction):
         self.executor = executor or ProcessPoolExecutor()
         self.is_retryable = True
 
-    async def _run(self, *args, **kwargs):
-        if self.inject_last_result:
+    def get_infer_target(self) -> Callable[..., Any] | None:
+        return self.action
+
+    async def _run(self, *args, **kwargs) -> Any:
+        if self.inject_last_result and self.shared_context:
             last_result = self.shared_context.last_result()
             if not self._validate_pickleable(last_result):
                 raise ValueError(

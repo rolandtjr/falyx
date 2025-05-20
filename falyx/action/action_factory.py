@@ -1,6 +1,6 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """action_factory.py"""
-from typing import Any
+from typing import Any, Callable
 
 from rich.tree import Tree
 
@@ -54,6 +54,9 @@ class ActionFactoryAction(BaseAction):
     @factory.setter
     def factory(self, value: ActionFactoryProtocol):
         self._factory = ensure_async(value)
+
+    def get_infer_target(self) -> Callable[..., Any]:
+        return self.factory
 
     async def _run(self, *args, **kwargs) -> Any:
         updated_kwargs = self._maybe_inject_last_result(kwargs)

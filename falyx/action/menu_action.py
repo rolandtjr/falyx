@@ -73,6 +73,9 @@ class MenuAction(BaseAction):
             table.add_row(*row)
         return table
 
+    def get_infer_target(self) -> None:
+        return None
+
     async def _run(self, *args, **kwargs) -> Any:
         kwargs = self._maybe_inject_last_result(kwargs)
         context = ExecutionContext(

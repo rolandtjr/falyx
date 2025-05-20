@@ -85,6 +85,9 @@ class SelectionAction(BaseAction):
                 f"got {type(value).__name__}"
             )
 
+    def get_infer_target(self) -> None:
+        return None
+
     async def _run(self, *args, **kwargs) -> Any:
         kwargs = self._maybe_inject_last_result(kwargs)
         context = ExecutionContext(

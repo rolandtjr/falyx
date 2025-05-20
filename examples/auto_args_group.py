@@ -24,7 +24,6 @@ cmd = Command(
     key="G",
     description="Greet someone with multiple variations.",
     action=group,
-    auto_args=True,
     arg_metadata={
         "name": {
             "help": "The name of the person to greet.",

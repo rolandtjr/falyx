@@ -19,7 +19,7 @@ import asyncio
 import shlex
 import subprocess
 import sys
-from typing import Any
+from typing import Any, Callable
 
 from rich.tree import Tree
 
@@ -81,15 +81,15 @@ class BaseIOAction(BaseAction):
     def to_output(self, result: Any) -> str | bytes:
         raise NotImplementedError
 
-    async def _resolve_input(self, kwargs: dict[str, Any]) -> str | bytes:
-        last_result = kwargs.pop(self.inject_into, None)
-
+    async def _resolve_input(
+        self, args: tuple[Any], kwargs: dict[str, Any]
+    ) -> str | bytes:
         data = await self._read_stdin()
         if data:
             return self.from_input(data)
 
-        if last_result is not None:
-            return last_result
+        if len(args) == 1:
+            return self.from_input(args[0])
 
         if self.inject_last_result and self.shared_context:
             return self.shared_context.last_result()
@@ -98,6 +98,9 @@ class BaseIOAction(BaseAction):
             "[%s] No input provided and no last result found for injection.", self.name
         )
         raise FalyxError("No input provided and no last result to inject.")
+
+    def get_infer_target(self) -> Callable[..., Any] | None:
+        return None
 
     async def __call__(self, *args, **kwargs):
         context = ExecutionContext(
@@ -117,8 +120,8 @@ class BaseIOAction(BaseAction):
                     pass
                 result = getattr(self, "_last_result", None)
             else:
-                parsed_input = await self._resolve_input(kwargs)
-                result = await self._run(parsed_input, *args, **kwargs)
+                parsed_input = await self._resolve_input(args, kwargs)
+                result = await self._run(parsed_input)
                 output = self.to_output(result)
                 await self._write_stdout(output)
             context.result = result
@@ -219,6 +222,11 @@ class ShellAction(BaseIOAction):
                 f"{self.name} expected str or bytes input, got {type(raw).__name__}"
             )
         return raw.strip() if isinstance(raw, str) else raw.decode("utf-8").strip()
+
+    def get_infer_target(self) -> Callable[..., Any] | None:
+        if sys.stdin.isatty():
+            return self._run
+        return None
 
     async def _run(self, parsed_input: str) -> str:
         # Replace placeholder in template, or use raw input as full command
