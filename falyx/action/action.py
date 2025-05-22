@@ -62,8 +62,7 @@ class BaseAction(ABC):
     inject_last_result (bool): Whether to inject the previous action's result
                                into kwargs.
     inject_into (str): The name of the kwarg key to inject the result as
-                                 (default: 'last_result').
-    _requires_injection (bool): Whether the action requires input injection.
+                       (default: 'last_result').
     """
 
     def __init__(
@@ -83,7 +82,6 @@ class BaseAction(ABC):
         self.inject_last_result: bool = inject_last_result
         self.inject_into: str = inject_into
         self._never_prompt: bool = never_prompt
-        self._requires_injection: bool = False
         self._skip_in_chain: bool = False
         self.console = Console(color_system="auto")
         self.options_manager: OptionsManager | None = None
@@ -103,7 +101,7 @@ class BaseAction(ABC):
         raise NotImplementedError("preview must be implemented by subclasses")
 
     @abstractmethod
-    def get_infer_target(self) -> Callable[..., Any] | None:
+    def get_infer_target(self) -> tuple[Callable[..., Any] | None, dict[str, Any] | None]:
         """
         Returns the callable to be used for argument inference.
         By default, it returns None.
@@ -162,10 +160,6 @@ class BaseAction(ABC):
 
     async def _write_stdout(self, data: str) -> None:
         """Override in subclasses that produce terminal output."""
-
-    def requires_io_injection(self) -> bool:
-        """Checks to see if the action requires input injection."""
-        return self._requires_injection
 
     def __repr__(self) -> str:
         return str(self)
@@ -255,12 +249,12 @@ class Action(BaseAction):
         if policy.enabled:
             self.enable_retry()
 
-    def get_infer_target(self) -> Callable[..., Any]:
+    def get_infer_target(self) -> tuple[Callable[..., Any], None]:
         """
         Returns the callable to be used for argument inference.
         By default, it returns the action itself.
         """
-        return self.action
+        return self.action, None
 
     async def _run(self, *args, **kwargs) -> Any:
         combined_args = args + self.args
@@ -493,10 +487,10 @@ class ChainedAction(BaseAction, ActionListMixin):
         if hasattr(action, "register_teardown") and callable(action.register_teardown):
             action.register_teardown(self.hooks)
 
-    def get_infer_target(self) -> Callable[..., Any] | None:
+    def get_infer_target(self) -> tuple[Callable[..., Any] | None, dict[str, Any] | None]:
         if self.actions:
             return self.actions[0].get_infer_target()
-        return None
+        return None, None
 
     def _clear_args(self):
         return (), {}
@@ -690,7 +684,7 @@ class ActionGroup(BaseAction, ActionListMixin):
         if hasattr(action, "register_teardown") and callable(action.register_teardown):
             action.register_teardown(self.hooks)
 
-    def get_infer_target(self) -> Callable[..., Any] | None:
+    def get_infer_target(self) -> tuple[Callable[..., Any] | None, dict[str, Any] | None]:
         arg_defs = same_argument_definitions(self.actions)
         if arg_defs:
             return self.actions[0].get_infer_target()
@@ -698,7 +692,7 @@ class ActionGroup(BaseAction, ActionListMixin):
             "[%s] auto_args disabled: mismatched ActionGroup arguments",
             self.name,
         )
-        return None
+        return None, None
 
     async def _run(self, *args, **kwargs) -> list[tuple[str, Any]]:
         shared_context = SharedContext(name=self.name, action=self, is_parallel=True)
@@ -818,8 +812,8 @@ class ProcessAction(BaseAction):
         self.executor = executor or ProcessPoolExecutor()
         self.is_retryable = True
 
-    def get_infer_target(self) -> Callable[..., Any] | None:
-        return self.action
+    def get_infer_target(self) -> tuple[Callable[..., Any] | None, None]:
+        return self.action, None
 
     async def _run(self, *args, **kwargs) -> Any:
         if self.inject_last_result and self.shared_context:

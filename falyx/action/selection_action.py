@@ -7,19 +7,21 @@ from rich.console import Console
 from rich.tree import Tree
 
 from falyx.action.action import BaseAction
+from falyx.action.types import SelectionReturnType
 from falyx.context import ExecutionContext
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookType
 from falyx.logger import logger
 from falyx.selection import (
     SelectionOption,
+    SelectionOptionMap,
     prompt_for_index,
     prompt_for_selection,
     render_selection_dict_table,
     render_selection_indexed_table,
 )
+from falyx.signals import CancelSignal
 from falyx.themes import OneColors
-from falyx.utils import CaseInsensitiveDict
 
 
 class SelectionAction(BaseAction):
@@ -34,7 +36,13 @@ class SelectionAction(BaseAction):
     def __init__(
         self,
         name: str,
-        selections: list[str] | set[str] | tuple[str, ...] | dict[str, SelectionOption],
+        selections: (
+            list[str]
+            | set[str]
+            | tuple[str, ...]
+            | dict[str, SelectionOption]
+            | dict[str, Any]
+        ),
         *,
         title: str = "Select an option",
         columns: int = 5,
@@ -42,7 +50,7 @@ class SelectionAction(BaseAction):
         default_selection: str = "",
         inject_last_result: bool = False,
         inject_into: str = "last_result",
-        return_key: bool = False,
+        return_type: SelectionReturnType | str = "value",
         console: Console | None = None,
         prompt_session: PromptSession | None = None,
         never_prompt: bool = False,
@@ -55,8 +63,8 @@ class SelectionAction(BaseAction):
             never_prompt=never_prompt,
         )
         # Setter normalizes to correct type, mypy can't infer that
-        self.selections: list[str] | CaseInsensitiveDict = selections  # type: ignore[assignment]
-        self.return_key = return_key
+        self.selections: list[str] | SelectionOptionMap = selections  # type: ignore[assignment]
+        self.return_type: SelectionReturnType = self._coerce_return_type(return_type)
         self.title = title
         self.columns = columns
         self.console = console or Console(color_system="auto")
@@ -65,8 +73,15 @@ class SelectionAction(BaseAction):
         self.prompt_message = prompt_message
         self.show_table = show_table
 
+    def _coerce_return_type(
+        self, return_type: SelectionReturnType | str
+    ) -> SelectionReturnType:
+        if isinstance(return_type, SelectionReturnType):
+            return return_type
+        return SelectionReturnType(return_type)
+
     @property
-    def selections(self) -> list[str] | CaseInsensitiveDict:
+    def selections(self) -> list[str] | SelectionOptionMap:
         return self._selections
 
     @selections.setter
@@ -74,19 +89,40 @@ class SelectionAction(BaseAction):
         self, value: list[str] | set[str] | tuple[str, ...] | dict[str, SelectionOption]
     ):
         if isinstance(value, (list, tuple, set)):
-            self._selections: list[str] | CaseInsensitiveDict = list(value)
+            self._selections: list[str] | SelectionOptionMap = list(value)
         elif isinstance(value, dict):
-            cid = CaseInsensitiveDict()
-            cid.update(value)
-            self._selections = cid
+            som = SelectionOptionMap()
+            if all(isinstance(key, str) for key in value) and all(
+                not isinstance(value[key], SelectionOption) for key in value
+            ):
+                som.update(
+                    {
+                        str(index): SelectionOption(key, option)
+                        for index, (key, option) in enumerate(value.items())
+                    }
+                )
+            elif all(isinstance(key, str) for key in value) and all(
+                isinstance(value[key], SelectionOption) for key in value
+            ):
+                som.update(value)
+            else:
+                raise ValueError("Invalid dictionary format. Keys must be strings")
+            self._selections = som
         else:
             raise TypeError(
                 "'selections' must be a list[str] or dict[str, SelectionOption], "
                 f"got {type(value).__name__}"
             )
 
-    def get_infer_target(self) -> None:
-        return None
+    def _find_cancel_key(self) -> str:
+        """Return first numeric value not already used in the selection dict."""
+        for index in range(len(self.selections)):
+            if str(index) not in self.selections:
+                return str(index)
+        return str(len(self.selections))
+
+    def get_infer_target(self) -> tuple[None, None]:
+        return None, None
 
     async def _run(self, *args, **kwargs) -> Any:
         kwargs = self._maybe_inject_last_result(kwargs)
@@ -128,16 +164,17 @@ class SelectionAction(BaseAction):
 
         context.start_timer()
         try:
+            cancel_key = self._find_cancel_key()
             await self.hooks.trigger(HookType.BEFORE, context)
             if isinstance(self.selections, list):
                 table = render_selection_indexed_table(
                     title=self.title,
-                    selections=self.selections,
+                    selections=self.selections + ["Cancel"],
                     columns=self.columns,
                 )
                 if not self.never_prompt:
                     index = await prompt_for_index(
-                        len(self.selections) - 1,
+                        len(self.selections),
                         table,
                         default_selection=effective_default,
                         console=self.console,
@@ -147,14 +184,23 @@ class SelectionAction(BaseAction):
                     )
                 else:
                     index = effective_default
-                result = self.selections[int(index)]
+                if index == cancel_key:
+                    raise CancelSignal("User cancelled the selection.")
+                result: Any = self.selections[int(index)]
             elif isinstance(self.selections, dict):
+                cancel_option = {
+                    cancel_key: SelectionOption(
+                        description="Cancel", value=CancelSignal, style=OneColors.DARK_RED
+                    )
+                }
                 table = render_selection_dict_table(
-                    title=self.title, selections=self.selections, columns=self.columns
+                    title=self.title,
+                    selections=self.selections | cancel_option,
+                    columns=self.columns,
                 )
                 if not self.never_prompt:
                     key = await prompt_for_selection(
-                        self.selections.keys(),
+                        (self.selections | cancel_option).keys(),
                         table,
                         default_selection=effective_default,
                         console=self.console,
@@ -164,10 +210,25 @@ class SelectionAction(BaseAction):
                     )
                 else:
                     key = effective_default
-                result = key if self.return_key else self.selections[key].value
+                if key == cancel_key:
+                    raise CancelSignal("User cancelled the selection.")
+                if self.return_type == SelectionReturnType.KEY:
+                    result = key
+                elif self.return_type == SelectionReturnType.VALUE:
+                    result = self.selections[key].value
+                elif self.return_type == SelectionReturnType.ITEMS:
+                    result = {key: self.selections[key]}
+                elif self.return_type == SelectionReturnType.DESCRIPTION:
+                    result = self.selections[key].description
+                elif self.return_type == SelectionReturnType.DESCRIPTION_VALUE:
+                    result = {
+                        self.selections[key].description: self.selections[key].value
+                    }
+                else:
+                    raise ValueError(f"Unsupported return type: {self.return_type}")
             else:
                 raise TypeError(
-                    "'selections' must be a list[str] or dict[str, tuple[str, Any]], "
+                    "'selections' must be a list[str] or dict[str, Any], "
                     f"got {type(self.selections).__name__}"
                 )
             context.result = result
@@ -206,7 +267,7 @@ class SelectionAction(BaseAction):
             return
 
         tree.add(f"[dim]Default:[/] '{self.default_selection or self.last_result}'")
-        tree.add(f"[dim]Return:[/] {'Key' if self.return_key else 'Value'}")
+        tree.add(f"[dim]Return:[/] {self.return_type.name.capitalize()}")
         tree.add(f"[dim]Prompt:[/] {'Disabled' if self.never_prompt else 'Enabled'}")
 
         if not parent:
@@ -221,6 +282,6 @@ class SelectionAction(BaseAction):
         return (
             f"SelectionAction(name={self.name!r}, type={selection_type}, "
             f"default_selection={self.default_selection!r}, "
-            f"return_key={self.return_key}, "
+            f"return_type={self.return_type!r}, "
             f"prompt={'off' if self.never_prompt else 'on'})"
         )

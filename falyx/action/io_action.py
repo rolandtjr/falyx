@@ -73,7 +73,6 @@ class BaseIOAction(BaseAction):
             inject_last_result=inject_last_result,
         )
         self.mode = mode
-        self._requires_injection = True
 
     def from_input(self, raw: str | bytes) -> Any:
         raise NotImplementedError
@@ -99,8 +98,8 @@ class BaseIOAction(BaseAction):
         )
         raise FalyxError("No input provided and no last result to inject.")
 
-    def get_infer_target(self) -> Callable[..., Any] | None:
-        return None
+    def get_infer_target(self) -> tuple[Callable[..., Any] | None, dict[str, Any] | None]:
+        return None, None
 
     async def __call__(self, *args, **kwargs):
         context = ExecutionContext(
@@ -198,7 +197,6 @@ class ShellAction(BaseIOAction):
     - Captures stdout and stderr from shell execution
     - Raises on non-zero exit codes with stderr as the error
     - Result is returned as trimmed stdout string
-    - Compatible with ChainedAction and Command.requires_input detection
 
     Args:
         name (str): Name of the action.
@@ -223,10 +221,10 @@ class ShellAction(BaseIOAction):
             )
         return raw.strip() if isinstance(raw, str) else raw.decode("utf-8").strip()
 
-    def get_infer_target(self) -> Callable[..., Any] | None:
+    def get_infer_target(self) -> tuple[Callable[..., Any] | None, dict[str, Any] | None]:
         if sys.stdin.isatty():
-            return self._run
-        return None
+            return self._run, {"parsed_input": {"help": self.command_template}}
+        return None, None
 
     async def _run(self, parsed_input: str) -> str:
         # Replace placeholder in template, or use raw input as full command

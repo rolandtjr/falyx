@@ -61,7 +61,7 @@ from falyx.options_manager import OptionsManager
 from falyx.parsers import CommandArgumentParser, get_arg_parsers
 from falyx.protocols import ArgParserProtocol
 from falyx.retry import RetryPolicy
-from falyx.signals import BackSignal, CancelSignal, FlowSignal, HelpSignal, QuitSignal
+from falyx.signals import BackSignal, CancelSignal, HelpSignal, QuitSignal
 from falyx.themes import OneColors, get_nord_theme
 from falyx.utils import CaseInsensitiveDict, _noop, chunks
 from falyx.version import __version__
@@ -90,7 +90,7 @@ class CommandValidator(Validator):
         if not choice:
             raise ValidationError(
                 message=self.error_message,
-                cursor_position=document.get_end_of_document_position(),
+                cursor_position=len(text),
             )
 
 
@@ -111,6 +111,8 @@ class Falyx:
     - Submenu nesting and action chaining
     - History tracking, help generation, and run key execution modes
     - Seamless CLI argument parsing and integration via argparse
+    - Declarative option management with OptionsManager
+    - Command level argument parsing and validation
     - Extensible with user-defined hooks, bottom bars, and custom layouts
 
     Args:
@@ -126,7 +128,7 @@ class Falyx:
         never_prompt (bool): Seed default for `OptionsManager["never_prompt"]`
         force_confirm (bool): Seed default for `OptionsManager["force_confirm"]`
         cli_args (Namespace | None): Parsed CLI arguments, usually from argparse.
-        options (OptionsManager | None): Declarative option mappings.
+        options (OptionsManager | None): Declarative option mappings for global state.
         custom_table (Callable[[Falyx], Table] | Table | None): Custom menu table
                                                                 generator.
 
@@ -160,6 +162,7 @@ class Falyx:
         options: OptionsManager | None = None,
         render_menu: Callable[[Falyx], None] | None = None,
         custom_table: Callable[[Falyx], Table] | Table | None = None,
+        hide_menu_table: bool = False,
     ) -> None:
         """Initializes the Falyx object."""
         self.title: str | Markdown = title
@@ -185,6 +188,7 @@ class Falyx:
         self.cli_args: Namespace | None = cli_args
         self.render_menu: Callable[[Falyx], None] | None = render_menu
         self.custom_table: Callable[[Falyx], Table] | Table | None = custom_table
+        self.hide_menu_table: bool = hide_menu_table
         self.validate_options(cli_args, options)
         self._prompt_session: PromptSession | None = None
         self.mode = FalyxMode.MENU
@@ -287,8 +291,6 @@ class Falyx:
 
         for command in self.commands.values():
             help_text = command.help_text or command.description
-            if command.requires_input:
-                help_text += " [dim](requires input)[/dim]"
             table.add_row(
                 f"[{command.style}]{command.key}[/]",
                 ", ".join(command.aliases) if command.aliases else "",
@@ -445,7 +447,6 @@ class Falyx:
                 bottom_toolbar=self._get_bottom_bar_render(),
                 key_bindings=self.key_bindings,
                 validate_while_typing=False,
-                interrupt_exception=FlowSignal,
             )
         return self._prompt_session
 
@@ -608,7 +609,6 @@ class Falyx:
         retry: bool = False,
         retry_all: bool = False,
         retry_policy: RetryPolicy | None = None,
-        requires_input: bool | None = None,
         arg_parser: CommandArgumentParser | None = None,
         arguments: list[dict[str, Any]] | None = None,
         argument_config: Callable[[CommandArgumentParser], None] | None = None,
@@ -660,7 +660,6 @@ class Falyx:
             retry=retry,
             retry_all=retry_all,
             retry_policy=retry_policy or RetryPolicy(),
-            requires_input=requires_input,
             options_manager=self.options,
             arg_parser=arg_parser,
             arguments=arguments or [],
@@ -768,26 +767,27 @@ class Falyx:
 
         choice = choice.upper()
         name_map = self._name_map
-        if choice in name_map:
+        if name_map.get(choice):
             if not from_validate:
                 logger.info("Command '%s' selected.", choice)
-            if input_args and name_map[choice].arg_parser:
-                try:
-                    args, kwargs = name_map[choice].parse_args(input_args, from_validate)
-                except CommandArgumentError as error:
-                    if not from_validate:
-                        if not name_map[choice].show_help():
-                            self.console.print(
-                                f"[{OneColors.DARK_RED}]❌ Invalid arguments for '{choice}': {error}"
-                            )
-                    else:
-                        name_map[choice].show_help()
-                        raise ValidationError(
-                            message=str(error), cursor_position=len(raw_choices)
+            if is_preview:
+                return True, name_map[choice], args, kwargs
+            try:
+                args, kwargs = name_map[choice].parse_args(input_args, from_validate)
+            except CommandArgumentError as error:
+                if not from_validate:
+                    if not name_map[choice].show_help():
+                        self.console.print(
+                            f"[{OneColors.DARK_RED}]❌ Invalid arguments for '{choice}': {error}"
                         )
-                    return is_preview, None, args, kwargs
-                except HelpSignal:
-                    return True, None, args, kwargs
+                else:
+                    name_map[choice].show_help()
+                    raise ValidationError(
+                        message=str(error), cursor_position=len(raw_choices)
+                    )
+                return is_preview, None, args, kwargs
+            except HelpSignal:
+                return True, None, args, kwargs
             return is_preview, name_map[choice], args, kwargs
 
         prefix_matches = [cmd for key, cmd in name_map.items() if key.startswith(choice)]
@@ -975,10 +975,11 @@ class Falyx:
             self.print_message(self.welcome_message)
         try:
             while True:
-                if callable(self.render_menu):
-                    self.render_menu(self)
-                else:
-                    self.console.print(self.table, justify="center")
+                if not self.hide_menu_table:
+                    if callable(self.render_menu):
+                        self.render_menu(self)
+                    else:
+                        self.console.print(self.table, justify="center")
                 try:
                     task = asyncio.create_task(self.process_command())
                     should_continue = await task

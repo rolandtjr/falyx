@@ -3,7 +3,6 @@ import asyncio
 from falyx import Action, ActionGroup, ChainedAction
 from falyx import ExecutionRegistry as er
 from falyx import ProcessAction
-from falyx.hook_manager import HookType
 from falyx.retry import RetryHandler, RetryPolicy
 
 
@@ -47,7 +46,7 @@ def build_pipeline():
     checkout = Action("Checkout", checkout_code)
     analysis = ProcessAction("Static Analysis", run_static_analysis)
     tests = Action("Run Tests", flaky_tests)
-    tests.hooks.register(HookType.ON_ERROR, retry_handler.retry_on_error)
+    tests.hooks.register("on_error", retry_handler.retry_on_error)
 
     # Parallel deploys
     deploy_group = ActionGroup(

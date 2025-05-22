@@ -4,7 +4,6 @@ from rich.console import Console
 
 from falyx import ActionGroup, Falyx
 from falyx.action import HTTPAction
-from falyx.hook_manager import HookType
 from falyx.hooks import ResultReporter
 
 console = Console()
@@ -49,7 +48,7 @@ action_group = ActionGroup(
 reporter = ResultReporter()
 
 action_group.hooks.register(
-    HookType.ON_SUCCESS,
+    "on_success",
     reporter.report,
 )
 

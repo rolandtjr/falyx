@@ -35,6 +35,8 @@ class ActionFactoryAction(BaseAction):
         *,
         inject_last_result: bool = False,
         inject_into: str = "last_result",
+        args: tuple[Any, ...] = (),
+        kwargs: dict[str, Any] | None = None,
         preview_args: tuple[Any, ...] = (),
         preview_kwargs: dict[str, Any] | None = None,
     ):
@@ -44,6 +46,8 @@ class ActionFactoryAction(BaseAction):
             inject_into=inject_into,
         )
         self.factory = factory
+        self.args = args
+        self.kwargs = kwargs or {}
         self.preview_args = preview_args
         self.preview_kwargs = preview_kwargs or {}
 
@@ -55,8 +59,8 @@ class ActionFactoryAction(BaseAction):
     def factory(self, value: ActionFactoryProtocol):
         self._factory = ensure_async(value)
 
-    def get_infer_target(self) -> Callable[..., Any]:
-        return self.factory
+    def get_infer_target(self) -> tuple[Callable[..., Any], None]:
+        return self.factory, None
 
     async def _run(self, *args, **kwargs) -> Any:
         updated_kwargs = self._maybe_inject_last_result(kwargs)

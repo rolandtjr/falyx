@@ -12,7 +12,6 @@ from .command import Command
 from .context import ExecutionContext, SharedContext
 from .execution_registry import ExecutionRegistry
 from .falyx import Falyx
-from .hook_manager import HookType
 
 logger = logging.getLogger("falyx")
 

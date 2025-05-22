@@ -3,7 +3,6 @@ import asyncio
 
 from falyx import Action, ChainedAction, Falyx
 from falyx.action import ShellAction
-from falyx.hook_manager import HookType
 from falyx.hooks import ResultReporter
 from falyx.utils import setup_logging
 
@@ -42,12 +41,12 @@ reporter = ResultReporter()
 
 a1 = Action("a1", a1, inject_last_result=True)
 a1.hooks.register(
-    HookType.ON_SUCCESS,
+    "on_success",
     reporter.report,
 )
 a2 = Action("a2", a2, inject_last_result=True)
 a2.hooks.register(
-    HookType.ON_SUCCESS,
+    "on_success",
     reporter.report,
 )
 

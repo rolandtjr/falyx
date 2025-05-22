@@ -13,7 +13,8 @@ def same_argument_definitions(
     arg_sets = []
     for action in actions:
         if isinstance(action, BaseAction):
-            arg_defs = infer_args_from_func(action.get_infer_target(), arg_metadata)
+            infer_target, _ = action.get_infer_target()
+            arg_defs = infer_args_from_func(infer_target, arg_metadata)
         elif callable(action):
             arg_defs = infer_args_from_func(action, arg_metadata)
         else:

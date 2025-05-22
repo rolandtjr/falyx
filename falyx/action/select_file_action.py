@@ -25,6 +25,7 @@ from falyx.selection import (
     prompt_for_selection,
     render_selection_dict_table,
 )
+from falyx.signals import CancelSignal
 from falyx.themes import OneColors
 
 
@@ -121,8 +122,15 @@ class SelectFileAction(BaseAction):
                 logger.warning("[ERROR] Failed to parse %s: %s", file.name, error)
         return options
 
-    def get_infer_target(self) -> None:
-        return None
+    def _find_cancel_key(self, options) -> str:
+        """Return first numeric value not already used in the selection dict."""
+        for index in range(len(options)):
+            if str(index) not in options:
+                return str(index)
+        return str(len(options))
+
+    def get_infer_target(self) -> tuple[None, None]:
+        return None, None
 
     async def _run(self, *args, **kwargs) -> Any:
         context = ExecutionContext(name=self.name, args=args, kwargs=kwargs, action=self)
@@ -131,27 +139,37 @@ class SelectFileAction(BaseAction):
             await self.hooks.trigger(HookType.BEFORE, context)
 
             files = [
-                f
-                for f in self.directory.iterdir()
-                if f.is_file()
-                and (self.suffix_filter is None or f.suffix == self.suffix_filter)
+                file
+                for file in self.directory.iterdir()
+                if file.is_file()
+                and (self.suffix_filter is None or file.suffix == self.suffix_filter)
             ]
             if not files:
                 raise FileNotFoundError("No files found in directory.")
 
             options = self.get_options(files)
 
+            cancel_key = self._find_cancel_key(options)
+            cancel_option = {
+                cancel_key: SelectionOption(
+                    description="Cancel", value=CancelSignal(), style=OneColors.DARK_RED
+                )
+            }
+
             table = render_selection_dict_table(
-                title=self.title, selections=options, columns=self.columns
+                title=self.title, selections=options | cancel_option, columns=self.columns
             )
 
             key = await prompt_for_selection(
-                options.keys(),
+                (options | cancel_option).keys(),
                 table,
                 console=self.console,
                 prompt_session=self.prompt_session,
                 prompt_message=self.prompt_message,
             )
+
+            if key == cancel_key:
+                raise CancelSignal("User canceled the selection.")
 
             result = options[key].value
             context.result = result
@@ -179,11 +197,11 @@ class SelectFileAction(BaseAction):
         try:
             files = list(self.directory.iterdir())
             if self.suffix_filter:
-                files = [f for f in files if f.suffix == self.suffix_filter]
+                files = [file for file in files if file.suffix == self.suffix_filter]
             sample = files[:10]
             file_list = tree.add("[dim]Files:[/]")
-            for f in sample:
-                file_list.add(f"[dim]{f.name}[/]")
+            for file in sample:
+                file_list.add(f"[dim]{file.name}[/]")
             if len(files) > 10:
                 file_list.add(f"[dim]... ({len(files) - 10} more)[/]")
         except Exception as error:

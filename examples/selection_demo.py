@@ -1,22 +1,26 @@
 import asyncio
 
-from falyx.selection import (
-    SelectionOption,
-    prompt_for_selection,
-    render_selection_dict_table,
-)
+from falyx.action import SelectionAction
+from falyx.selection import SelectionOption
 
-menu = {
-    "A": SelectionOption("Run diagnostics", lambda: print("Running diagnostics...")),
-    "B": SelectionOption("Deploy to staging", lambda: print("Deploying...")),
+selections = {
+    "1": SelectionOption(
+        description="Production", value="3bc2616e-3696-11f0-a139-089204eb86ac"
+    ),
+    "2": SelectionOption(
+        description="Staging", value="42f2cd84-3696-11f0-a139-089204eb86ac"
+    ),
 }
 
-table = render_selection_dict_table(
-    title="Main Menu",
-    selections=menu,
+
+select = SelectionAction(
+    name="Select Deployment",
+    selections=selections,
+    title="Select a Deployment",
+    columns=2,
+    prompt_message="> ",
+    return_type="value",
+    show_table=True,
 )
 
-key = asyncio.run(prompt_for_selection(menu.keys(), table))
-print(f"You selected: {key}")
-
-menu[key.upper()].value()
+print(asyncio.run(select()))

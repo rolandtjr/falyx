@@ -98,7 +98,6 @@ class RawCommand(BaseModel):
     retry: bool = False
     retry_all: bool = False
     retry_policy: RetryPolicy = Field(default_factory=RetryPolicy)
-    requires_input: bool | None = None
     hidden: bool = False
     help_text: str = ""
 

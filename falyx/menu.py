@@ -33,7 +33,7 @@ class MenuOptionMap(CaseInsensitiveDict):
     and special signal entries like Quit and Back.
     """
 
-    RESERVED_KEYS = {"Q", "B"}
+    RESERVED_KEYS = {"B", "X"}
 
     def __init__(
         self,
@@ -50,12 +50,12 @@ class MenuOptionMap(CaseInsensitiveDict):
         from falyx.action import SignalAction
 
         self._add_reserved(
-            "Q",
-            MenuOption("Exit", SignalAction("Quit", QuitSignal()), OneColors.DARK_RED),
-        )
-        self._add_reserved(
             "B",
             MenuOption("Back", SignalAction("Back", BackSignal()), OneColors.DARK_YELLOW),
+        )
+        self._add_reserved(
+            "X",
+            MenuOption("Exit", SignalAction("Quit", QuitSignal()), OneColors.DARK_RED),
         )
 
     def _add_reserved(self, key: str, option: MenuOption) -> None:
@@ -78,8 +78,20 @@ class MenuOptionMap(CaseInsensitiveDict):
             raise ValueError(f"Cannot delete reserved option '{key}'.")
         super().__delitem__(key)
 
+    def update(self, other=None, **kwargs):
+        """Update the selection options with another dictionary."""
+        if other:
+            for key, option in other.items():
+                if not isinstance(option, MenuOption):
+                    raise TypeError(f"Value for key '{key}' must be a SelectionOption.")
+                self[key] = option
+        for key, option in kwargs.items():
+            if not isinstance(option, MenuOption):
+                raise TypeError(f"Value for key '{key}' must be a SelectionOption.")
+            self[key] = option
+
     def items(self, include_reserved: bool = True):
-        for k, v in super().items():
-            if not include_reserved and k in self.RESERVED_KEYS:
+        for key, option in super().items():
+            if not include_reserved and key in self.RESERVED_KEYS:
                 continue
-            yield k, v
+            yield key, option

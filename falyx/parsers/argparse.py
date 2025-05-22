@@ -1,4 +1,6 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+from __future__ import annotations
+
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
@@ -22,6 +24,15 @@ class ArgumentAction(Enum):
     EXTEND = "extend"
     COUNT = "count"
     HELP = "help"
+
+    @classmethod
+    def choices(cls) -> list[ArgumentAction]:
+        """Return a list of all argument actions."""
+        return list(cls)
+
+    def __str__(self) -> str:
+        """Return the string representation of the argument action."""
+        return self.value
 
 
 @dataclass

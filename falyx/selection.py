@@ -10,7 +10,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from falyx.themes import OneColors
-from falyx.utils import chunks
+from falyx.utils import CaseInsensitiveDict, chunks
 from falyx.validators import int_range_validator, key_validator
 
 
@@ -30,6 +30,62 @@ class SelectionOption:
         """Render the selection option for display."""
         key = escape(f"[{key}]")
         return f"[{OneColors.WHITE}]{key}[/] [{self.style}]{self.description}[/]"
+
+
+class SelectionOptionMap(CaseInsensitiveDict):
+    """
+    Manages selection options including validation and reserved key protection.
+    """
+
+    RESERVED_KEYS: set[str] = set()
+
+    def __init__(
+        self,
+        options: dict[str, SelectionOption] | None = None,
+        allow_reserved: bool = False,
+    ):
+        super().__init__()
+        self.allow_reserved = allow_reserved
+        if options:
+            self.update(options)
+
+    def _add_reserved(self, key: str, option: SelectionOption) -> None:
+        """Add a reserved key, bypassing validation."""
+        norm_key = key.upper()
+        super().__setitem__(norm_key, option)
+
+    def __setitem__(self, key: str, option: SelectionOption) -> None:
+        if not isinstance(option, SelectionOption):
+            raise TypeError(f"Value for key '{key}' must be a SelectionOption.")
+        norm_key = key.upper()
+        if norm_key in self.RESERVED_KEYS and not self.allow_reserved:
+            raise ValueError(
+                f"Key '{key}' is reserved and cannot be used in SelectionOptionMap."
+            )
+        super().__setitem__(norm_key, option)
+
+    def __delitem__(self, key: str) -> None:
+        if key.upper() in self.RESERVED_KEYS and not self.allow_reserved:
+            raise ValueError(f"Cannot delete reserved option '{key}'.")
+        super().__delitem__(key)
+
+    def update(self, other=None, **kwargs):
+        """Update the selection options with another dictionary."""
+        if other:
+            for key, option in other.items():
+                if not isinstance(option, SelectionOption):
+                    raise TypeError(f"Value for key '{key}' must be a SelectionOption.")
+                self[key] = option
+        for key, option in kwargs.items():
+            if not isinstance(option, SelectionOption):
+                raise TypeError(f"Value for key '{key}' must be a SelectionOption.")
+            self[key] = option
+
+    def items(self, include_reserved: bool = True):
+        for k, v in super().items():
+            if not include_reserved and k in self.RESERVED_KEYS:
+                continue
+            yield k, v
 
 
 def render_table_base(

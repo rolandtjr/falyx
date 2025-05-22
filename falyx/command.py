@@ -19,7 +19,6 @@ in building robust interactive menus.
 from __future__ import annotations
 
 import shlex
-from functools import cached_property
 from typing import Any, Callable
 
 from prompt_toolkit.formatted_text import FormattedText
@@ -27,8 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 from rich.console import Console
 from rich.tree import Tree
 
-from falyx.action.action import Action, ActionGroup, BaseAction, ChainedAction
-from falyx.action.io_action import BaseIOAction
+from falyx.action.action import Action, BaseAction
 from falyx.context import ExecutionContext
 from falyx.debug import register_debug_hooks
 from falyx.execution_registry import ExecutionRegistry as er
@@ -90,7 +88,6 @@ class Command(BaseModel):
         retry_policy (RetryPolicy): Retry behavior configuration.
         tags (list[str]): Organizational tags for the command.
         logging_hooks (bool): Whether to attach logging hooks automatically.
-        requires_input (bool | None): Indicates if the action needs input.
         options_manager (OptionsManager): Manages global command-line options.
         arg_parser (CommandArgumentParser): Parses command arguments.
         custom_parser (ArgParserProtocol | None): Custom argument parser.
@@ -129,7 +126,6 @@ class Command(BaseModel):
     retry_policy: RetryPolicy = Field(default_factory=RetryPolicy)
     tags: list[str] = Field(default_factory=list)
     logging_hooks: bool = False
-    requires_input: bool | None = None
     options_manager: OptionsManager = Field(default_factory=OptionsManager)
     arg_parser: CommandArgumentParser = Field(default_factory=CommandArgumentParser)
     arguments: list[dict[str, Any]] = Field(default_factory=list)
@@ -146,7 +142,7 @@ class Command(BaseModel):
     def parse_args(
         self, raw_args: list[str] | str, from_validate: bool = False
     ) -> tuple[tuple, dict]:
-        if self.custom_parser:
+        if callable(self.custom_parser):
             if isinstance(raw_args, str):
                 try:
                     raw_args = shlex.split(raw_args)
@@ -183,13 +179,15 @@ class Command(BaseModel):
     def get_argument_definitions(self) -> list[dict[str, Any]]:
         if self.arguments:
             return self.arguments
-        elif self.argument_config:
+        elif callable(self.argument_config):
             self.argument_config(self.arg_parser)
         elif self.auto_args:
             if isinstance(self.action, BaseAction):
-                return infer_args_from_func(
-                    self.action.get_infer_target(), self.arg_metadata
-                )
+                infer_target, maybe_metadata = self.action.get_infer_target()
+                # merge metadata with the action's metadata if not already in self.arg_metadata
+                if maybe_metadata:
+                    self.arg_metadata = {**maybe_metadata, **self.arg_metadata}
+                return infer_args_from_func(infer_target, self.arg_metadata)
             elif callable(self.action):
                 return infer_args_from_func(self.action, self.arg_metadata)
         return []
@@ -217,29 +215,8 @@ class Command(BaseModel):
         if self.logging_hooks and isinstance(self.action, BaseAction):
             register_debug_hooks(self.action.hooks)
 
-        if self.requires_input is None and self.detect_requires_input:
-            self.requires_input = True
-            self.hidden = True
-        elif self.requires_input is None:
-            self.requires_input = False
-
         for arg_def in self.get_argument_definitions():
             self.arg_parser.add_argument(*arg_def.pop("flags"), **arg_def)
-
-    @cached_property
-    def detect_requires_input(self) -> bool:
-        """Detect if the action requires input based on its type."""
-        if isinstance(self.action, BaseIOAction):
-            return True
-        elif isinstance(self.action, ChainedAction):
-            return (
-                isinstance(self.action.actions[0], BaseIOAction)
-                if self.action.actions
-                else False
-            )
-        elif isinstance(self.action, ActionGroup):
-            return any(isinstance(action, BaseIOAction) for action in self.action.actions)
-        return False
 
     def _inject_options_manager(self) -> None:
         """Inject the options manager into the action if applicable."""
@@ -333,7 +310,7 @@ class Command(BaseModel):
 
     def show_help(self) -> bool:
         """Display the help message for the command."""
-        if self.custom_help:
+        if callable(self.custom_help):
             output = self.custom_help()
             if output:
                 console.print(output)

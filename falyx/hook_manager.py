@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 from enum import Enum
-from typing import Awaitable, Callable, Dict, List, Optional, Union
+from typing import Awaitable, Callable, Union
 
 from falyx.context import ExecutionContext
 from falyx.logger import logger
@@ -24,7 +24,7 @@ class HookType(Enum):
     ON_TEARDOWN = "on_teardown"
 
     @classmethod
-    def choices(cls) -> List[HookType]:
+    def choices(cls) -> list[HookType]:
         """Return a list of all hook type choices."""
         return list(cls)
 
@@ -37,16 +37,17 @@ class HookManager:
     """HookManager"""
 
     def __init__(self) -> None:
-        self._hooks: Dict[HookType, List[Hook]] = {
+        self._hooks: dict[HookType, list[Hook]] = {
             hook_type: [] for hook_type in HookType
         }
 
-    def register(self, hook_type: HookType, hook: Hook):
-        if hook_type not in HookType:
-            raise ValueError(f"Unsupported hook type: {hook_type}")
+    def register(self, hook_type: HookType | str, hook: Hook):
+        """Raises ValueError if the hook type is not supported."""
+        if not isinstance(hook_type, HookType):
+            hook_type = HookType(hook_type)
         self._hooks[hook_type].append(hook)
 
-    def clear(self, hook_type: Optional[HookType] = None):
+    def clear(self, hook_type: HookType | None = None):
         if hook_type:
             self._hooks[hook_type] = []
         else:

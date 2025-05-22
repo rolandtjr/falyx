@@ -43,8 +43,8 @@ class UserInputAction(BaseAction):
         self.console = console or Console(color_system="auto")
         self.prompt_session = prompt_session or PromptSession()
 
-    def get_infer_target(self) -> None:
-        return None
+    def get_infer_target(self) -> tuple[None, None]:
+        return None, None
 
     async def _run(self, *args, **kwargs) -> str:
         context = ExecutionContext(

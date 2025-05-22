@@ -35,3 +35,18 @@ class FileReturnType(Enum):
                     return member
         valid = ", ".join(member.value for member in cls)
         raise ValueError(f"Invalid FileReturnType: '{value}'. Must be one of: {valid}")
+
+
+class SelectionReturnType(Enum):
+    """Enum for dictionary return types."""
+
+    KEY = "key"
+    VALUE = "value"
+    DESCRIPTION = "description"
+    DESCRIPTION_VALUE = "description_value"
+    ITEMS = "items"
+
+    @classmethod
+    def _missing_(cls, value: object) -> SelectionReturnType:
+        valid = ", ".join(member.value for member in cls)
+        raise ValueError(f"Invalid DictReturnType: '{value}'. Must be one of: {valid}")
