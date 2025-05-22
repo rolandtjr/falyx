@@ -114,7 +114,7 @@ def get_arg_parsers(
         help="Skip confirmation prompts",
     )
 
-    run_group.add_argument(
+    run_parser.add_argument(
         "command_args",
         nargs=REMAINDER,
         help="Arguments to pass to the command (if applicable)",

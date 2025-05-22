@@ -77,7 +77,11 @@ class Argument:
             and not self.positional
         ):
             choice_text = self.dest.upper()
-        elif isinstance(self.nargs, str):
+        elif self.action in (
+            ArgumentAction.STORE,
+            ArgumentAction.APPEND,
+            ArgumentAction.EXTEND,
+        ) or isinstance(self.nargs, str):
             choice_text = self.dest
 
         if self.nargs == "?":
