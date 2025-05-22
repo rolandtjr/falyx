@@ -63,6 +63,8 @@ class ActionFactoryAction(BaseAction):
         return self.factory, None
 
     async def _run(self, *args, **kwargs) -> Any:
+        args = (*self.args, *args)
+        kwargs = {**self.kwargs, **kwargs}
         updated_kwargs = self._maybe_inject_last_result(kwargs)
         context = ExecutionContext(
             name=f"{self.name} (factory)",
@@ -92,7 +94,7 @@ class ActionFactoryAction(BaseAction):
                     )
             if self.options_manager:
                 generated_action.set_options_manager(self.options_manager)
-            context.result = await generated_action(*args, **kwargs)
+            context.result = await generated_action()
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
             return context.result
         except Exception as error:
