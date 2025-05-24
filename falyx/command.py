@@ -139,7 +139,7 @@ class Command(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    def parse_args(
+    async def parse_args(
         self, raw_args: list[str] | str, from_validate: bool = False
     ) -> tuple[tuple, dict]:
         if callable(self.custom_parser):
@@ -165,7 +165,9 @@ class Command(BaseModel):
                     raw_args,
                 )
                 return ((), {})
-        return self.arg_parser.parse_args_split(raw_args, from_validate=from_validate)
+        return await self.arg_parser.parse_args_split(
+            raw_args, from_validate=from_validate
+        )
 
     @field_validator("action", mode="before")
     @classmethod

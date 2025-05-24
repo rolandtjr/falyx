@@ -42,7 +42,7 @@ def infer_args_from_func(
         else:
             flags = [f"--{name.replace('_', '-')}"]
         action = "store"
-        nargs: int | str = 1
+        nargs: int | str | None = None
 
         if arg_type is bool:
             if param.default is False:

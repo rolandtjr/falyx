@@ -2,6 +2,7 @@ import asyncio
 
 from falyx.action import SelectionAction
 from falyx.selection import SelectionOption
+from falyx.signals import CancelSignal
 
 selections = {
     "1": SelectionOption(
@@ -23,4 +24,7 @@ select = SelectionAction(
     show_table=True,
 )
 
-print(asyncio.run(select()))
+try:
+    print(asyncio.run(select()))
+except CancelSignal:
+    print("Selection was cancelled.")

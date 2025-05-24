@@ -39,7 +39,7 @@ class ArgumentAction(Enum):
 class Argument:
     """Represents a command-line argument."""
 
-    flags: list[str]
+    flags: tuple[str, ...]
     dest: str  # Destination name for the argument
     action: ArgumentAction = (
         ArgumentAction.STORE
@@ -49,7 +49,7 @@ class Argument:
     choices: list[str] | None = None  # List of valid choices for the argument
     required: bool = False  # True if the argument is required
     help: str = ""  # Help text for the argument
-    nargs: int | str = 1  # int, '?', '*', '+'
+    nargs: int | str | None = None  # int, '?', '*', '+', None
     positional: bool = False  # True if no leading - or -- in flags
 
     def get_positional_text(self) -> str:
@@ -151,6 +151,7 @@ class CommandArgumentParser:
         aliases: list[str] | None = None,
     ) -> None:
         """Initialize the CommandArgumentParser."""
+        self.console = Console(color_system="auto")
         self.command_key: str = command_key
         self.command_description: str = command_description
         self.command_style: str = command_style
@@ -163,7 +164,6 @@ class CommandArgumentParser:
         self._flag_map: dict[str, Argument] = {}
         self._dest_set: set[str] = set()
         self._add_help()
-        self.console = Console(color_system="auto")
 
     def _add_help(self):
         """Add help argument to the parser."""
@@ -185,9 +185,7 @@ class CommandArgumentParser:
             raise CommandArgumentError("Positional arguments cannot have multiple flags")
         return positional
 
-    def _get_dest_from_flags(
-        self, flags: tuple[str, ...], dest: str | None
-    ) -> str | None:
+    def _get_dest_from_flags(self, flags: tuple[str, ...], dest: str | None) -> str:
         """Convert flags to a destination name."""
         if dest:
             if not dest.replace("_", "").isalnum():
@@ -216,7 +214,7 @@ class CommandArgumentParser:
         return dest
 
     def _determine_required(
-        self, required: bool, positional: bool, nargs: int | str
+        self, required: bool, positional: bool, nargs: int | str | None
     ) -> bool:
         """Determine if the argument is required."""
         if required:
@@ -234,7 +232,22 @@ class CommandArgumentParser:
 
         return required
 
-    def _validate_nargs(self, nargs: int | str) -> int | str:
+    def _validate_nargs(
+        self, nargs: int | str | None, action: ArgumentAction
+    ) -> int | str | None:
+        if action in (
+            ArgumentAction.STORE_FALSE,
+            ArgumentAction.STORE_TRUE,
+            ArgumentAction.COUNT,
+            ArgumentAction.HELP,
+        ):
+            if nargs is not None:
+                raise CommandArgumentError(
+                    f"nargs cannot be specified for {action} actions"
+                )
+            return None
+        if nargs is None:
+            nargs = 1
         allowed_nargs = ("?", "*", "+")
         if isinstance(nargs, int):
             if nargs <= 0:
@@ -246,7 +259,9 @@ class CommandArgumentParser:
             raise CommandArgumentError(f"nargs must be an int or one of {allowed_nargs}")
         return nargs
 
-    def _normalize_choices(self, choices: Iterable, expected_type: Any) -> list[Any]:
+    def _normalize_choices(
+        self, choices: Iterable | None, expected_type: Any
+    ) -> list[Any]:
         if choices is not None:
             if isinstance(choices, dict):
                 raise CommandArgumentError("choices cannot be a dict")
@@ -293,8 +308,34 @@ class CommandArgumentParser:
                             f"Default list value {default!r} for '{dest}' cannot be coerced to {expected_type.__name__}"
                         )
 
+    def _validate_action(
+        self, action: ArgumentAction | str, positional: bool
+    ) -> ArgumentAction:
+        if not isinstance(action, ArgumentAction):
+            try:
+                action = ArgumentAction(action)
+            except ValueError:
+                raise CommandArgumentError(
+                    f"Invalid action '{action}' is not a valid ArgumentAction"
+                )
+        if action in (
+            ArgumentAction.STORE_TRUE,
+            ArgumentAction.STORE_FALSE,
+            ArgumentAction.COUNT,
+            ArgumentAction.HELP,
+        ):
+            if positional:
+                raise CommandArgumentError(
+                    f"Action '{action}' cannot be used with positional arguments"
+                )
+
+        return action
+
     def _resolve_default(
-        self, action: ArgumentAction, default: Any, nargs: str | int
+        self,
+        default: Any,
+        action: ArgumentAction,
+        nargs: str | int | None,
     ) -> Any:
         """Get the default value for the argument."""
         if default is None:
@@ -328,7 +369,18 @@ class CommandArgumentParser:
                     f"Flag '{flag}' must be a single character or start with '--'"
                 )
 
-    def add_argument(self, *flags, **kwargs):
+    def add_argument(
+        self,
+        *flags,
+        action: str | ArgumentAction = "store",
+        nargs: int | str | None = None,
+        default: Any = None,
+        type: Any = str,
+        choices: Iterable | None = None,
+        required: bool = False,
+        help: str = "",
+        dest: str | None = None,
+    ) -> None:
         """Add an argument to the parser.
         Args:
             name or flags: Either a name or prefixed flags (e.g. 'faylx', '-f', '--falyx').
@@ -341,9 +393,10 @@ class CommandArgumentParser:
             help: A brief description of the argument.
             dest: The name of the attribute to be added to the object returned by parse_args().
         """
+        expected_type = type
         self._validate_flags(flags)
         positional = self._is_positional(flags)
-        dest = self._get_dest_from_flags(flags, kwargs.get("dest"))
+        dest = self._get_dest_from_flags(flags, dest)
         if dest in self._dest_set:
             raise CommandArgumentError(
                 f"Destination '{dest}' is already defined.\n"
@@ -351,18 +404,9 @@ class CommandArgumentParser:
                 "is not supported. Define a unique 'dest' for each argument."
             )
         self._dest_set.add(dest)
-        action = kwargs.get("action", ArgumentAction.STORE)
-        if not isinstance(action, ArgumentAction):
-            try:
-                action = ArgumentAction(action)
-            except ValueError:
-                raise CommandArgumentError(
-                    f"Invalid action '{action}' is not a valid ArgumentAction"
-                )
-        flags = list(flags)
-        nargs = self._validate_nargs(kwargs.get("nargs", 1))
-        default = self._resolve_default(action, kwargs.get("default"), nargs)
-        expected_type = kwargs.get("type", str)
+        action = self._validate_action(action, positional)
+        nargs = self._validate_nargs(nargs, action)
+        default = self._resolve_default(default, action, nargs)
         if (
             action in (ArgumentAction.STORE, ArgumentAction.APPEND, ArgumentAction.EXTEND)
             and default is not None
@@ -371,14 +415,12 @@ class CommandArgumentParser:
                 self._validate_default_list_type(default, expected_type, dest)
             else:
                 self._validate_default_type(default, expected_type, dest)
-        choices = self._normalize_choices(kwargs.get("choices"), expected_type)
+        choices = self._normalize_choices(choices, expected_type)
         if default is not None and choices and default not in choices:
             raise CommandArgumentError(
                 f"Default value '{default}' not in allowed choices: {choices}"
             )
-        required = self._determine_required(
-            kwargs.get("required", False), positional, nargs
-        )
+        required = self._determine_required(required, positional, nargs)
         argument = Argument(
             flags=flags,
             dest=dest,
@@ -387,7 +429,7 @@ class CommandArgumentParser:
             default=default,
             choices=choices,
             required=required,
-            help=kwargs.get("help", ""),
+            help=help,
             nargs=nargs,
             positional=positional,
         )
@@ -430,11 +472,11 @@ class CommandArgumentParser:
         values = []
         i = start
         if isinstance(spec.nargs, int):
-            # assert i + spec.nargs <= len(
-            #     args
-            # ), "Not enough arguments provided: shouldn't happen"
             values = args[i : i + spec.nargs]
             return values, i + spec.nargs
+        elif spec.nargs is None:
+            values = [args[i]]
+            return values, i + 1
         elif spec.nargs == "+":
             if i >= len(args):
                 raise CommandArgumentError(
@@ -479,6 +521,8 @@ class CommandArgumentParser:
             for next_spec in positional_args[j + 1 :]:
                 if isinstance(next_spec.nargs, int):
                     min_required += next_spec.nargs
+                elif next_spec.nargs is None:
+                    min_required += 1
                 elif next_spec.nargs == "+":
                     min_required += 1
                 elif next_spec.nargs == "?":
@@ -521,7 +565,7 @@ class CommandArgumentParser:
 
         return i
 
-    def parse_args(
+    async def parse_args(
         self, args: list[str] | None = None, from_validate: bool = False
     ) -> dict[str, Any]:
         """Parse Falyx Command arguments."""
@@ -669,7 +713,7 @@ class CommandArgumentParser:
         result.pop("help", None)
         return result
 
-    def parse_args_split(
+    async def parse_args_split(
         self, args: list[str], from_validate: bool = False
     ) -> tuple[tuple[Any, ...], dict[str, Any]]:
         """
@@ -677,7 +721,7 @@ class CommandArgumentParser:
             tuple[args, kwargs] - Positional arguments in defined order,
             followed by keyword argument mapping.
         """
-        parsed = self.parse_args(args, from_validate)
+        parsed = await self.parse_args(args, from_validate)
         args_list = []
         kwargs_dict = {}
         for arg in self._arguments:

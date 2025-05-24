@@ -2,8 +2,16 @@ import asyncio
 import time
 
 from falyx import Falyx
-from falyx.action import Action, ActionGroup, ChainedAction, MenuAction, ProcessAction
+from falyx.action import (
+    Action,
+    ActionGroup,
+    ChainedAction,
+    MenuAction,
+    ProcessAction,
+    PromptMenuAction,
+)
 from falyx.menu import MenuOption, MenuOptionMap
+from falyx.themes import OneColors
 
 
 # Basic coroutine for Action
@@ -77,20 +85,28 @@ parallel = ActionGroup(
 
 process = ProcessAction(name="compute", action=heavy_computation)
 
+menu_options = MenuOptionMap(
+    {
+        "A": MenuOption("Run basic Action", basic_action, style=OneColors.LIGHT_YELLOW),
+        "C": MenuOption("Run ChainedAction", chained, style=OneColors.MAGENTA),
+        "P": MenuOption("Run ActionGroup (parallel)", parallel, style=OneColors.CYAN),
+        "H": MenuOption("Run ProcessAction (heavy task)", process, style=OneColors.GREEN),
+    }
+)
+
 
 # Menu setup
 
 menu = MenuAction(
     name="main-menu",
     title="Choose a task to run",
-    menu_options=MenuOptionMap(
-        {
-            "1": MenuOption("Run basic Action", basic_action),
-            "2": MenuOption("Run ChainedAction", chained),
-            "3": MenuOption("Run ActionGroup (parallel)", parallel),
-            "4": MenuOption("Run ProcessAction (heavy task)", process),
-        }
-    ),
+    menu_options=menu_options,
+)
+
+
+prompt_menu = PromptMenuAction(
+    name="select-user",
+    menu_options=menu_options,
 )
 
 flx = Falyx(
@@ -105,6 +121,13 @@ flx.add_command(
     key="M",
     description="Show Menu",
     action=menu,
+    logging_hooks=True,
+)
+
+flx.add_command(
+    key="P",
+    description="Show Prompt Menu",
+    action=prompt_menu,
     logging_hooks=True,
 )
 

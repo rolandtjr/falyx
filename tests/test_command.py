@@ -1,7 +1,7 @@
 # test_command.py
 import pytest
 
-from falyx.action import Action, ActionGroup, BaseIOAction, ChainedAction
+from falyx.action import Action, BaseIOAction, ChainedAction
 from falyx.command import Command
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.retry import RetryPolicy

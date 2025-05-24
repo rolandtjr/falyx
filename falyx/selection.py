@@ -271,7 +271,7 @@ async def prompt_for_index(
     prompt_session: PromptSession | None = None,
     prompt_message: str = "Select an option > ",
     show_table: bool = True,
-):
+) -> int:
     prompt_session = prompt_session or PromptSession()
     console = console or Console(color_system="auto")
 

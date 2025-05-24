@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from prompt_toolkit.formatted_text import FormattedText
+
 from falyx.action import BaseAction
 from falyx.signals import BackSignal, QuitSignal
 from falyx.themes import OneColors
@@ -25,6 +27,12 @@ class MenuOption:
     def render(self, key: str) -> str:
         """Render the menu option for display."""
         return f"[{OneColors.WHITE}][{key}][/] [{self.style}]{self.description}[/]"
+
+    def render_prompt(self, key: str) -> FormattedText:
+        """Render the menu option for prompt display."""
+        return FormattedText(
+            [(OneColors.WHITE, f"[{key}] "), (self.style, self.description)]
+        )
 
 
 class MenuOptionMap(CaseInsensitiveDict):

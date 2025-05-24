@@ -1,5 +1,6 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """selection_action.py"""
+from copy import copy
 from typing import Any
 
 from prompt_toolkit import PromptSession
@@ -72,6 +73,7 @@ class SelectionAction(BaseAction):
         self.default_selection = default_selection
         self.prompt_message = prompt_message
         self.show_table = show_table
+        self.cancel_key = self._find_cancel_key()
 
     def _coerce_return_type(
         self, return_type: SelectionReturnType | str
@@ -115,11 +117,39 @@ class SelectionAction(BaseAction):
             )
 
     def _find_cancel_key(self) -> str:
-        """Return first numeric value not already used in the selection dict."""
-        for index in range(len(self.selections)):
-            if str(index) not in self.selections:
-                return str(index)
+        """Find the cancel key in the selections."""
+        if isinstance(self.selections, dict):
+            for index in range(len(self.selections) + 1):
+                if str(index) not in self.selections:
+                    return str(index)
         return str(len(self.selections))
+
+    @property
+    def cancel_key(self) -> str:
+        return self._cancel_key
+
+    @cancel_key.setter
+    def cancel_key(self, value: str) -> None:
+        """Set the cancel key for the selection."""
+        if not isinstance(value, str):
+            raise TypeError("Cancel key must be a string.")
+        if isinstance(self.selections, dict) and value in self.selections:
+            raise ValueError(
+                "Cancel key cannot be one of the selection keys. "
+                f"Current selections: {self.selections}"
+            )
+        if isinstance(self.selections, list):
+            if not value.isdigit() or int(value) > len(self.selections):
+                raise ValueError(
+                    "cancel_key must be a digit and not greater than the number of selections."
+                )
+        self._cancel_key = value
+
+    def cancel_formatter(self, index: int, selection: str) -> str:
+        """Format the cancel option for display."""
+        if self.cancel_key == str(index):
+            return f"[{index}] [{OneColors.DARK_RED}]Cancel[/]"
+        return f"[{index}] {selection}"
 
     def get_infer_target(self) -> tuple[None, None]:
         return None, None
@@ -164,16 +194,17 @@ class SelectionAction(BaseAction):
 
         context.start_timer()
         try:
-            cancel_key = self._find_cancel_key()
+            self.cancel_key = self._find_cancel_key()
             await self.hooks.trigger(HookType.BEFORE, context)
             if isinstance(self.selections, list):
                 table = render_selection_indexed_table(
                     title=self.title,
                     selections=self.selections + ["Cancel"],
                     columns=self.columns,
+                    formatter=self.cancel_formatter,
                 )
                 if not self.never_prompt:
-                    index = await prompt_for_index(
+                    index: int | str = await prompt_for_index(
                         len(self.selections),
                         table,
                         default_selection=effective_default,
@@ -184,12 +215,12 @@ class SelectionAction(BaseAction):
                     )
                 else:
                     index = effective_default
-                if index == cancel_key:
+                if int(index) == int(self.cancel_key):
                     raise CancelSignal("User cancelled the selection.")
                 result: Any = self.selections[int(index)]
             elif isinstance(self.selections, dict):
                 cancel_option = {
-                    cancel_key: SelectionOption(
+                    self.cancel_key: SelectionOption(
                         description="Cancel", value=CancelSignal, style=OneColors.DARK_RED
                     )
                 }
@@ -210,7 +241,7 @@ class SelectionAction(BaseAction):
                     )
                 else:
                     key = effective_default
-                if key == cancel_key:
+                if key == self.cancel_key:
                     raise CancelSignal("User cancelled the selection.")
                 if self.return_type == SelectionReturnType.KEY:
                     result = key

@@ -18,6 +18,7 @@ from .action_factory import ActionFactoryAction
 from .http_action import HTTPAction
 from .io_action import BaseIOAction, ShellAction
 from .menu_action import MenuAction
+from .prompt_menu_action import PromptMenuAction
 from .select_file_action import SelectFileAction
 from .selection_action import SelectionAction
 from .signal_action import SignalAction
@@ -40,4 +41,5 @@ __all__ = [
     "FallbackAction",
     "LiteralInputAction",
     "UserInputAction",
+    "PromptMenuAction",
 ]

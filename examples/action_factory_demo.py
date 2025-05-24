@@ -6,7 +6,7 @@ from falyx.action import ActionFactoryAction, ChainedAction, HTTPAction, Selecti
 # Selection of a post ID to fetch (just an example set)
 post_selector = SelectionAction(
     name="Pick Post ID",
-    selections=["1", "2", "3", "4", "5"],
+    selections=["15", "25", "35", "45", "55"],
     title="Choose a Post ID to submit",
     prompt_message="Post ID > ",
     show_table=True,
@@ -14,7 +14,7 @@ post_selector = SelectionAction(
 
 
 # Factory that builds and executes the actual HTTP POST request
-def build_post_action(post_id) -> HTTPAction:
+async def build_post_action(post_id) -> HTTPAction:
     print(f"Building HTTPAction for Post ID: {post_id}")
     return HTTPAction(
         name=f"POST to /posts (id={post_id})",
