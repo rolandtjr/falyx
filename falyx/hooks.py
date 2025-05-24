@@ -56,10 +56,10 @@ class CircuitBreaker:
         if self.open_until:
             if time.time() < self.open_until:
                 raise CircuitBreakerOpen(
-                    f"🔴 Circuit open for '{name}' until {time.ctime(self.open_until)}."
+                    f"Circuit open for '{name}' until {time.ctime(self.open_until)}."
                 )
             else:
-                logger.info("🟢 Circuit closed again for '%s'.")
+                logger.info("Circuit closed again for '%s'.")
                 self.failures = 0
                 self.open_until = None
 
@@ -67,7 +67,7 @@ class CircuitBreaker:
         name = context.name
         self.failures += 1
         logger.warning(
-            "⚠️ CircuitBreaker: '%s' failure %s/%s.",
+            "CircuitBreaker: '%s' failure %s/%s.",
             name,
             self.failures,
             self.max_failures,
@@ -75,7 +75,7 @@ class CircuitBreaker:
         if self.failures >= self.max_failures:
             self.open_until = time.time() + self.reset_timeout
             logger.error(
-                "🔴 Circuit opened for '%s' until %s.", name, time.ctime(self.open_until)
+                "Circuit opened for '%s' until %s.", name, time.ctime(self.open_until)
             )
 
     def after_hook(self, _: ExecutionContext):
@@ -87,4 +87,4 @@ class CircuitBreaker:
     def reset(self):
         self.failures = 0
         self.open_until = None
-        logger.info("🔄 Circuit reset.")
+        logger.info("Circuit reset.")

@@ -119,7 +119,7 @@ class SelectFileAction(BaseAction):
                     description=file.name, value=value, style=self.style
                 )
             except Exception as error:
-                logger.warning("[ERROR] Failed to parse %s: %s", file.name, error)
+                logger.error("Failed to parse %s: %s", file.name, error)
         return options
 
     def _find_cancel_key(self, options) -> str:

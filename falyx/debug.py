@@ -10,7 +10,7 @@ def log_before(context: ExecutionContext):
     args = ", ".join(map(repr, context.args))
     kwargs = ", ".join(f"{k}={v!r}" for k, v in context.kwargs.items())
     signature = ", ".join(filter(None, [args, kwargs]))
-    logger.info("[%s] 🚀 Starting → %s(%s)", context.name, context.action, signature)
+    logger.info("[%s] Starting → %s(%s)", context.name, context.action, signature)
 
 
 def log_success(context: ExecutionContext):
@@ -18,18 +18,18 @@ def log_success(context: ExecutionContext):
     result_str = repr(context.result)
     if len(result_str) > 100:
         result_str = f"{result_str[:100]} ..."
-    logger.debug("[%s] ✅ Success → Result: %s", context.name, result_str)
+    logger.debug("[%s] Success → Result: %s", context.name, result_str)
 
 
 def log_after(context: ExecutionContext):
     """Log the completion of an action, regardless of success or failure."""
-    logger.debug("[%s] ⏱️ Finished in %.3fs", context.name, context.duration)
+    logger.debug("[%s] Finished in %.3fs", context.name, context.duration)
 
 
 def log_error(context: ExecutionContext):
     """Log an error that occurred during the action."""
     logger.error(
-        "[%s] ❌ Error (%s): %s",
+        "[%s] Error (%s): %s",
         context.name,
         type(context.exception).__name__,
         context.exception,

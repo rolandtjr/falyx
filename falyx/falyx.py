@@ -852,7 +852,7 @@ class Falyx:
         self.last_run_command = selected_command
 
         if selected_command == self.exit_command:
-            logger.info("🔙 Back selected: exiting %s", self.get_title())
+            logger.info("Back selected: exiting %s", self.get_title())
             return False
 
         context = self._create_context(selected_command)
@@ -895,7 +895,7 @@ class Falyx:
             return None
 
         logger.info(
-            "[run_key] 🚀 Executing: %s — %s",
+            "[run_key] Executing: %s — %s",
             selected_command.key,
             selected_command.description,
         )
@@ -908,10 +908,10 @@ class Falyx:
             context.result = result
 
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
-            logger.info("[run_key] ✅ '%s' complete.", selected_command.description)
+            logger.info("[run_key] '%s' complete.", selected_command.description)
         except (KeyboardInterrupt, EOFError) as error:
             logger.warning(
-                "[run_key] ⚠️ Interrupted by user: %s", selected_command.description
+                "[run_key] Interrupted by user: %s", selected_command.description
             )
             raise FalyxError(
                 f"[run_key] ⚠️ '{selected_command.description}' interrupted by user."
@@ -920,7 +920,7 @@ class Falyx:
             context.exception = error
             await self.hooks.trigger(HookType.ON_ERROR, context)
             logger.error(
-                "[run_key] ❌ Failed: %s — %s: %s",
+                "[run_key] Failed: %s — %s: %s",
                 selected_command.description,
                 type(error).__name__,
                 error,
@@ -1024,7 +1024,7 @@ class Falyx:
             logging.getLogger("falyx").setLevel(logging.DEBUG)
 
         if self.cli_args.debug_hooks:
-            logger.debug("✅ Enabling global debug hooks for all commands")
+            logger.debug("Enabling global debug hooks for all commands")
             self.register_all_with_debug_hooks()
 
         if self.cli_args.command == "list":

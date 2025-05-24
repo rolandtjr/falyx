@@ -28,7 +28,7 @@ async def close_shared_http_session(context: ExecutionContext) -> None:
         if session and should_close:
             await session.close()
     except Exception as error:
-        logger.warning("⚠️ Error closing shared HTTP session: %s", error)
+        logger.warning("Error closing shared HTTP session: %s", error)
 
 
 class HTTPAction(Action):

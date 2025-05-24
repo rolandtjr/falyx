@@ -53,7 +53,7 @@ class RetryHandler:
         self.policy.delay = delay
         self.policy.backoff = backoff
         self.policy.jitter = jitter
-        logger.info("🔄 Retry policy enabled: %s", self.policy)
+        logger.info("Retry policy enabled: %s", self.policy)
 
     async def retry_on_error(self, context: ExecutionContext) -> None:
         from falyx.action import Action
@@ -67,21 +67,21 @@ class RetryHandler:
         last_error = error
 
         if not target:
-            logger.warning("[%s] ⚠️ No action target. Cannot retry.", name)
+            logger.warning("[%s] No action target. Cannot retry.", name)
             return None
 
         if not isinstance(target, Action):
             logger.warning(
-                "[%s] ❌ RetryHandler only supports only supports Action objects.", name
+                "[%s] RetryHandler only supports only supports Action objects.", name
             )
             return None
 
         if not getattr(target, "is_retryable", False):
-            logger.warning("[%s] ❌ Not retryable.", name)
+            logger.warning("[%s] Not retryable.", name)
             return None
 
         if not self.policy.enabled:
-            logger.warning("[%s] ❌ Retry policy is disabled.", name)
+            logger.warning("[%s] Retry policy is disabled.", name)
             return None
 
         while retries_done < self.policy.max_retries:
@@ -92,7 +92,7 @@ class RetryHandler:
                 sleep_delay += random.uniform(-self.policy.jitter, self.policy.jitter)
 
             logger.info(
-                "[%s] 🔄 Retrying (%s/%s) in %ss due to '%s'...",
+                "[%s] Retrying (%s/%s) in %ss due to '%s'...",
                 name,
                 retries_done,
                 self.policy.max_retries,
@@ -104,13 +104,13 @@ class RetryHandler:
                 result = await target.action(*context.args, **context.kwargs)
                 context.result = result
                 context.exception = None
-                logger.info("[%s] ✅ Retry succeeded on attempt %s.", name, retries_done)
+                logger.info("[%s] Retry succeeded on attempt %s.", name, retries_done)
                 return None
             except Exception as retry_error:
                 last_error = retry_error
                 current_delay *= self.policy.backoff
                 logger.warning(
-                    "[%s] ⚠️ Retry attempt %s/%s failed due to '%s'.",
+                    "[%s] Retry attempt %s/%s failed due to '%s'.",
                     name,
                     retries_done,
                     self.policy.max_retries,
@@ -118,4 +118,4 @@ class RetryHandler:
                 )
 
         context.exception = last_error
-        logger.error("[%s] ❌ All %s retries failed.", name, self.policy.max_retries)
+        logger.error("[%s] All %s retries failed.", name, self.policy.max_retries)

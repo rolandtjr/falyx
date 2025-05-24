@@ -140,9 +140,9 @@ class ExecutionContext(BaseModel):
         message.append(f"Duration: {summary['duration']:.3f}s | ")
 
         if summary["exception"]:
-            message.append(f"❌ Exception: {summary['exception']}")
+            message.append(f"Exception: {summary['exception']}")
         else:
-            message.append(f"✅ Result: {summary['result']}")
+            message.append(f"Result: {summary['result']}")
         (logger or self.console.print)("".join(message))
 
     def to_log_line(self) -> str:

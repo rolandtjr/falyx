@@ -149,7 +149,7 @@ class BaseAction(ABC):
         if self.inject_last_result and self.shared_context:
             key = self.inject_into
             if key in kwargs:
-                logger.warning("[%s] ⚠️ Overriding '%s' with last_result", self.name, key)
+                logger.warning("[%s] Overriding '%s' with last_result", self.name, key)
             kwargs = dict(kwargs)
             kwargs[key] = self.shared_context.last_result()
         return kwargs
@@ -278,7 +278,7 @@ class Action(BaseAction):
             context.exception = error
             await self.hooks.trigger(HookType.ON_ERROR, context)
             if context.result is not None:
-                logger.info("[%s] ✅ Recovered: %s", self.name, self.name)
+                logger.info("[%s] Recovered: %s", self.name, self.name)
                 return context.result
             raise
         finally:
@@ -518,7 +518,7 @@ class ChainedAction(BaseAction, ActionListMixin):
             for index, action in enumerate(self.actions):
                 if action._skip_in_chain:
                     logger.debug(
-                        "[%s] ⚠️ Skipping consumed action '%s'", self.name, action.name
+                        "[%s] Skipping consumed action '%s'", self.name, action.name
                     )
                     continue
                 shared_context.current_index = index
@@ -530,7 +530,7 @@ class ChainedAction(BaseAction, ActionListMixin):
                         self.actions[index + 1], FallbackAction
                     ):
                         logger.warning(
-                            "[%s] ⚠️ Fallback triggered: %s, recovering with fallback "
+                            "[%s] Fallback triggered: %s, recovering with fallback "
                             "'%s'.",
                             self.name,
                             error,
@@ -585,10 +585,10 @@ class ChainedAction(BaseAction, ActionListMixin):
             rollback = getattr(action, "rollback", None)
             if rollback:
                 try:
-                    logger.warning("[%s] ↩️ Rolling back...", action.name)
+                    logger.warning("[%s] Rolling back...", action.name)
                     await action.rollback(*args, **kwargs)
                 except Exception as error:
-                    logger.error("[%s] ⚠️ Rollback failed: %s", action.name, error)
+                    logger.error("[%s] Rollback failed: %s", action.name, error)
 
     def register_hooks_recursively(self, hook_type: HookType, hook: Hook):
         """Register a hook for all actions and sub-actions."""

@@ -1,6 +1,6 @@
 from typing import Any
 
-from falyx import logger
+from falyx.logger import logger
 from falyx.parsers.signature import infer_args_from_func
 
 

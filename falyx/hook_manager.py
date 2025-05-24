@@ -65,7 +65,7 @@ class HookManager:
                     hook(context)
             except Exception as hook_error:
                 logger.warning(
-                    "⚠️ Hook '%s' raised an exception during '%s' for '%s': %s",
+                    "[Hook:%s] raised an exception during '%s' for '%s': %s",
                     hook.__name__,
                     hook_type,
                     context.name,

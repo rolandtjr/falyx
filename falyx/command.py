@@ -245,7 +245,7 @@ class Command(BaseModel):
             if self.preview_before_confirm:
                 await self.preview()
             if not await confirm_async(self.confirmation_prompt):
-                logger.info("[Command:%s] ❌ Cancelled by user.", self.key)
+                logger.info("[Command:%s] Cancelled by user.", self.key)
                 raise CancelSignal(f"[Command:{self.key}] Cancelled by confirmation.")
 
         context.start_timer()
