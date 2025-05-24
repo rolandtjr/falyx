@@ -994,12 +994,12 @@ class Falyx:
                     logger.info("EOF or KeyboardInterrupt. Exiting menu.")
                     break
                 except QuitSignal:
-                    logger.info("QuitSignal received. Exiting menu.")
+                    logger.info("[QuitSignal]. <- Exiting menu.")
                     break
                 except BackSignal:
-                    logger.info("BackSignal received.")
+                    logger.info("[BackSignal]. <- Returning to the menu.")
                 except CancelSignal:
-                    logger.info("CancelSignal received.")
+                    logger.info("[CancelSignal]. <- Returning to the menu.")
         finally:
             logger.info("Exiting menu: %s", self.get_title())
             if self.exit_message:

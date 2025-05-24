@@ -124,10 +124,10 @@ class MenuAction(BaseAction):
             return result
 
         except BackSignal:
-            logger.debug("[%s][BackSignal] ← Returning to previous menu", self.name)
+            logger.debug("[%s][BackSignal] <- Returning to previous menu", self.name)
             return None
         except QuitSignal:
-            logger.debug("[%s][QuitSignal] ← Exiting application", self.name)
+            logger.debug("[%s][QuitSignal] <- Exiting application", self.name)
             raise
         except Exception as error:
             context.exception = error

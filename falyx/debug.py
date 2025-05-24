@@ -10,7 +10,7 @@ def log_before(context: ExecutionContext):
     args = ", ".join(map(repr, context.args))
     kwargs = ", ".join(f"{k}={v!r}" for k, v in context.kwargs.items())
     signature = ", ".join(filter(None, [args, kwargs]))
-    logger.info("[%s] Starting → %s(%s)", context.name, context.action, signature)
+    logger.info("[%s] Starting -> %s(%s)", context.name, context.action, signature)
 
 
 def log_success(context: ExecutionContext):
@@ -18,7 +18,7 @@ def log_success(context: ExecutionContext):
     result_str = repr(context.result)
     if len(result_str) > 100:
         result_str = f"{result_str[:100]} ..."
-    logger.debug("[%s] Success → Result: %s", context.name, result_str)
+    logger.debug("[%s] Success -> Result: %s", context.name, result_str)
 
 
 def log_after(context: ExecutionContext):
