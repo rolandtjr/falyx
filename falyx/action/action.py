@@ -726,7 +726,7 @@ class ActionGroup(BaseAction, ActionListMixin):
             if context.extra["errors"]:
                 context.exception = Exception(
                     f"{len(context.extra['errors'])} action(s) failed: "
-                    f"{' ,'.join(name for name, _ in context.extra["errors"])}"
+                    f"{' ,'.join(name for name, _ in context.extra['errors'])}"
                 )
                 await self.hooks.trigger(HookType.ON_ERROR, context)
                 raise context.exception
