@@ -14,7 +14,7 @@ from prompt_toolkit import PromptSession
 from rich.console import Console
 from rich.tree import Tree
 
-from falyx.action.action import BaseAction
+from falyx.action.base import BaseAction
 from falyx.action.types import FileReturnType
 from falyx.context import ExecutionContext
 from falyx.execution_registry import ExecutionRegistry as er

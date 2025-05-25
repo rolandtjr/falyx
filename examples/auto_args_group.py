@@ -1,6 +1,7 @@
 import asyncio
 
-from falyx import Action, ActionGroup, Command, Falyx
+from falyx import Falyx
+from falyx.action import Action, ActionGroup
 
 
 # Define a shared async function
@@ -19,10 +20,11 @@ action3 = Action("say_hello_3", action=say_hello)
 # Combine into an ActionGroup
 group = ActionGroup(name="greet_group", actions=[action1, action2, action3])
 
-# Create the Command with auto_args=True
-cmd = Command(
+flx = Falyx("Test Group")
+flx.add_command(
     key="G",
     description="Greet someone with multiple variations.",
+    aliases=["greet", "hello"],
     action=group,
     arg_metadata={
         "name": {
@@ -33,7 +35,4 @@ cmd = Command(
         },
     },
 )
-
-flx = Falyx("Test Group")
-flx.add_command_from_command(cmd)
 asyncio.run(flx.run())

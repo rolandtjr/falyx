@@ -42,7 +42,8 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
 
-from falyx.action.action import Action, BaseAction
+from falyx.action.action import Action
+from falyx.action.base import BaseAction
 from falyx.bottom_bar import BottomBar
 from falyx.command import Command
 from falyx.context import ExecutionContext
@@ -82,7 +83,7 @@ class CommandValidator(Validator):
         self.falyx = falyx
         self.error_message = error_message
 
-    def validate(self, document) -> None:
+    def validate(self, _) -> None:
         pass
 
     async def validate_async(self, document) -> None:
@@ -449,7 +450,7 @@ class Falyx:
                 validator=CommandValidator(self, self._get_validator_error_message()),
                 bottom_toolbar=self._get_bottom_bar_render(),
                 key_bindings=self.key_bindings,
-                validate_while_typing=False,
+                validate_while_typing=True,
             )
         return self._prompt_session
 
@@ -761,7 +762,7 @@ class Falyx:
             is_preview = False
             choice = "?"
         elif is_preview and not choice:
-            # No help command enabled
+            # No help (list) command enabled
             if not from_validate:
                 self.console.print(
                     f"[{OneColors.DARK_RED}]❌ You must enter a command for preview mode."
@@ -781,12 +782,9 @@ class Falyx:
                 )
             except CommandArgumentError as error:
                 if not from_validate:
-                    if not name_map[choice].show_help():
-                        self.console.print(
-                            f"[{OneColors.DARK_RED}]❌ Invalid arguments for '{choice}': {error}"
-                        )
-                else:
                     name_map[choice].show_help()
+                    self.console.print(f"[{OneColors.DARK_RED}]❌ [{choice}]: {error}")
+                else:
                     raise ValidationError(
                         message=str(error), cursor_position=len(raw_choices)
                     )
@@ -806,14 +804,24 @@ class Falyx:
                     f"[{OneColors.LIGHT_YELLOW}]⚠️ Unknown command '{choice}'. "
                     "Did you mean:"
                 )
-            for match in fuzzy_matches:
-                cmd = name_map[match]
-                self.console.print(f"  • [bold]{match}[/] → {cmd.description}")
+                for match in fuzzy_matches:
+                    cmd = name_map[match]
+                    self.console.print(f"  • [bold]{match}[/] → {cmd.description}")
+            else:
+                raise ValidationError(
+                    message=f"Unknown command '{choice}'. Did you mean: "
+                    f"{', '.join(fuzzy_matches)}?",
+                    cursor_position=len(raw_choices),
+                )
         else:
             if not from_validate:
                 self.console.print(
                     f"[{OneColors.LIGHT_YELLOW}]⚠️ Unknown command '{choice}'[/]"
                 )
+            raise ValidationError(
+                message=f"Unknown command '{choice}'.",
+                cursor_position=len(raw_choices),
+            )
         return is_preview, None, args, kwargs
 
     def _create_context(self, selected_command: Command) -> ExecutionContext:
@@ -974,7 +982,7 @@ class Falyx:
 
     async def menu(self) -> None:
         """Runs the menu and handles user input."""
-        logger.info("Running menu: %s", self.get_title())
+        logger.info("Starting menu: %s", self.get_title())
         self.debug_hooks()
         if self.welcome_message:
             self.print_message(self.welcome_message)

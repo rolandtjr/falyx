@@ -1,6 +1,7 @@
 import pytest
 
-from falyx import Action, Falyx
+from falyx import Falyx
+from falyx.action import Action
 
 
 @pytest.mark.asyncio

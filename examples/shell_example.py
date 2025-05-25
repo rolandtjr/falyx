@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 import asyncio
 
-from falyx import Action, ChainedAction, Falyx
-from falyx.action import ShellAction
+from falyx import Falyx
+from falyx.action import Action, ChainedAction, ShellAction
 from falyx.hooks import ResultReporter
 from falyx.utils import setup_logging
 

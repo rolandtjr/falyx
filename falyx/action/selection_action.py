@@ -1,13 +1,12 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """selection_action.py"""
-from copy import copy
 from typing import Any
 
 from prompt_toolkit import PromptSession
 from rich.console import Console
 from rich.tree import Tree
 
-from falyx.action.action import BaseAction
+from falyx.action.base import BaseAction
 from falyx.action.types import SelectionReturnType
 from falyx.context import ExecutionContext
 from falyx.execution_registry import ExecutionRegistry as er

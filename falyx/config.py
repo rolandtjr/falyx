@@ -13,7 +13,8 @@ import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
 from rich.console import Console
 
-from falyx.action.action import Action, BaseAction
+from falyx.action.action import Action
+from falyx.action.base import BaseAction
 from falyx.command import Command
 from falyx.falyx import Falyx
 from falyx.logger import logger

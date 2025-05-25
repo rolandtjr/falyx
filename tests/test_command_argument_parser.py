@@ -345,22 +345,24 @@ def test_add_argument_choices_invalid():
 def test_add_argument_bad_nargs():
     parser = CommandArgumentParser()
 
-    # ❌ Invalid nargs value
     with pytest.raises(CommandArgumentError):
         parser.add_argument("--falyx", nargs="invalid")
 
-    # ❌ Invalid nargs type
     with pytest.raises(CommandArgumentError):
-        parser.add_argument("--falyx", nargs=123)
+        parser.add_argument("--foo", nargs="123")
 
-    # ❌ Invalid nargs type
     with pytest.raises(CommandArgumentError):
-        parser.add_argument("--falyx", nargs=None)
+        parser.add_argument("--foo", nargs=[1, 2])
+
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument("--too", action="count", nargs=5)
+
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument("falyx", action="store_true", nargs=5)
 
 
 def test_add_argument_nargs():
     parser = CommandArgumentParser()
-    # ✅ Valid nargs value
     parser.add_argument("--falyx", nargs=2)
     arg = parser._arguments[-1]
     assert arg.dest == "falyx"
@@ -398,8 +400,10 @@ async def test_parse_args_nargs():
     parser = CommandArgumentParser()
     parser.add_argument("files", nargs="+", type=str)
     parser.add_argument("mode", nargs=1)
+    parser.add_argument("--action", action="store_true")
 
-    args = await parser.parse_args(["a", "b", "c"])
+    args = await parser.parse_args(["a", "b", "c", "--action"])
+    args = await parser.parse_args(["--action", "a", "b", "c"])
 
     assert args["files"] == ["a", "b"]
     assert args["mode"] == "c"
@@ -518,6 +522,15 @@ async def test_parse_args_nargs_multiple_positional():
 
 
 @pytest.mark.asyncio
+async def test_parse_args_nargs_none():
+    parser = CommandArgumentParser()
+    parser.add_argument("numbers", type=int)
+    parser.add_argument("mode")
+
+    await parser.parse_args(["1", "2"])
+
+
+@pytest.mark.asyncio
 async def test_parse_args_nargs_invalid_positional_arguments():
     parser = CommandArgumentParser()
     parser.add_argument("numbers", nargs="*", type=int)
@@ -543,19 +556,77 @@ async def test_parse_args_append():
 
 
 @pytest.mark.asyncio
+async def test_parse_args_nargs_int_append():
+    parser = CommandArgumentParser()
+    parser.add_argument("--numbers", action=ArgumentAction.APPEND, type=int, nargs=1)
+
+    args = await parser.parse_args(["--numbers", "1", "--numbers", "2", "--numbers", "3"])
+    assert args["numbers"] == [[1], [2], [3]]
+
+    args = await parser.parse_args(["--numbers", "1"])
+    assert args["numbers"] == [[1]]
+
+    args = await parser.parse_args([])
+    assert args["numbers"] == []
+
+
+@pytest.mark.asyncio
 async def test_parse_args_nargs_append():
     parser = CommandArgumentParser()
     parser.add_argument("numbers", action=ArgumentAction.APPEND, type=int, nargs="*")
     parser.add_argument("--mode")
 
+    args = await parser.parse_args(["1"])
+    assert args["numbers"] == [[1]]
+
     args = await parser.parse_args(["1", "2", "3", "--mode", "numbers", "4", "5"])
     assert args["numbers"] == [[1, 2, 3], [4, 5]]
+    assert args["mode"] == "numbers"
+
+    args = await parser.parse_args(["1", "2", "3"])
+    assert args["numbers"] == [[1, 2, 3]]
+
+    args = await parser.parse_args([])
+    assert args["numbers"] == []
+
+
+@pytest.mark.asyncio
+async def test_parse_args_int_optional_append():
+    parser = CommandArgumentParser()
+    parser.add_argument("numbers", action=ArgumentAction.APPEND, type=int)
+
+    args = await parser.parse_args(["1"])
+    assert args["numbers"] == [1]
+
+
+@pytest.mark.asyncio
+async def test_parse_args_int_optional_append_multiple_values():
+    parser = CommandArgumentParser()
+    parser.add_argument("numbers", action=ArgumentAction.APPEND, type=int)
+
+    with pytest.raises(CommandArgumentError):
+        await parser.parse_args(["1", "2"])
+
+
+@pytest.mark.asyncio
+async def test_parse_args_nargs_int_positional_append():
+    parser = CommandArgumentParser()
+    parser.add_argument("numbers", action=ArgumentAction.APPEND, type=int, nargs=1)
 
     args = await parser.parse_args(["1"])
     assert args["numbers"] == [[1]]
 
-    args = await parser.parse_args([])
-    assert args["numbers"] == []
+    with pytest.raises(CommandArgumentError):
+        await parser.parse_args(["1", "2", "3"])
+
+    parser2 = CommandArgumentParser()
+    parser2.add_argument("numbers", action=ArgumentAction.APPEND, type=int, nargs=2)
+
+    args = await parser2.parse_args(["1", "2"])
+    assert args["numbers"] == [[1, 2]]
+
+    with pytest.raises(CommandArgumentError):
+        await parser2.parse_args(["1", "2", "3"])
 
 
 @pytest.mark.asyncio
@@ -574,6 +645,9 @@ async def test_append_groups_nargs():
 
     parsed = await cap.parse_args(["--item", "a", "b", "--item", "c", "d"])
     assert parsed["item"] == [["a", "b"], ["c", "d"]]
+
+    with pytest.raises(CommandArgumentError):
+        await cap.parse_args(["--item", "a", "b", "--item", "c"])
 
 
 @pytest.mark.asyncio
@@ -720,3 +794,35 @@ async def test_extend_positional_nargs():
 
     with pytest.raises(CommandArgumentError):
         await parser.parse_args([])
+
+
+def test_command_argument_parser_equality():
+    parser1 = CommandArgumentParser()
+    parser2 = CommandArgumentParser()
+
+    parser1.add_argument("--foo", type=str)
+    parser2.add_argument("--foo", type=str)
+
+    assert parser1 == parser2
+
+    parser1.add_argument("--bar", type=int)
+    assert parser1 != parser2
+
+    parser2.add_argument("--bar", type=int)
+    assert parser1 == parser2
+
+    assert parser1 != "not a parser"
+    assert parser1 is not None
+    assert parser1 != object()
+
+    assert parser1.to_definition_list() == parser2.to_definition_list()
+    assert hash(parser1) == hash(parser2)
+
+
+@pytest.mark.asyncio
+async def test_render_help():
+    parser = CommandArgumentParser()
+    parser.add_argument("--foo", type=str, help="Foo help")
+    parser.add_argument("--bar", action=ArgumentAction.APPEND, type=str, help="Bar help")
+
+    assert parser.render_help() is None

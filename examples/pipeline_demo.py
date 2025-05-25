@@ -1,8 +1,7 @@
 import asyncio
 
-from falyx import Action, ActionGroup, ChainedAction
 from falyx import ExecutionRegistry as er
-from falyx import ProcessAction
+from falyx.action import Action, ActionGroup, ChainedAction, ProcessAction
 from falyx.retry import RetryHandler, RetryPolicy
 
 

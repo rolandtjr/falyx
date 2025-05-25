@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Awaitable, Protocol, runtime_checkable
 
-from falyx.action.action import BaseAction
+from falyx.action.base import BaseAction
 
 
 @runtime_checkable

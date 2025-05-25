@@ -1,6 +1,6 @@
 import asyncio
 
-from falyx import Action, ActionGroup, ChainedAction
+from falyx.action import Action, ActionGroup, ChainedAction
 
 
 # Actions can be defined as synchronous functions

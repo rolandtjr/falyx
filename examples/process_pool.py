@@ -1,6 +1,7 @@
 from rich.console import Console
 
-from falyx import Falyx, ProcessAction
+from falyx import Falyx
+from falyx.action import ProcessAction
 from falyx.themes import NordColors as nc
 
 console = Console()

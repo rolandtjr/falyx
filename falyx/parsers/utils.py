@@ -1,5 +1,6 @@
 from typing import Any
 
+from falyx.action.base import BaseAction
 from falyx.logger import logger
 from falyx.parsers.signature import infer_args_from_func
 
@@ -8,7 +9,6 @@ def same_argument_definitions(
     actions: list[Any],
     arg_metadata: dict[str, str | dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]] | None:
-    from falyx.action.action import BaseAction
 
     arg_sets = []
     for action in actions:

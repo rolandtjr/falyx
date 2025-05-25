@@ -1,6 +1,7 @@
 import asyncio
 
-from falyx import Action, ChainedAction, Falyx
+from falyx import Falyx
+from falyx.action import Action, ChainedAction
 from falyx.utils import setup_logging
 
 setup_logging()

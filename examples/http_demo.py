@@ -2,8 +2,8 @@ import asyncio
 
 from rich.console import Console
 
-from falyx import ActionGroup, Falyx
-from falyx.action import HTTPAction
+from falyx import Falyx
+from falyx.action import ActionGroup, HTTPAction
 from falyx.hooks import ResultReporter
 
 console = Console()

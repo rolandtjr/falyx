@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from prompt_toolkit.formatted_text import FormattedText
 
-from falyx.action import BaseAction
+from falyx.action.base import BaseAction
 from falyx.signals import BackSignal, QuitSignal
 from falyx.themes import OneColors
 from falyx.utils import CaseInsensitiveDict

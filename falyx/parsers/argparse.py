@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.text import Text
 
+from falyx.action.base import BaseAction
 from falyx.exceptions import CommandArgumentError
 from falyx.signals import HelpSignal
 
@@ -17,6 +18,7 @@ from falyx.signals import HelpSignal
 class ArgumentAction(Enum):
     """Defines the action to be taken when the argument is encountered."""
 
+    ACTION = "action"
     STORE = "store"
     STORE_TRUE = "store_true"
     STORE_FALSE = "store_false"
@@ -51,6 +53,7 @@ class Argument:
     help: str = ""  # Help text for the argument
     nargs: int | str | None = None  # int, '?', '*', '+', None
     positional: bool = False  # True if no leading - or -- in flags
+    resolver: BaseAction | None = None  # Action object for the argument
 
     def get_positional_text(self) -> str:
         """Get the positional text for the argument."""
@@ -104,6 +107,8 @@ class Argument:
             and self.required == other.required
             and self.nargs == other.nargs
             and self.positional == other.positional
+            and self.default == other.default
+            and self.help == other.help
         )
 
     def __hash__(self) -> int:
@@ -117,6 +122,8 @@ class Argument:
                 self.required,
                 self.nargs,
                 self.positional,
+                self.default,
+                self.help,
             )
         )
 
@@ -220,6 +227,12 @@ class CommandArgumentParser:
         if required:
             return True
         if positional:
+            assert (
+                nargs is None
+                or isinstance(nargs, int)
+                or isinstance(nargs, str)
+                and nargs in ("+", "*", "?")
+            ), f"Invalid nargs value: {nargs}"
             if isinstance(nargs, int):
                 return nargs > 0
             elif isinstance(nargs, str):
@@ -227,8 +240,8 @@ class CommandArgumentParser:
                     return True
                 elif nargs in ("*", "?"):
                     return False
-                else:
-                    raise CommandArgumentError(f"Invalid nargs value: {nargs}")
+            else:
+                return True
 
         return required
 
@@ -247,7 +260,7 @@ class CommandArgumentParser:
                 )
             return None
         if nargs is None:
-            nargs = 1
+            return None
         allowed_nargs = ("?", "*", "+")
         if isinstance(nargs, int):
             if nargs <= 0:
@@ -308,6 +321,23 @@ class CommandArgumentParser:
                             f"Default list value {default!r} for '{dest}' cannot be coerced to {expected_type.__name__}"
                         )
 
+    def _validate_resolver(
+        self, action: ArgumentAction, resolver: BaseAction | None
+    ) -> BaseAction | None:
+        """Validate the action object."""
+        if action != ArgumentAction.ACTION and resolver is None:
+            return None
+        elif action == ArgumentAction.ACTION and resolver is None:
+            raise CommandArgumentError("resolver must be provided for ACTION action")
+        elif action != ArgumentAction.ACTION and resolver is not None:
+            raise CommandArgumentError(
+                f"resolver should not be provided for action {action}"
+            )
+
+        if not isinstance(resolver, BaseAction):
+            raise CommandArgumentError("resolver must be an instance of BaseAction")
+        return resolver
+
     def _validate_action(
         self, action: ArgumentAction | str, positional: bool
     ) -> ArgumentAction:
@@ -347,6 +377,8 @@ class CommandArgumentParser:
                 return 0
             elif action in (ArgumentAction.APPEND, ArgumentAction.EXTEND):
                 return []
+            elif isinstance(nargs, int):
+                return []
             elif nargs in ("+", "*"):
                 return []
             else:
@@ -380,8 +412,15 @@ class CommandArgumentParser:
         required: bool = False,
         help: str = "",
         dest: str | None = None,
+        resolver: BaseAction | None = None,
     ) -> None:
         """Add an argument to the parser.
+        For `ArgumentAction.ACTION`, `nargs` and `type` determine how many and what kind
+        of inputs are passed to the `resolver`.
+
+        The return value of the `resolver` is used directly (no type coercion is applied).
+        Validation, structure, and post-processing should be handled within the `resolver`.
+
         Args:
             name or flags: Either a name or prefixed flags (e.g. 'faylx', '-f', '--falyx').
             action: The action to be taken when the argument is encountered.
@@ -392,6 +431,7 @@ class CommandArgumentParser:
             required: Whether or not the argument is required.
             help: A brief description of the argument.
             dest: The name of the attribute to be added to the object returned by parse_args().
+            resolver: A BaseAction called with optional nargs specified parsed arguments.
         """
         expected_type = type
         self._validate_flags(flags)
@@ -403,8 +443,8 @@ class CommandArgumentParser:
                 "Merging multiple arguments into the same dest (e.g. positional + flagged) "
                 "is not supported. Define a unique 'dest' for each argument."
             )
-        self._dest_set.add(dest)
         action = self._validate_action(action, positional)
+        resolver = self._validate_resolver(action, resolver)
         nargs = self._validate_nargs(nargs, action)
         default = self._resolve_default(default, action, nargs)
         if (
@@ -432,6 +472,7 @@ class CommandArgumentParser:
             help=help,
             nargs=nargs,
             positional=positional,
+            resolver=resolver,
         )
         for flag in flags:
             if flag in self._flag_map:
@@ -439,7 +480,9 @@ class CommandArgumentParser:
                 raise CommandArgumentError(
                     f"Flag '{flag}' is already used by argument '{existing.dest}'"
                 )
+        for flag in flags:
             self._flag_map[flag] = argument
+        self._dest_set.add(dest)
         self._arguments.append(argument)
         if positional:
             self._positional.append(argument)
@@ -462,6 +505,8 @@ class CommandArgumentParser:
                     "required": arg.required,
                     "nargs": arg.nargs,
                     "positional": arg.positional,
+                    "default": arg.default,
+                    "help": arg.help,
                 }
             )
         return defs
@@ -469,14 +514,17 @@ class CommandArgumentParser:
     def _consume_nargs(
         self, args: list[str], start: int, spec: Argument
     ) -> tuple[list[str], int]:
+        assert (
+            spec.nargs is None
+            or isinstance(spec.nargs, int)
+            or isinstance(spec.nargs, str)
+            and spec.nargs in ("+", "*", "?")
+        ), f"Invalid nargs value: {spec.nargs}"
         values = []
         i = start
         if isinstance(spec.nargs, int):
             values = args[i : i + spec.nargs]
             return values, i + spec.nargs
-        elif spec.nargs is None:
-            values = [args[i]]
-            return values, i + 1
         elif spec.nargs == "+":
             if i >= len(args):
                 raise CommandArgumentError(
@@ -496,10 +544,13 @@ class CommandArgumentParser:
             if i < len(args) and not args[i].startswith("-"):
                 return [args[i]], i + 1
             return [], i
-        else:
-            assert False, "Invalid nargs value: shouldn't happen"
+        elif spec.nargs is None:
+            if i < len(args) and not args[i].startswith("-"):
+                return [args[i]], i + 1
+            return [], i
+        assert False, "Invalid nargs value: shouldn't happen"
 
-    def _consume_all_positional_args(
+    async def _consume_all_positional_args(
         self,
         args: list[str],
         result: dict[str, Any],
@@ -519,18 +570,22 @@ class CommandArgumentParser:
             remaining = len(args) - i
             min_required = 0
             for next_spec in positional_args[j + 1 :]:
-                if isinstance(next_spec.nargs, int):
-                    min_required += next_spec.nargs
-                elif next_spec.nargs is None:
+                assert (
+                    next_spec.nargs is None
+                    or isinstance(next_spec.nargs, int)
+                    or isinstance(next_spec.nargs, str)
+                    and next_spec.nargs in ("+", "*", "?")
+                ), f"Invalid nargs value: {spec.nargs}"
+                if next_spec.nargs is None:
                     min_required += 1
+                elif isinstance(next_spec.nargs, int):
+                    min_required += next_spec.nargs
                 elif next_spec.nargs == "+":
                     min_required += 1
                 elif next_spec.nargs == "?":
                     min_required += 0
                 elif next_spec.nargs == "*":
                     min_required += 0
-                else:
-                    assert False, "Invalid nargs value: shouldn't happen"
 
             slice_args = args[i:] if is_last else args[i : i + (remaining - min_required)]
             values, new_i = self._consume_nargs(slice_args, 0, spec)
@@ -542,10 +597,19 @@ class CommandArgumentParser:
                 raise CommandArgumentError(
                     f"Invalid value for '{spec.dest}': expected {spec.type.__name__}"
                 )
-
-            if spec.action == ArgumentAction.APPEND:
+            if spec.action == ArgumentAction.ACTION:
+                assert isinstance(
+                    spec.resolver, BaseAction
+                ), "resolver should be an instance of BaseAction"
+                try:
+                    result[spec.dest] = await spec.resolver(*typed)
+                except Exception as error:
+                    raise CommandArgumentError(
+                        f"[{spec.dest}] Action failed: {error}"
+                    ) from error
+            elif spec.action == ArgumentAction.APPEND:
                 assert result.get(spec.dest) is not None, "dest should not be None"
-                if spec.nargs in (None, 1):
+                if spec.nargs is None:
                     result[spec.dest].append(typed[0])
                 else:
                     result[spec.dest].append(typed)
@@ -565,6 +629,23 @@ class CommandArgumentParser:
 
         return i
 
+    def _expand_posix_bundling(self, args: list[str]) -> list[str]:
+        """Expand POSIX-style bundled arguments into separate arguments."""
+        expanded = []
+        for token in args:
+            if token.startswith("-") and not token.startswith("--") and len(token) > 2:
+                # POSIX bundle
+                # e.g. -abc -> -a -b -c
+                for char in token[1:]:
+                    flag = f"-{char}"
+                    arg = self._flag_map.get(flag)
+                    if not arg:
+                        raise CommandArgumentError(f"Unrecognized option: {flag}")
+                    expanded.append(flag)
+            else:
+                expanded.append(token)
+        return expanded
+
     async def parse_args(
         self, args: list[str] | None = None, from_validate: bool = False
     ) -> dict[str, Any]:
@@ -572,11 +653,13 @@ class CommandArgumentParser:
         if args is None:
             args = []
 
+        args = self._expand_posix_bundling(args)
+
         result = {arg.dest: deepcopy(arg.default) for arg in self._arguments}
         positional_args = [arg for arg in self._arguments if arg.positional]
         consumed_positional_indices: set[int] = set()
-
         consumed_indices: set[int] = set()
+
         i = 0
         while i < len(args):
             token = args[i]
@@ -588,6 +671,25 @@ class CommandArgumentParser:
                     if not from_validate:
                         self.render_help()
                     raise HelpSignal()
+                elif action == ArgumentAction.ACTION:
+                    assert isinstance(
+                        spec.resolver, BaseAction
+                    ), "resolver should be an instance of BaseAction"
+                    values, new_i = self._consume_nargs(args, i + 1, spec)
+                    try:
+                        typed_values = [spec.type(value) for value in values]
+                    except ValueError:
+                        raise CommandArgumentError(
+                            f"Invalid value for '{spec.dest}': expected {spec.type.__name__}"
+                        )
+                    try:
+                        result[spec.dest] = await spec.resolver(*typed_values)
+                    except Exception as error:
+                        raise CommandArgumentError(
+                            f"[{spec.dest}] Action failed: {error}"
+                        ) from error
+                    consumed_indices.update(range(i, new_i))
+                    i = new_i
                 elif action == ArgumentAction.STORE_TRUE:
                     result[spec.dest] = True
                     consumed_indices.add(i)
@@ -609,13 +711,8 @@ class CommandArgumentParser:
                         raise CommandArgumentError(
                             f"Invalid value for '{spec.dest}': expected {spec.type.__name__}"
                         )
-                    if spec.nargs in (None, 1):
-                        try:
-                            result[spec.dest].append(spec.type(values[0]))
-                        except ValueError:
-                            raise CommandArgumentError(
-                                f"Invalid value for '{spec.dest}': expected {spec.type.__name__}"
-                            )
+                    if spec.nargs is None:
+                        result[spec.dest].append(spec.type(values[0]))
                     else:
                         result[spec.dest].append(typed_values)
                     consumed_indices.update(range(i, new_i))
@@ -640,6 +737,10 @@ class CommandArgumentParser:
                         raise CommandArgumentError(
                             f"Invalid value for '{spec.dest}': expected {spec.type.__name__}"
                         )
+                    if not typed_values and spec.nargs not in ("*", "?"):
+                        raise CommandArgumentError(
+                            f"Expected at least one value for '{spec.dest}'"
+                        )
                     if (
                         spec.nargs in (None, 1, "?")
                         and spec.action != ArgumentAction.APPEND
@@ -651,6 +752,9 @@ class CommandArgumentParser:
                         result[spec.dest] = typed_values
                     consumed_indices.update(range(i, new_i))
                     i = new_i
+            elif token.startswith("-"):
+                # Handle unrecognized option
+                raise CommandArgumentError(f"Unrecognized flag: {token}")
             else:
                 # Get the next flagged argument index if it exists
                 next_flagged_index = -1
@@ -660,8 +764,7 @@ class CommandArgumentParser:
                         break
                 if next_flagged_index == -1:
                     next_flagged_index = len(args)
-
-                args_consumed = self._consume_all_positional_args(
+                args_consumed = await self._consume_all_positional_args(
                     args[i:next_flagged_index],
                     result,
                     positional_args,
@@ -681,26 +784,22 @@ class CommandArgumentParser:
                     f"Invalid value for {spec.dest}: must be one of {spec.choices}"
                 )
 
+            if spec.action == ArgumentAction.ACTION:
+                continue
+
             if isinstance(spec.nargs, int) and spec.nargs > 1:
-                if not isinstance(result.get(spec.dest), list):
-                    raise CommandArgumentError(
-                        f"Invalid value for {spec.dest}: expected a list"
-                    )
+                assert isinstance(
+                    result.get(spec.dest), list
+                ), f"Invalid value for {spec.dest}: expected a list"
+                if not result[spec.dest] and not spec.required:
+                    continue
                 if spec.action == ArgumentAction.APPEND:
-                    if not isinstance(result[spec.dest], list):
-                        raise CommandArgumentError(
-                            f"Invalid value for {spec.dest}: expected a list"
-                        )
                     for group in result[spec.dest]:
                         if len(group) % spec.nargs != 0:
                             raise CommandArgumentError(
                                 f"Invalid number of values for {spec.dest}: expected a multiple of {spec.nargs}"
                             )
                 elif spec.action == ArgumentAction.EXTEND:
-                    if not isinstance(result[spec.dest], list):
-                        raise CommandArgumentError(
-                            f"Invalid value for {spec.dest}: expected a list"
-                        )
                     if len(result[spec.dest]) % spec.nargs != 0:
                         raise CommandArgumentError(
                             f"Invalid number of values for {spec.dest}: expected a multiple of {spec.nargs}"

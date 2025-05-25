@@ -184,7 +184,7 @@ def setup_logging(
     console_handler.setLevel(console_log_level)
     root.addHandler(console_handler)
 
-    file_handler = logging.FileHandler(log_filename)
+    file_handler = logging.FileHandler(log_filename, "a", "UTF-8")
     file_handler.setLevel(file_log_level)
     if json_log_to_file:
         file_handler.setFormatter(

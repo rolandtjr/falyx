@@ -23,7 +23,7 @@ from typing import Any, Callable
 
 from rich.tree import Tree
 
-from falyx.action.action import BaseAction
+from falyx.action.base import BaseAction
 from falyx.context import ExecutionContext
 from falyx.exceptions import FalyxError
 from falyx.execution_registry import ExecutionRegistry as er
