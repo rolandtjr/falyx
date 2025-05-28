@@ -776,6 +776,8 @@ class Falyx:
                 logger.info("Command '%s' selected.", choice)
             if is_preview:
                 return True, name_map[choice], args, kwargs
+            elif self.mode in {FalyxMode.RUN, FalyxMode.RUN_ALL, FalyxMode.PREVIEW}:
+                return False, name_map[choice], args, kwargs
             try:
                 args, kwargs = await name_map[choice].parse_args(
                     input_args, from_validate

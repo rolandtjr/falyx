@@ -11,9 +11,7 @@ TEMPLATE_TASKS = """\
 import asyncio
 import json
 
-from falyx.action import Action, ChainedAction
-from falyx.io_action import ShellAction
-from falyx.selection_action import SelectionAction
+from falyx.action import Action, ChainedAction, ShellAction, SelectionAction
 
 
 post_ids = ["1", "2", "3", "4", "5"]
