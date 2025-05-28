@@ -165,5 +165,6 @@ class ActionGroup(BaseAction, ActionListMixin):
     def __str__(self):
         return (
             f"ActionGroup(name={self.name!r}, actions={[a.name for a in self.actions]!r},"
-            f" inject_last_result={self.inject_last_result})"
+            f" inject_last_result={self.inject_last_result}, "
+            f"inject_into={self.inject_into!r})"
         )

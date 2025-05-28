@@ -52,7 +52,8 @@ poetry install
 import asyncio
 import random
 
-from falyx import Falyx, Action, ChainedAction
+from falyx import Falyx
+from falyx.action import Action, ChainedAction
 
 # A flaky async step that fails randomly
 async def flaky_step():
@@ -62,8 +63,8 @@ async def flaky_step():
     return "ok"
 
 # Create the actions
-step1 = Action(name="step_1", action=flaky_step, retry=True)
-step2 = Action(name="step_2", action=flaky_step, retry=True)
+step1 = Action(name="step_1", action=flaky_step)
+step2 = Action(name="step_2", action=flaky_step)
 
 # Chain the actions
 chain = ChainedAction(name="my_pipeline", actions=[step1, step2])
@@ -74,9 +75,9 @@ falyx.add_command(
     key="R",
     description="Run My Pipeline",
     action=chain,
-    logging_hooks=True,
     preview_before_confirm=True,
     confirm=True,
+    retry_all=True,
 )
 
 # Entry point

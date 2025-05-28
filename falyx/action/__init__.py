@@ -16,6 +16,7 @@ from .io_action import BaseIOAction, ShellAction
 from .literal_input_action import LiteralInputAction
 from .menu_action import MenuAction
 from .process_action import ProcessAction
+from .process_pool_action import ProcessPoolAction
 from .prompt_menu_action import PromptMenuAction
 from .select_file_action import SelectFileAction
 from .selection_action import SelectionAction
@@ -40,4 +41,5 @@ __all__ = [
     "LiteralInputAction",
     "UserInputAction",
     "PromptMenuAction",
+    "ProcessPoolAction",
 ]

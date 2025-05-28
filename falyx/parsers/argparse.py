@@ -166,8 +166,8 @@ class CommandArgumentParser:
         self.help_epilogue: str = help_epilogue
         self.aliases: list[str] = aliases or []
         self._arguments: list[Argument] = []
-        self._positional: list[Argument] = []
-        self._keyword: list[Argument] = []
+        self._positional: dict[str, Argument] = {}
+        self._keyword: dict[str, Argument] = {}
         self._flag_map: dict[str, Argument] = {}
         self._dest_set: set[str] = set()
         self._add_help()
@@ -482,12 +482,12 @@ class CommandArgumentParser:
                 )
         for flag in flags:
             self._flag_map[flag] = argument
+            if not positional:
+                self._keyword[flag] = argument
         self._dest_set.add(dest)
         self._arguments.append(argument)
         if positional:
-            self._positional.append(argument)
-        else:
-            self._keyword.append(argument)
+            self._positional[dest] = argument
 
     def get_argument(self, dest: str) -> Argument | None:
         return next((a for a in self._arguments if a.dest == dest), None)
@@ -663,8 +663,8 @@ class CommandArgumentParser:
         i = 0
         while i < len(args):
             token = args[i]
-            if token in self._flag_map:
-                spec = self._flag_map[token]
+            if token in self._keyword:
+                spec = self._keyword[token]
                 action = spec.action
 
                 if action == ArgumentAction.HELP:
@@ -836,7 +836,7 @@ class CommandArgumentParser:
         # Options
         # Add all keyword arguments to the options list
         options_list = []
-        for arg in self._keyword:
+        for arg in self._keyword.values():
             choice_text = arg.get_choice_text()
             if choice_text:
                 options_list.extend([f"[{arg.flags[0]} {choice_text}]"])
@@ -844,7 +844,7 @@ class CommandArgumentParser:
                 options_list.extend([f"[{arg.flags[0]}]"])
 
         # Add positional arguments to the options list
-        for arg in self._positional:
+        for arg in self._positional.values():
             choice_text = arg.get_choice_text()
             if isinstance(arg.nargs, int):
                 choice_text = " ".join([choice_text] * arg.nargs)
@@ -870,14 +870,14 @@ class CommandArgumentParser:
         if self._arguments:
             if self._positional:
                 self.console.print("[bold]positional:[/bold]")
-                for arg in self._positional:
+                for arg in self._positional.values():
                     flags = arg.get_positional_text()
                     arg_line = Text(f"  {flags:<30} ")
                     help_text = arg.help or ""
                     arg_line.append(help_text)
                     self.console.print(arg_line)
             self.console.print("[bold]options:[/bold]")
-            for arg in self._keyword:
+            for arg in self._keyword.values():
                 flags = ", ".join(arg.flags)
                 flags_choice = f"{flags} {arg.get_choice_text()}"
                 arg_line = Text(f"  {flags_choice:<30} ")
@@ -906,8 +906,8 @@ class CommandArgumentParser:
         required = sum(arg.required for arg in self._arguments)
         return (
             f"CommandArgumentParser(args={len(self._arguments)}, "
-            f"flags={len(self._flag_map)}, dests={len(self._dest_set)}, "
-            f"required={required}, positional={positional})"
+            f"flags={len(self._flag_map)}, keywords={len(self._keyword)}, "
+            f"positional={positional}, required={required})"
         )
 
     def __repr__(self) -> str:
