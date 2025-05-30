@@ -59,7 +59,7 @@ from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import Hook, HookManager, HookType
 from falyx.logger import logger
 from falyx.options_manager import OptionsManager
-from falyx.parsers import CommandArgumentParser, get_arg_parsers
+from falyx.parsers import CommandArgumentParser, FalyxParsers, get_arg_parsers
 from falyx.protocols import ArgParserProtocol
 from falyx.retry import RetryPolicy
 from falyx.signals import BackSignal, CancelSignal, HelpSignal, QuitSignal
@@ -152,6 +152,11 @@ class Falyx:
         self,
         title: str | Markdown = "Menu",
         *,
+        program: str | None = "falyx",
+        usage: str | None = None,
+        description: str | None = "Falyx CLI - Run structured async command workflows.",
+        epilog: str | None = None,
+        version: str = __version__,
         prompt: str | AnyFormattedText = "> ",
         columns: int = 3,
         bottom_bar: BottomBar | str | Callable[[], Any] | None = None,
@@ -170,6 +175,11 @@ class Falyx:
     ) -> None:
         """Initializes the Falyx object."""
         self.title: str | Markdown = title
+        self.program: str | None = program
+        self.usage: str | None = usage
+        self.description: str | None = description
+        self.epilog: str | None = epilog
+        self.version: str = version
         self.prompt: str | AnyFormattedText = prompt
         self.columns: int = columns
         self.commands: dict[str, Command] = CaseInsensitiveDict()
@@ -1015,11 +1025,34 @@ class Falyx:
             if self.exit_message:
                 self.print_message(self.exit_message)
 
-    async def run(self) -> None:
+    async def run(
+        self,
+        falyx_parsers: FalyxParsers | None = None,
+        callback: Callable[..., Any] | None = None,
+    ) -> None:
         """Run Falyx CLI with structured subcommands."""
-        if not self.cli_args:
-            self.cli_args = get_arg_parsers().root.parse_args()
+        if self.cli_args:
+            raise FalyxError(
+                "Run is incompatible with CLI arguments. Use 'run_key' instead."
+            )
+        if falyx_parsers:
+            if not isinstance(falyx_parsers, FalyxParsers):
+                raise FalyxError("falyx_parsers must be an instance of FalyxParsers.")
+        else:
+            falyx_parsers = get_arg_parsers(
+                self.program,
+                self.usage,
+                self.description,
+                self.epilog,
+                commands=self.commands,
+            )
+        self.cli_args = falyx_parsers.parse_args()
         self.options.from_namespace(self.cli_args, "cli_args")
+
+        if callback:
+            if not callable(callback):
+                raise FalyxError("Callback must be a callable function.")
+            callback(self.cli_args)
 
         if not self.options.get("never_prompt"):
             self.options.set("never_prompt", self._never_prompt)
@@ -1075,11 +1108,24 @@ class Falyx:
                 args, kwargs = await command.parse_args(self.cli_args.command_args)
             except HelpSignal:
                 sys.exit(0)
+            except CommandArgumentError as error:
+                self.console.print(f"[{OneColors.DARK_RED}]❌ ['{command.key}'] {error}")
+                command.show_help()
+                sys.exit(1)
             try:
                 await self.run_key(self.cli_args.name, args=args, kwargs=kwargs)
             except FalyxError as error:
                 self.console.print(f"[{OneColors.DARK_RED}]❌ Error: {error}[/]")
                 sys.exit(1)
+            except QuitSignal:
+                logger.info("[QuitSignal]. <- Exiting run.")
+                sys.exit(0)
+            except BackSignal:
+                logger.info("[BackSignal]. <- Exiting run.")
+                sys.exit(0)
+            except CancelSignal:
+                logger.info("[CancelSignal]. <- Exiting run.")
+                sys.exit(0)
 
             if self.cli_args.summary:
                 er.summary()

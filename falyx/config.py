@@ -18,6 +18,7 @@ from falyx.action.base import BaseAction
 from falyx.command import Command
 from falyx.falyx import Falyx
 from falyx.logger import logger
+from falyx.parsers import CommandArgumentParser
 from falyx.retry import RetryPolicy
 from falyx.themes import OneColors
 
@@ -101,6 +102,7 @@ class RawCommand(BaseModel):
     retry_policy: RetryPolicy = Field(default_factory=RetryPolicy)
     hidden: bool = False
     help_text: str = ""
+    help_epilogue: str = ""
 
     @field_validator("retry_policy")
     @classmethod
@@ -116,6 +118,14 @@ def convert_commands(raw_commands: list[dict[str, Any]]) -> list[Command]:
     commands = []
     for entry in raw_commands:
         raw_command = RawCommand(**entry)
+        parser = CommandArgumentParser(
+            command_key=raw_command.key,
+            command_description=raw_command.description,
+            command_style=raw_command.style,
+            help_text=raw_command.help_text,
+            help_epilogue=raw_command.help_epilogue,
+            aliases=raw_command.aliases,
+        )
         commands.append(
             Command.model_validate(
                 {
@@ -123,9 +133,11 @@ def convert_commands(raw_commands: list[dict[str, Any]]) -> list[Command]:
                     "action": wrap_if_needed(
                         import_action(raw_command.action), name=raw_command.description
                     ),
+                    "arg_parser": parser,
                 }
             )
         )
+
     return commands
 
 

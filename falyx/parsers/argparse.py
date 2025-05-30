@@ -168,6 +168,7 @@ class CommandArgumentParser:
         self._arguments: list[Argument] = []
         self._positional: dict[str, Argument] = {}
         self._keyword: dict[str, Argument] = {}
+        self._keyword_list: list[Argument] = []
         self._flag_map: dict[str, Argument] = {}
         self._dest_set: set[str] = set()
         self._add_help()
@@ -488,6 +489,8 @@ class CommandArgumentParser:
         self._arguments.append(argument)
         if positional:
             self._positional[dest] = argument
+        else:
+            self._keyword_list.append(argument)
 
     def get_argument(self, dest: str) -> Argument | None:
         return next((a for a in self._arguments if a.dest == dest), None)
@@ -832,11 +835,11 @@ class CommandArgumentParser:
                 kwargs_dict[arg.dest] = parsed[arg.dest]
         return tuple(args_list), kwargs_dict
 
-    def render_help(self) -> None:
+    def get_options_text(self, plain_text=False) -> str:
         # Options
         # Add all keyword arguments to the options list
         options_list = []
-        for arg in self._keyword.values():
+        for arg in self._keyword_list:
             choice_text = arg.get_choice_text()
             if choice_text:
                 options_list.extend([f"[{arg.flags[0]} {choice_text}]"])
@@ -848,19 +851,39 @@ class CommandArgumentParser:
             choice_text = arg.get_choice_text()
             if isinstance(arg.nargs, int):
                 choice_text = " ".join([choice_text] * arg.nargs)
-            options_list.append(escape(choice_text))
+            if plain_text:
+                options_list.append(choice_text)
+            else:
+                options_list.append(escape(choice_text))
 
-        options_text = " ".join(options_list)
-        command_keys = " | ".join(
-            [f"[{self.command_style}]{self.command_key}[/{self.command_style}]"]
-            + [
-                f"[{self.command_style}]{alias}[/{self.command_style}]"
-                for alias in self.aliases
-            ]
-        )
+        return " ".join(options_list)
 
-        usage = f"usage: {command_keys} {options_text}"
-        self.console.print(f"[bold]{usage}[/bold]\n")
+    def get_command_keys_text(self, plain_text=False) -> str:
+        if plain_text:
+            command_keys = " | ".join(
+                [f"{self.command_key}"] + [f"{alias}" for alias in self.aliases]
+            )
+        else:
+            command_keys = " | ".join(
+                [f"[{self.command_style}]{self.command_key}[/{self.command_style}]"]
+                + [
+                    f"[{self.command_style}]{alias}[/{self.command_style}]"
+                    for alias in self.aliases
+                ]
+            )
+        return command_keys
+
+    def get_usage(self, plain_text=False) -> str:
+        """Get the usage text for the command."""
+        command_keys = self.get_command_keys_text(plain_text)
+        options_text = self.get_options_text(plain_text)
+        if options_text:
+            return f"{command_keys} {options_text}"
+        return command_keys
+
+    def render_help(self) -> None:
+        usage = self.get_usage()
+        self.console.print(f"[bold]usage: {usage}[/bold]\n")
 
         # Description
         if self.help_text:
@@ -877,7 +900,7 @@ class CommandArgumentParser:
                     arg_line.append(help_text)
                     self.console.print(arg_line)
             self.console.print("[bold]options:[/bold]")
-            for arg in self._keyword.values():
+            for arg in self._keyword_list:
                 flags = ", ".join(arg.flags)
                 flags_choice = f"{flags} {arg.get_choice_text()}"
                 arg_line = Text(f"  {flags_choice:<30} ")

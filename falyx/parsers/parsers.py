@@ -2,9 +2,17 @@
 """parsers.py
 This module contains the argument parsers used for the Falyx CLI.
 """
-from argparse import REMAINDER, ArgumentParser, Namespace, _SubParsersAction
+from argparse import (
+    REMAINDER,
+    ArgumentParser,
+    Namespace,
+    RawDescriptionHelpFormatter,
+    _SubParsersAction,
+)
 from dataclasses import asdict, dataclass
 from typing import Any, Sequence
+
+from falyx.command import Command
 
 
 @dataclass
@@ -47,6 +55,7 @@ def get_arg_parsers(
     add_help: bool = True,
     allow_abbrev: bool = True,
     exit_on_error: bool = True,
+    commands: dict[str, Command] | None = None,
 ) -> FalyxParsers:
     """Returns the argument parser for the CLI."""
     parser = ArgumentParser(
@@ -79,8 +88,25 @@ def get_arg_parsers(
     parser.add_argument("--version", action="store_true", help="Show Falyx version")
     subparsers = parser.add_subparsers(dest="command")
 
-    run_parser = subparsers.add_parser("run", help="Run a specific command")
-    run_parser.add_argument("name", help="Key, alias, or description of the command")
+    run_description = "Run a command by its key or alias."
+    run_epilog = ["commands:"]
+    if isinstance(commands, dict):
+        for command in commands.values():
+            run_epilog.append(command.usage)
+            command_description = command.description or command.help_text
+            run_epilog.append(f"  {command_description}")
+            run_epilog.append("  ")
+    run_epilog.append(
+        "Tip: Use 'falyx run ?[COMMAND]' to preview commands by their key or alias."
+    )
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Run a specific command",
+        description=run_description,
+        epilog="\n".join(run_epilog),
+        formatter_class=RawDescriptionHelpFormatter,
+    )
+    run_parser.add_argument("name", help="Run a command by its key or alias")
     run_parser.add_argument(
         "--summary",
         action="store_true",

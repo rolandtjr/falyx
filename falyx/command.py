@@ -307,6 +307,14 @@ class Command(BaseModel):
 
         return FormattedText(prompt)
 
+    @property
+    def usage(self) -> str:
+        """Generate a help string for the command arguments."""
+        if not self.arg_parser:
+            return "No arguments defined."
+
+        return self.arg_parser.get_usage(plain_text=True)
+
     def log_summary(self) -> None:
         if self._context:
             self._context.log_summary()

@@ -8,13 +8,12 @@ Licensed under the MIT License. See LICENSE file for details.
 import asyncio
 import os
 import sys
-from argparse import Namespace
 from pathlib import Path
 from typing import Any
 
 from falyx.config import loader
 from falyx.falyx import Falyx
-from falyx.parsers import FalyxParsers, get_arg_parsers
+from falyx.parsers import CommandArgumentParser
 
 
 def find_falyx_config() -> Path | None:
@@ -39,44 +38,39 @@ def bootstrap() -> Path | None:
     return config_path
 
 
-def get_falyx_parsers() -> FalyxParsers:
-    falyx_parsers: FalyxParsers = get_arg_parsers()
-    init_parser = falyx_parsers.subparsers.add_parser(
-        "init", help="Create a new Falyx CLI project"
+def init_config(parser: CommandArgumentParser) -> None:
+    parser.add_argument(
+        "name",
+        type=str,
+        help="Name of the new Falyx project",
+        default=".",
+        nargs="?",
     )
-    init_parser.add_argument("name", nargs="?", default=".", help="Project directory")
-    falyx_parsers.subparsers.add_parser(
-        "init-global", help="Set up ~/.config/falyx with example tasks"
-    )
-    return falyx_parsers
 
 
-def run(args: Namespace) -> Any:
-    if args.command == "init":
-        from falyx.init import init_project
-
-        init_project(args.name)
-        return
-
-    if args.command == "init-global":
-        from falyx.init import init_global
-
-        init_global()
-        return
-
+def main() -> Any:
     bootstrap_path = bootstrap()
     if not bootstrap_path:
-        print("No Falyx config file found. Exiting.")
-        return None
+        from falyx.init import init_global, init_project
 
-    flx: Falyx = loader(bootstrap_path)
+        flx: Falyx = Falyx()
+        flx.add_command(
+            "I",
+            "Initialize a new Falyx project",
+            init_project,
+            aliases=["init"],
+            argument_config=init_config,
+        )
+        flx.add_command(
+            "G",
+            "Initialize Falyx global configuration",
+            init_global,
+            aliases=["init-global"],
+        )
+    else:
+        flx = loader(bootstrap_path)
+
     return asyncio.run(flx.run())
-
-
-def main():
-    parsers = get_falyx_parsers()
-    args = parsers.parse_args()
-    run(args)
 
 
 if __name__ == "__main__":

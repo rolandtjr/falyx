@@ -3,7 +3,7 @@ commands:
     description: Pipeline Demo
     action: pipeline_demo.pipeline
     tags: [pipeline, demo]
-    help_text: Run Demployment Pipeline with retries.
+    help_text: Run Deployment Pipeline with retries.
 
   - key: G
     description: Run HTTP Action Group

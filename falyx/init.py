@@ -101,7 +101,7 @@ commands:
 console = Console(color_system="auto")
 
 
-def init_project(name: str = ".") -> None:
+def init_project(name: str) -> None:
     target = Path(name).resolve()
     target.mkdir(parents=True, exist_ok=True)
 
