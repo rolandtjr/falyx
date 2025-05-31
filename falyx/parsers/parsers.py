@@ -40,7 +40,7 @@ class FalyxParsers:
         return self.as_dict().get(name)
 
 
-def get_arg_parsers(
+def get_root_parser(
     prog: str | None = "falyx",
     usage: str | None = None,
     description: str | None = "Falyx CLI - Run structured async command workflows.",
@@ -55,9 +55,7 @@ def get_arg_parsers(
     add_help: bool = True,
     allow_abbrev: bool = True,
     exit_on_error: bool = True,
-    commands: dict[str, Command] | None = None,
-) -> FalyxParsers:
-    """Returns the argument parser for the CLI."""
+) -> ArgumentParser:
     parser = ArgumentParser(
         prog=prog,
         usage=usage,
@@ -86,7 +84,70 @@ def get_arg_parsers(
         help="Enable default lifecycle debug logging",
     )
     parser.add_argument("--version", action="store_true", help="Show Falyx version")
-    subparsers = parser.add_subparsers(dest="command")
+    return parser
+
+
+def get_subparsers(
+    parser: ArgumentParser,
+    title: str = "Falyx Commands",
+    description: str | None = "Available commands for the Falyx CLI.",
+) -> _SubParsersAction:
+    """Create and return a subparsers action for the given parser."""
+    if not isinstance(parser, ArgumentParser):
+        raise TypeError("parser must be an instance of ArgumentParser")
+    subparsers = parser.add_subparsers(
+        title=title,
+        description=description,
+        metavar="COMMAND",
+        dest="command",
+    )
+    return subparsers
+
+
+def get_arg_parsers(
+    prog: str | None = "falyx",
+    usage: str | None = None,
+    description: str | None = "Falyx CLI - Run structured async command workflows.",
+    epilog: (
+        str | None
+    ) = "Tip: Use 'falyx run ?[COMMAND]' to preview any command from the CLI.",
+    parents: Sequence[ArgumentParser] | None = None,
+    prefix_chars: str = "-",
+    fromfile_prefix_chars: str | None = None,
+    argument_default: Any = None,
+    conflict_handler: str = "error",
+    add_help: bool = True,
+    allow_abbrev: bool = True,
+    exit_on_error: bool = True,
+    commands: dict[str, Command] | None = None,
+    root_parser: ArgumentParser | None = None,
+    subparsers: _SubParsersAction | None = None,
+) -> FalyxParsers:
+    """Returns the argument parser for the CLI."""
+    if root_parser is None:
+        parser = get_root_parser(
+            prog=prog,
+            usage=usage,
+            description=description,
+            epilog=epilog,
+            parents=parents,
+            prefix_chars=prefix_chars,
+            fromfile_prefix_chars=fromfile_prefix_chars,
+            argument_default=argument_default,
+            conflict_handler=conflict_handler,
+            add_help=add_help,
+            allow_abbrev=allow_abbrev,
+            exit_on_error=exit_on_error,
+        )
+    else:
+        if not isinstance(root_parser, ArgumentParser):
+            raise TypeError("root_parser must be an instance of ArgumentParser")
+        parser = root_parser
+
+    if subparsers is None:
+        subparsers = get_subparsers(parser)
+    if not isinstance(subparsers, _SubParsersAction):
+        raise TypeError("subparsers must be an instance of _SubParsersAction")
 
     run_description = ["Run a command by its key or alias.\n"]
     run_description.append("commands:")
@@ -105,7 +166,9 @@ def get_arg_parsers(
         epilog=run_epilog,
         formatter_class=RawDescriptionHelpFormatter,
     )
-    run_parser.add_argument("name", help="Run a command by its key or alias")
+    run_parser.add_argument(
+        "name", help="Run a command by its key or alias", metavar="COMMAND"
+    )
     run_parser.add_argument(
         "--summary",
         action="store_true",
@@ -143,6 +206,7 @@ def get_arg_parsers(
         "command_args",
         nargs=REMAINDER,
         help="Arguments to pass to the command (if applicable)",
+        metavar="ARGS",
     )
 
     run_all_parser = subparsers.add_parser(

@@ -25,7 +25,7 @@ import asyncio
 import logging
 import shlex
 import sys
-from argparse import Namespace
+from argparse import ArgumentParser, Namespace, _SubParsersAction
 from difflib import get_close_matches
 from enum import Enum
 from functools import cached_property
@@ -1029,6 +1029,8 @@ class Falyx:
     async def run(
         self,
         falyx_parsers: FalyxParsers | None = None,
+        root_parser: ArgumentParser | None = None,
+        subparsers: _SubParsersAction | None = None,
         callback: Callable[..., Any] | None = None,
     ) -> None:
         """Run Falyx CLI with structured subcommands."""
@@ -1046,6 +1048,8 @@ class Falyx:
                 self.description,
                 self.epilog,
                 commands=self.commands,
+                root_parser=root_parser,
+                subparsers=subparsers,
             )
         self.cli_args = falyx_parsers.parse_args()
         self.options.from_namespace(self.cli_args, "cli_args")
