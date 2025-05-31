@@ -830,10 +830,11 @@ class Falyx:
                 self.console.print(
                     f"[{OneColors.LIGHT_YELLOW}]⚠️ Unknown command '{choice}'[/]"
                 )
-            raise ValidationError(
-                message=f"Unknown command '{choice}'.",
-                cursor_position=len(raw_choices),
-            )
+            else:
+                raise ValidationError(
+                    message=f"Unknown command '{choice}'.",
+                    cursor_position=len(raw_choices),
+                )
         return is_preview, None, args, kwargs
 
     def _create_context(self, selected_command: Command) -> ExecutionContext:
@@ -1149,9 +1150,23 @@ class Falyx:
                 f"[{OneColors.CYAN_b}]🚀 Running all commands with tag:[/] "
                 f"{self.cli_args.tag}"
             )
+
             for cmd in matching:
                 self._set_retry_policy(cmd)
-                await self.run_key(cmd.key)
+                try:
+                    await self.run_key(cmd.key)
+                except FalyxError as error:
+                    self.console.print(f"[{OneColors.DARK_RED}]❌ Error: {error}[/]")
+                    sys.exit(1)
+                except QuitSignal:
+                    logger.info("[QuitSignal]. <- Exiting run.")
+                    sys.exit(0)
+                except BackSignal:
+                    logger.info("[BackSignal]. <- Exiting run.")
+                    sys.exit(0)
+                except CancelSignal:
+                    logger.info("[CancelSignal]. <- Exiting run.")
+                    sys.exit(0)
 
             if self.cli_args.summary:
                 er.summary()

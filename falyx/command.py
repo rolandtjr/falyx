@@ -313,7 +313,9 @@ class Command(BaseModel):
         if not self.arg_parser:
             return "No arguments defined."
 
-        return self.arg_parser.get_usage(plain_text=True)
+        command_keys_text = self.arg_parser.get_command_keys_text(plain_text=True)
+        options_text = self.arg_parser.get_options_text(plain_text=True)
+        return f"  {command_keys_text:<20}  {options_text} "
 
     def log_summary(self) -> None:
         if self._context:

@@ -88,22 +88,21 @@ def get_arg_parsers(
     parser.add_argument("--version", action="store_true", help="Show Falyx version")
     subparsers = parser.add_subparsers(dest="command")
 
-    run_description = "Run a command by its key or alias."
-    run_epilog = ["commands:"]
+    run_description = ["Run a command by its key or alias.\n"]
+    run_description.append("commands:")
     if isinstance(commands, dict):
         for command in commands.values():
-            run_epilog.append(command.usage)
+            run_description.append(command.usage)
             command_description = command.description or command.help_text
-            run_epilog.append(f"  {command_description}")
-            run_epilog.append("  ")
-    run_epilog.append(
+            run_description.append(f"{' '*24}{command_description}")
+    run_epilog = (
         "Tip: Use 'falyx run ?[COMMAND]' to preview commands by their key or alias."
     )
     run_parser = subparsers.add_parser(
         "run",
         help="Run a specific command",
-        description=run_description,
-        epilog="\n".join(run_epilog),
+        description="\n".join(run_description),
+        epilog=run_epilog,
         formatter_class=RawDescriptionHelpFormatter,
     )
     run_parser.add_argument("name", help="Run a command by its key or alias")
