@@ -21,7 +21,8 @@ flx = Falyx("Deployment CLI")
 flx.add_command(
     key="D",
     aliases=["deploy"],
-    description="Deploy a service to a specified region.",
+    description="Deploy",
+    help_text="Deploy a service to a specified region.",
     action=Action(
         name="deploy_service",
         action=deploy,
@@ -31,6 +32,7 @@ flx.add_command(
         "region": {"help": "Deployment region", "choices": ["us-east-1", "us-west-2"]},
         "verbose": {"help": "Enable verbose mode"},
     },
+    tags=["deployment", "service"],
 )
 
 deploy_chain = ChainedAction(
@@ -48,8 +50,10 @@ deploy_chain = ChainedAction(
 flx.add_command(
     key="N",
     aliases=["notify"],
-    description="Deploy a service and notify.",
+    description="Deploy and Notify",
+    help_text="Deploy a service and notify.",
     action=deploy_chain,
+    tags=["deployment", "service", "notification"],
 )
 
 asyncio.run(flx.run())

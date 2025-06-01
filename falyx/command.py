@@ -135,6 +135,7 @@ class Command(BaseModel):
     custom_help: Callable[[], str | None] | None = None
     auto_args: bool = True
     arg_metadata: dict[str, str | dict[str, Any]] = Field(default_factory=dict)
+    simple_help_signature: bool = False
 
     _context: ExecutionContext | None = PrivateAttr(default=None)
 
@@ -316,6 +317,22 @@ class Command(BaseModel):
         command_keys_text = self.arg_parser.get_command_keys_text(plain_text=True)
         options_text = self.arg_parser.get_options_text(plain_text=True)
         return f"  {command_keys_text:<20}  {options_text} "
+
+    @property
+    def help_signature(self) -> str:
+        """Generate a help signature for the command."""
+        if self.arg_parser and not self.simple_help_signature:
+            signature = [self.arg_parser.get_usage()]
+            signature.append(f"  {self.help_text or self.description}")
+            if self.tags:
+                signature.append(f"  [dim]Tags: {', '.join(self.tags)}[/dim]")
+            return "\n".join(signature).strip()
+
+        command_keys = " | ".join(
+            [f"[{self.style}]{self.key}[/{self.style}]"]
+            + [f"[{self.style}]{alias}[/{self.style}]" for alias in self.aliases]
+        )
+        return f"{command_keys}  {self.description}"
 
     def log_summary(self) -> None:
         if self._context:

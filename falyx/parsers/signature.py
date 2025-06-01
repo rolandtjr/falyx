@@ -24,7 +24,6 @@ def infer_args_from_func(
         metadata = (
             {"help": raw_metadata} if isinstance(raw_metadata, str) else raw_metadata
         )
-
         if param.kind not in (
             inspect.Parameter.POSITIONAL_ONLY,
             inspect.Parameter.POSITIONAL_OR_KEYWORD,
@@ -35,6 +34,8 @@ def infer_args_from_func(
         arg_type = (
             param.annotation if param.annotation is not inspect.Parameter.empty else str
         )
+        if isinstance(arg_type, str):
+            arg_type = str
         default = param.default if param.default is not inspect.Parameter.empty else None
         is_required = param.default is inspect.Parameter.empty
         if is_required:

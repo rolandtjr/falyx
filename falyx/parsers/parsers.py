@@ -255,6 +255,10 @@ def get_arg_parsers(
         "list", help="List all available commands with tags"
     )
 
+    list_parser.add_argument(
+        "-t", "--tag", help="Filter commands by tag (case-insensitive)", default=None
+    )
+
     version_parser = subparsers.add_parser("version", help="Show the Falyx version")
 
     return FalyxParsers(

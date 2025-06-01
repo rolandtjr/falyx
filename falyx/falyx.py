@@ -284,6 +284,7 @@ class Falyx:
             action=Action("Exit", action=_noop),
             aliases=["EXIT", "QUIT"],
             style=OneColors.DARK_RED,
+            simple_help_signature=True,
         )
 
     def _get_history_command(self) -> Command:
@@ -294,60 +295,71 @@ class Falyx:
             aliases=["HISTORY"],
             action=Action(name="View Execution History", action=er.summary),
             style=OneColors.DARK_YELLOW,
+            simple_help_signature=True,
         )
 
-    async def _show_help(self):
-        table = Table(title="[bold cyan]Help Menu[/]", box=box.SIMPLE)
-        table.add_column("Key", style="bold", no_wrap=True)
-        table.add_column("Aliases", style="dim", no_wrap=True)
-        table.add_column("Description", style="dim", overflow="fold")
-        table.add_column("Tags", style="dim", no_wrap=True)
-
-        for command in self.commands.values():
-            help_text = command.help_text or command.description
-            table.add_row(
-                f"[{command.style}]{command.key}[/]",
-                ", ".join(command.aliases) if command.aliases else "",
-                help_text,
-                ", ".join(command.tags) if command.tags else "",
+    async def _show_help(self, tag: str = "") -> None:
+        if tag:
+            table = Table(
+                title=tag.upper(),
+                title_justify="left",
+                show_header=False,
+                box=box.SIMPLE,
+                show_footer=False,
             )
-
-        table.add_row(
-            f"[{self.exit_command.style}]{self.exit_command.key}[/]",
-            ", ".join(self.exit_command.aliases),
-            "Exit this menu or program",
-        )
-
-        if self.history_command:
-            table.add_row(
-                f"[{self.history_command.style}]{self.history_command.key}[/]",
-                ", ".join(self.history_command.aliases),
-                "History of executed actions",
+            tag_lower = tag.lower()
+            commands = [
+                command
+                for command in self.commands.values()
+                if any(tag_lower == tag.lower() for tag in command.tags)
+            ]
+            for command in commands:
+                table.add_row(command.help_signature)
+            self.console.print(table)
+            return
+        else:
+            table = Table(
+                title="Help",
+                title_justify="left",
+                title_style=OneColors.LIGHT_YELLOW_b,
+                show_header=False,
+                show_footer=False,
+                box=box.SIMPLE,
             )
-
+            for command in self.commands.values():
+                table.add_row(command.help_signature)
         if self.help_command:
-            table.add_row(
-                f"[{self.help_command.style}]{self.help_command.key}[/]",
-                ", ".join(self.help_command.aliases),
-                "Show this help menu",
-            )
-
-        self.console.print(table, justify="center")
-        if self.mode == FalyxMode.MENU:
-            self.console.print(
-                f"📦 Tip: '[{OneColors.LIGHT_YELLOW}]?[KEY][/]' to preview a command "
-                "before running it.\n",
-                justify="center",
-            )
+            table.add_row(self.help_command.help_signature)
+        if self.history_command:
+            table.add_row(self.history_command.help_signature)
+        table.add_row(self.exit_command.help_signature)
+        table.add_row(f"Tip: '[{OneColors.LIGHT_YELLOW}]?[KEY][/]' to preview a command ")
+        self.console.print(table)
 
     def _get_help_command(self) -> Command:
         """Returns the help command for the menu."""
+        parser = CommandArgumentParser(
+            command_key="H",
+            command_description="Help",
+            command_style=OneColors.LIGHT_YELLOW,
+            aliases=["?", "HELP", "LIST"],
+        )
+        parser.add_argument(
+            "-t",
+            "--tag",
+            nargs="?",
+            default="",
+            help="Optional tag to filter commands by.",
+        )
         return Command(
             key="H",
-            aliases=["HELP", "?"],
+            aliases=["?", "HELP", "LIST"],
             description="Help",
+            help_text="Show this help menu",
             action=Action("Help", self._show_help),
             style=OneColors.LIGHT_YELLOW,
+            arg_parser=parser,
+            auto_args=False,
         )
 
     def _get_completer(self) -> WordCompleter:
@@ -568,7 +580,9 @@ class Falyx:
         if not isinstance(submenu, Falyx):
             raise NotAFalyxError("submenu must be an instance of Falyx.")
         self._validate_command_key(key)
-        self.add_command(key, description, submenu.menu, style=style)
+        self.add_command(
+            key, description, submenu.menu, style=style, simple_help_signature=True
+        )
         if submenu.exit_command.key == "X":
             submenu.update_exit_command(key="B", description="Back", aliases=["BACK"])
 
@@ -630,6 +644,7 @@ class Falyx:
         custom_help: Callable[[], str | None] | None = None,
         auto_args: bool = True,
         arg_metadata: dict[str, str | dict[str, Any]] | None = None,
+        simple_help_signature: bool = False,
     ) -> Command:
         """Adds an command to the menu, preventing duplicates."""
         self._validate_command_key(key)
@@ -682,6 +697,7 @@ class Falyx:
             custom_help=custom_help,
             auto_args=auto_args,
             arg_metadata=arg_metadata or {},
+            simple_help_signature=simple_help_signature,
         )
 
         if hooks:
@@ -706,15 +722,15 @@ class Falyx:
     def get_bottom_row(self) -> list[str]:
         """Returns the bottom row of the table for displaying additional commands."""
         bottom_row = []
-        if self.history_command:
-            bottom_row.append(
-                f"[{self.history_command.key}] [{self.history_command.style}]"
-                f"{self.history_command.description}"
-            )
         if self.help_command:
             bottom_row.append(
                 f"[{self.help_command.key}] [{self.help_command.style}]"
                 f"{self.help_command.description}"
+            )
+        if self.history_command:
+            bottom_row.append(
+                f"[{self.history_command.key}] [{self.history_command.style}]"
+                f"{self.history_command.description}"
             )
         bottom_row.append(
             f"[{self.exit_command.key}] [{self.exit_command.style}]"
@@ -727,12 +743,14 @@ class Falyx:
         Build the standard table layout. Developers can subclass or call this
         in custom tables.
         """
-        table = Table(title=self.title, show_header=False, box=box.SIMPLE, expand=True)  # type: ignore[arg-type]
+        table = Table(title=self.title, show_header=False, box=box.SIMPLE)  # type: ignore[arg-type]
         visible_commands = [item for item in self.commands.items() if not item[1].hidden]
+        space = self.console.width // self.columns
         for chunk in chunks(visible_commands, self.columns):
             row = []
             for key, command in chunk:
-                row.append(f"[{key}] [{command.style}]{command.description}")
+                cell = f"[{key}] [{command.style}]{command.description}"
+                row.append(f"{cell:<{space}}")
             table.add_row(*row)
         bottom_row = self.get_bottom_row()
         for row in chunks(bottom_row, self.columns):
@@ -1076,7 +1094,7 @@ class Falyx:
             self.register_all_with_debug_hooks()
 
         if self.cli_args.command == "list":
-            await self._show_help()
+            await self._show_help(tag=self.cli_args.tag)
             sys.exit(0)
 
         if self.cli_args.command == "version" or self.cli_args.version:
