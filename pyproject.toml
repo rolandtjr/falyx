@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "falyx"
-version = "0.1.44"
+version = "0.1.45"
 description = "Reliable and introspectable async CLI action framework."
 authors = ["Roland Thomas Jr <roland@rtj.dev>"]
 license = "MIT"
@@ -16,6 +16,7 @@ python-json-logger = "^3.3.0"
 toml = "^0.10"
 pyyaml = "^6.0"
 aiohttp = "^3.11"
+python-dateutil = "^2.8"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.5"

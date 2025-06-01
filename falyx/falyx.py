@@ -359,7 +359,6 @@ class Falyx:
             action=Action("Help", self._show_help),
             style=OneColors.LIGHT_YELLOW,
             arg_parser=parser,
-            auto_args=False,
         )
 
     def _get_completer(self) -> WordCompleter:
@@ -655,15 +654,6 @@ class Falyx:
                     "arg_parser must be an instance of CommandArgumentParser."
                 )
             arg_parser = arg_parser
-        else:
-            arg_parser = CommandArgumentParser(
-                command_key=key,
-                command_description=description,
-                command_style=style,
-                help_text=help_text,
-                help_epilogue=help_epilogue,
-                aliases=aliases,
-            )
 
         command = Command(
             key=key,

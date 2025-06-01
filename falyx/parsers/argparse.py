@@ -12,6 +12,7 @@ from rich.text import Text
 
 from falyx.action.base import BaseAction
 from falyx.exceptions import CommandArgumentError
+from falyx.parsers.utils import coerce_value
 from falyx.signals import HelpSignal
 
 
@@ -290,7 +291,7 @@ class CommandArgumentParser:
         for choice in choices:
             if not isinstance(choice, expected_type):
                 try:
-                    expected_type(choice)
+                    coerce_value(choice, expected_type)
                 except Exception:
                     raise CommandArgumentError(
                         f"Invalid choice {choice!r}: not coercible to {expected_type.__name__}"
@@ -303,7 +304,7 @@ class CommandArgumentParser:
         """Validate the default value type."""
         if default is not None and not isinstance(default, expected_type):
             try:
-                expected_type(default)
+                coerce_value(default, expected_type)
             except Exception:
                 raise CommandArgumentError(
                     f"Default value {default!r} for '{dest}' cannot be coerced to {expected_type.__name__}"
@@ -316,7 +317,7 @@ class CommandArgumentParser:
             for item in default:
                 if not isinstance(item, expected_type):
                     try:
-                        expected_type(item)
+                        coerce_value(item, expected_type)
                     except Exception:
                         raise CommandArgumentError(
                             f"Default list value {default!r} for '{dest}' cannot be coerced to {expected_type.__name__}"
@@ -595,7 +596,7 @@ class CommandArgumentParser:
             i += new_i
 
             try:
-                typed = [spec.type(v) for v in values]
+                typed = [coerce_value(value, spec.type) for value in values]
             except Exception:
                 raise CommandArgumentError(
                     f"Invalid value for '{spec.dest}': expected {spec.type.__name__}"
@@ -680,7 +681,9 @@ class CommandArgumentParser:
                     ), "resolver should be an instance of BaseAction"
                     values, new_i = self._consume_nargs(args, i + 1, spec)
                     try:
-                        typed_values = [spec.type(value) for value in values]
+                        typed_values = [
+                            coerce_value(value, spec.type) for value in values
+                        ]
                     except ValueError:
                         raise CommandArgumentError(
                             f"Invalid value for '{spec.dest}': expected {spec.type.__name__}"
@@ -709,7 +712,9 @@ class CommandArgumentParser:
                     assert result.get(spec.dest) is not None, "dest should not be None"
                     values, new_i = self._consume_nargs(args, i + 1, spec)
                     try:
-                        typed_values = [spec.type(value) for value in values]
+                        typed_values = [
+                            coerce_value(value, spec.type) for value in values
+                        ]
                     except ValueError:
                         raise CommandArgumentError(
                             f"Invalid value for '{spec.dest}': expected {spec.type.__name__}"
@@ -724,7 +729,9 @@ class CommandArgumentParser:
                     assert result.get(spec.dest) is not None, "dest should not be None"
                     values, new_i = self._consume_nargs(args, i + 1, spec)
                     try:
-                        typed_values = [spec.type(value) for value in values]
+                        typed_values = [
+                            coerce_value(value, spec.type) for value in values
+                        ]
                     except ValueError:
                         raise CommandArgumentError(
                             f"Invalid value for '{spec.dest}': expected {spec.type.__name__}"
@@ -735,7 +742,9 @@ class CommandArgumentParser:
                 else:
                     values, new_i = self._consume_nargs(args, i + 1, spec)
                     try:
-                        typed_values = [spec.type(v) for v in values]
+                        typed_values = [
+                            coerce_value(value, spec.type) for value in values
+                        ]
                     except ValueError:
                         raise CommandArgumentError(
                             f"Invalid value for '{spec.dest}': expected {spec.type.__name__}"

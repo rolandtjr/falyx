@@ -128,7 +128,7 @@ class Command(BaseModel):
     tags: list[str] = Field(default_factory=list)
     logging_hooks: bool = False
     options_manager: OptionsManager = Field(default_factory=OptionsManager)
-    arg_parser: CommandArgumentParser = Field(default_factory=CommandArgumentParser)
+    arg_parser: CommandArgumentParser | None = None
     arguments: list[dict[str, Any]] = Field(default_factory=list)
     argument_config: Callable[[CommandArgumentParser], None] | None = None
     custom_parser: ArgParserProtocol | None = None
@@ -167,6 +167,12 @@ class Command(BaseModel):
                     raw_args,
                 )
                 return ((), {})
+        if not isinstance(self.arg_parser, CommandArgumentParser):
+            logger.warning(
+                "[Command:%s] No argument parser configured, using default parsing.",
+                self.key,
+            )
+            return ((), {})
         return await self.arg_parser.parse_args_split(
             raw_args, from_validate=from_validate
         )
@@ -183,7 +189,9 @@ class Command(BaseModel):
     def get_argument_definitions(self) -> list[dict[str, Any]]:
         if self.arguments:
             return self.arguments
-        elif callable(self.argument_config):
+        elif callable(self.argument_config) and isinstance(
+            self.arg_parser, CommandArgumentParser
+        ):
             self.argument_config(self.arg_parser)
         elif self.auto_args:
             if isinstance(self.action, BaseAction):
@@ -219,8 +227,17 @@ class Command(BaseModel):
         if self.logging_hooks and isinstance(self.action, BaseAction):
             register_debug_hooks(self.action.hooks)
 
-        for arg_def in self.get_argument_definitions():
-            self.arg_parser.add_argument(*arg_def.pop("flags"), **arg_def)
+        if self.arg_parser is None:
+            self.arg_parser = CommandArgumentParser(
+                command_key=self.key,
+                command_description=self.description,
+                command_style=self.style,
+                help_text=self.help_text,
+                help_epilogue=self.help_epilogue,
+                aliases=self.aliases,
+            )
+            for arg_def in self.get_argument_definitions():
+                self.arg_parser.add_argument(*arg_def.pop("flags"), **arg_def)
 
     def _inject_options_manager(self) -> None:
         """Inject the options manager into the action if applicable."""
