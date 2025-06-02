@@ -102,7 +102,7 @@ class RawCommand(BaseModel):
     retry_policy: RetryPolicy = Field(default_factory=RetryPolicy)
     hidden: bool = False
     help_text: str = ""
-    help_epilogue: str = ""
+    help_epilog: str = ""
 
     @field_validator("retry_policy")
     @classmethod

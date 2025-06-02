@@ -111,7 +111,7 @@ class Command(BaseModel):
     hidden: bool = False
     aliases: list[str] = Field(default_factory=list)
     help_text: str = ""
-    help_epilogue: str = ""
+    help_epilog: str = ""
     style: str = OneColors.WHITE
     confirm: bool = False
     confirm_message: str = "Are you sure?"
@@ -233,7 +233,7 @@ class Command(BaseModel):
                 command_description=self.description,
                 command_style=self.style,
                 help_text=self.help_text,
-                help_epilogue=self.help_epilogue,
+                help_epilog=self.help_epilog,
                 aliases=self.aliases,
             )
             for arg_def in self.get_argument_definitions():

@@ -74,17 +74,10 @@ class Foo:
         await self.flx.run()
 
 
-def parse_args() -> Namespace:
-    parsers: FalyxParsers = get_arg_parsers()
-    return parsers.parse_args()
-
-
 async def main() -> None:
     """Build and return a Falyx instance with all your commands."""
-    args = parse_args()
     flx = Falyx(
         title="🚀 Falyx CLI",
-        cli_args=args,
         columns=5,
         welcome_message="Welcome to Falyx CLI!",
         exit_message="Goodbye!",

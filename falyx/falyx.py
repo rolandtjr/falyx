@@ -88,6 +88,11 @@ class CommandValidator(Validator):
 
     async def validate_async(self, document) -> None:
         text = document.text
+        if not text:
+            raise ValidationError(
+                message=self.error_message,
+                cursor_position=len(text),
+            )
         is_preview, choice, _, __ = await self.falyx.get_command(text, from_validate=True)
         if is_preview:
             return None
@@ -157,6 +162,7 @@ class Falyx:
         description: str | None = "Falyx CLI - Run structured async command workflows.",
         epilog: str | None = None,
         version: str = __version__,
+        version_style: str = OneColors.BLUE_b,
         prompt: str | AnyFormattedText = "> ",
         columns: int = 3,
         bottom_bar: BottomBar | str | Callable[[], Any] | None = None,
@@ -180,6 +186,7 @@ class Falyx:
         self.description: str | None = description
         self.epilog: str | None = epilog
         self.version: str = version
+        self.version_style: str = version_style
         self.prompt: str | AnyFormattedText = prompt
         self.columns: int = columns
         self.commands: dict[str, Command] = CaseInsensitiveDict()
@@ -615,7 +622,7 @@ class Falyx:
         hidden: bool = False,
         aliases: list[str] | None = None,
         help_text: str = "",
-        help_epilogue: str = "",
+        help_epilog: str = "",
         style: str = OneColors.WHITE,
         confirm: bool = False,
         confirm_message: str = "Are you sure?",
@@ -664,7 +671,7 @@ class Falyx:
             hidden=hidden,
             aliases=aliases if aliases else [],
             help_text=help_text,
-            help_epilogue=help_epilogue,
+            help_epilog=help_epilog,
             style=style,
             confirm=confirm,
             confirm_message=confirm_message,
@@ -1088,7 +1095,7 @@ class Falyx:
             sys.exit(0)
 
         if self.cli_args.command == "version" or self.cli_args.version:
-            self.console.print(f"[{OneColors.BLUE_b}]Falyx CLI v{__version__}[/]")
+            self.console.print(f"[{self.version_style}]{self.program} v{__version__}[/]")
             sys.exit(0)
 
         if self.cli_args.command == "preview":

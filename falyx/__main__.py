@@ -97,7 +97,7 @@ def main() -> Any:
             init_project,
             aliases=["init"],
             argument_config=init_config,
-            help_epilogue="If no name is provided, the current directory will be used.",
+            help_epilog="If no name is provided, the current directory will be used.",
         )
         flx.add_command(
             "G",

@@ -155,7 +155,7 @@ class CommandArgumentParser:
         command_description: str = "",
         command_style: str = "bold",
         help_text: str = "",
-        help_epilogue: str = "",
+        help_epilog: str = "",
         aliases: list[str] | None = None,
     ) -> None:
         """Initialize the CommandArgumentParser."""
@@ -164,7 +164,7 @@ class CommandArgumentParser:
         self.command_description: str = command_description
         self.command_style: str = command_style
         self.help_text: str = help_text
-        self.help_epilogue: str = help_epilogue
+        self.help_epilog: str = help_epilog
         self.aliases: list[str] = aliases or []
         self._arguments: list[Argument] = []
         self._positional: dict[str, Argument] = {}
@@ -917,9 +917,9 @@ class CommandArgumentParser:
                 arg_line.append(help_text)
                 self.console.print(arg_line)
 
-        # Epilogue
-        if self.help_epilogue:
-            self.console.print("\n" + self.help_epilogue, style="dim")
+        # Epilog
+        if self.help_epilog:
+            self.console.print("\n" + self.help_epilog, style="dim")
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, CommandArgumentParser):
