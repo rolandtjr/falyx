@@ -7,11 +7,9 @@ Licensed under the MIT License. See LICENSE file for details.
 
 import asyncio
 import random
-from argparse import Namespace
 
 from falyx.action import Action, ActionGroup, ChainedAction
 from falyx.falyx import Falyx
-from falyx.parsers import FalyxParsers, get_arg_parsers
 from falyx.version import __version__
 
 

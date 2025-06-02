@@ -83,8 +83,12 @@ class CommandValidator(Validator):
         self.falyx = falyx
         self.error_message = error_message
 
-    def validate(self, _) -> None:
-        pass
+    def validate(self, document) -> None:
+        if not document.text:
+            raise ValidationError(
+                message=self.error_message,
+                cursor_position=len(document.text),
+            )
 
     async def validate_async(self, document) -> None:
         text = document.text
