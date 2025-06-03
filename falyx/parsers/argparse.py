@@ -292,10 +292,10 @@ class CommandArgumentParser:
             if not isinstance(choice, expected_type):
                 try:
                     coerce_value(choice, expected_type)
-                except Exception:
+                except Exception as error:
                     raise CommandArgumentError(
-                        f"Invalid choice {choice!r}: not coercible to {expected_type.__name__}"
-                    )
+                        f"Invalid choice {choice!r}: not coercible to {expected_type.__name__} error: {error}"
+                    ) from error
         return choices
 
     def _validate_default_type(
@@ -305,10 +305,10 @@ class CommandArgumentParser:
         if default is not None and not isinstance(default, expected_type):
             try:
                 coerce_value(default, expected_type)
-            except Exception:
+            except Exception as error:
                 raise CommandArgumentError(
-                    f"Default value {default!r} for '{dest}' cannot be coerced to {expected_type.__name__}"
-                )
+                    f"Default value {default!r} for '{dest}' cannot be coerced to {expected_type.__name__} error: {error}"
+                ) from error
 
     def _validate_default_list_type(
         self, default: list[Any], expected_type: type, dest: str
@@ -318,10 +318,10 @@ class CommandArgumentParser:
                 if not isinstance(item, expected_type):
                     try:
                         coerce_value(item, expected_type)
-                    except Exception:
+                    except Exception as error:
                         raise CommandArgumentError(
-                            f"Default list value {default!r} for '{dest}' cannot be coerced to {expected_type.__name__}"
-                        )
+                            f"Default list value {default!r} for '{dest}' cannot be coerced to {expected_type.__name__} error: {error}"
+                        ) from error
 
     def _validate_resolver(
         self, action: ArgumentAction, resolver: BaseAction | None
@@ -597,10 +597,10 @@ class CommandArgumentParser:
 
             try:
                 typed = [coerce_value(value, spec.type) for value in values]
-            except Exception:
+            except Exception as error:
                 raise CommandArgumentError(
-                    f"Invalid value for '{spec.dest}': expected {spec.type.__name__}"
-                )
+                    f"Invalid value for '{spec.dest}': {error}"
+                ) from error
             if spec.action == ArgumentAction.ACTION:
                 assert isinstance(
                     spec.resolver, BaseAction
@@ -684,10 +684,10 @@ class CommandArgumentParser:
                         typed_values = [
                             coerce_value(value, spec.type) for value in values
                         ]
-                    except ValueError:
+                    except ValueError as error:
                         raise CommandArgumentError(
-                            f"Invalid value for '{spec.dest}': expected {spec.type.__name__}"
-                        )
+                            f"Invalid value for '{spec.dest}': {error}"
+                        ) from error
                     try:
                         result[spec.dest] = await spec.resolver(*typed_values)
                     except Exception as error:
@@ -715,10 +715,10 @@ class CommandArgumentParser:
                         typed_values = [
                             coerce_value(value, spec.type) for value in values
                         ]
-                    except ValueError:
+                    except ValueError as error:
                         raise CommandArgumentError(
-                            f"Invalid value for '{spec.dest}': expected {spec.type.__name__}"
-                        )
+                            f"Invalid value for '{spec.dest}': {error}"
+                        ) from error
                     if spec.nargs is None:
                         result[spec.dest].append(spec.type(values[0]))
                     else:
@@ -732,10 +732,10 @@ class CommandArgumentParser:
                         typed_values = [
                             coerce_value(value, spec.type) for value in values
                         ]
-                    except ValueError:
+                    except ValueError as error:
                         raise CommandArgumentError(
-                            f"Invalid value for '{spec.dest}': expected {spec.type.__name__}"
-                        )
+                            f"Invalid value for '{spec.dest}': {error}"
+                        ) from error
                     result[spec.dest].extend(typed_values)
                     consumed_indices.update(range(i, new_i))
                     i = new_i
@@ -745,10 +745,10 @@ class CommandArgumentParser:
                         typed_values = [
                             coerce_value(value, spec.type) for value in values
                         ]
-                    except ValueError:
+                    except ValueError as error:
                         raise CommandArgumentError(
-                            f"Invalid value for '{spec.dest}': expected {spec.type.__name__}"
-                        )
+                            f"Invalid value for '{spec.dest}': {error}"
+                        ) from error
                     if not typed_values and spec.nargs not in ("*", "?"):
                         raise CommandArgumentError(
                             f"Expected at least one value for '{spec.dest}'"

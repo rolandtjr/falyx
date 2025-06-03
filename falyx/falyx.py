@@ -746,12 +746,10 @@ class Falyx:
         """
         table = Table(title=self.title, show_header=False, box=box.SIMPLE)  # type: ignore[arg-type]
         visible_commands = [item for item in self.commands.items() if not item[1].hidden]
-        space = self.console.width // self.columns
         for chunk in chunks(visible_commands, self.columns):
             row = []
             for key, command in chunk:
-                cell = f"[{key}] [{command.style}]{command.description}"
-                row.append(f"{cell:<{space}}")
+                row.append(f"[{key}] [{command.style}]{command.description}")
             table.add_row(*row)
         bottom_row = self.get_bottom_row()
         for row in chunks(bottom_row, self.columns):
@@ -811,7 +809,7 @@ class Falyx:
                 args, kwargs = await name_map[choice].parse_args(
                     input_args, from_validate
                 )
-            except CommandArgumentError as error:
+            except (CommandArgumentError, Exception) as error:
                 if not from_validate:
                     name_map[choice].show_help()
                     self.console.print(f"[{OneColors.DARK_RED}]❌ [{choice}]: {error}")

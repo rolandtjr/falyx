@@ -31,11 +31,16 @@ def infer_args_from_func(
         ):
             continue
 
-        arg_type = (
-            param.annotation if param.annotation is not inspect.Parameter.empty else str
-        )
-        if isinstance(arg_type, str):
-            arg_type = str
+        if metadata.get("type"):
+            arg_type = metadata["type"]
+        else:
+            arg_type = (
+                param.annotation
+                if param.annotation is not inspect.Parameter.empty
+                else str
+            )
+            if isinstance(arg_type, str):
+                arg_type = str
         default = param.default if param.default is not inspect.Parameter.empty else None
         is_required = param.default is inspect.Parameter.empty
         if is_required:
