@@ -29,7 +29,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime
-from typing import Dict, List
+from threading import Lock
+from typing import Any, Literal
 
 from rich import box
 from rich.console import Console
@@ -70,23 +71,30 @@ class ExecutionRegistry:
         ExecutionRegistry.summary()
     """
 
-    _store_by_name: Dict[str, List[ExecutionContext]] = defaultdict(list)
-    _store_all: List[ExecutionContext] = []
-    _console = Console(color_system="auto")
+    _store_by_name: dict[str, list[ExecutionContext]] = defaultdict(list)
+    _store_by_index: dict[int, ExecutionContext] = {}
+    _store_all: list[ExecutionContext] = []
+    _console = Console(color_system="truecolor")
+    _index = 0
+    _lock = Lock()
 
     @classmethod
     def record(cls, context: ExecutionContext):
         """Record an execution context."""
         logger.debug(context.to_log_line())
+        with cls._lock:
+            context.index = cls._index
+            cls._store_by_index[cls._index] = context
+            cls._index += 1
         cls._store_by_name[context.name].append(context)
         cls._store_all.append(context)
 
     @classmethod
-    def get_all(cls) -> List[ExecutionContext]:
+    def get_all(cls) -> list[ExecutionContext]:
         return cls._store_all
 
     @classmethod
-    def get_by_name(cls, name: str) -> List[ExecutionContext]:
+    def get_by_name(cls, name: str) -> list[ExecutionContext]:
         return cls._store_by_name.get(name, [])
 
     @classmethod
@@ -97,11 +105,74 @@ class ExecutionRegistry:
     def clear(cls):
         cls._store_by_name.clear()
         cls._store_all.clear()
+        cls._store_by_index.clear()
 
     @classmethod
-    def summary(cls):
-        table = Table(title="📊 Execution History", expand=True, box=box.SIMPLE)
+    def summary(
+        cls,
+        name: str = "",
+        index: int = -1,
+        result: int = -1,
+        clear: bool = False,
+        last_result: bool = False,
+        status: Literal["all", "success", "error"] = "all",
+    ):
+        if clear:
+            cls.clear()
+            cls._console.print(f"[{OneColors.GREEN}]✅ Execution history cleared.")
+            return
 
+        if last_result:
+            for ctx in reversed(cls._store_all):
+                if ctx.name.upper() not in [
+                    "HISTORY",
+                    "HELP",
+                    "EXIT",
+                    "VIEW EXECUTION HISTORY",
+                    "BACK",
+                ]:
+                    cls._console.print(ctx.result)
+                    return
+            cls._console.print(
+                f"[{OneColors.DARK_RED}]❌ No valid executions found to display last result."
+            )
+            return
+
+        if result and result >= 0:
+            try:
+                result_context = cls._store_by_index[result]
+            except KeyError:
+                cls._console.print(
+                    f"[{OneColors.DARK_RED}]❌ No execution found for index {index}."
+                )
+                return
+            cls._console.print(result_context.result)
+            return
+
+        if name:
+            contexts = cls.get_by_name(name)
+            if not contexts:
+                cls._console.print(
+                    f"[{OneColors.DARK_RED}]❌ No executions found for action '{name}'."
+                )
+                return
+            title = f"📊 Execution History for '{contexts[0].name}'"
+        elif index and index >= 0:
+            try:
+                contexts = [cls._store_by_index[index]]
+            except KeyError:
+                cls._console.print(
+                    f"[{OneColors.DARK_RED}]❌ No execution found for index {index}."
+                )
+                return
+            title = f"📊 Execution History for Index {index}"
+        else:
+            contexts = cls.get_all()
+            title = "📊 Execution History"
+
+        table = Table(title=title, expand=True, box=box.SIMPLE)
+
+        table.add_column("Index", justify="right", style="dim")
         table.add_column("Name", style="bold cyan")
         table.add_column("Start", justify="right", style="dim")
         table.add_column("End", justify="right", style="dim")
@@ -109,7 +180,7 @@ class ExecutionRegistry:
         table.add_column("Status", style="bold")
         table.add_column("Result / Exception", overflow="fold")
 
-        for ctx in cls.get_all():
+        for ctx in contexts:
             start = (
                 datetime.fromtimestamp(ctx.start_time).strftime("%H:%M:%S")
                 if ctx.start_time
@@ -122,15 +193,19 @@ class ExecutionRegistry:
             )
             duration = f"{ctx.duration:.3f}s" if ctx.duration else "n/a"
 
-            if ctx.exception:
-                status = f"[{OneColors.DARK_RED}]❌ Error"
-                result = repr(ctx.exception)
+            if ctx.exception and status.lower() in ["all", "error"]:
+                final_status = f"[{OneColors.DARK_RED}]❌ Error"
+                final_result = repr(ctx.exception)
+            elif status.lower() in ["all", "success"]:
+                final_status = f"[{OneColors.GREEN}]✅ Success"
+                final_result = repr(ctx.result)
+                if len(final_result) > 1000:
+                    final_result = f"{final_result[:1000]}..."
             else:
-                status = f"[{OneColors.GREEN}]✅ Success"
-                result = repr(ctx.result)
-                if len(result) > 1000:
-                    result = f"{result[:1000]}..."
+                continue
 
-            table.add_row(ctx.name, start, end, duration, status, result)
+            table.add_row(
+                str(ctx.index), ctx.name, start, end, duration, final_status, final_result
+            )
 
         cls._console.print(table)

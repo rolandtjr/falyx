@@ -98,7 +98,7 @@ commands:
     aliases: [clean, cleanup]
 """
 
-console = Console(color_system="auto")
+console = Console(color_system="truecolor")
 
 
 def init_project(name: str) -> None:

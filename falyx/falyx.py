@@ -201,7 +201,7 @@ class Falyx:
         self.help_command: Command | None = (
             self._get_help_command() if include_help_command else None
         )
-        self.console: Console = Console(color_system="auto", theme=get_nord_theme())
+        self.console: Console = Console(color_system="truecolor", theme=get_nord_theme())
         self.welcome_message: str | Markdown | dict[str, Any] = welcome_message
         self.exit_message: str | Markdown | dict[str, Any] = exit_message
         self.hooks: HookManager = HookManager()
@@ -300,6 +300,40 @@ class Falyx:
 
     def _get_history_command(self) -> Command:
         """Returns the history command for the menu."""
+        parser = CommandArgumentParser(
+            command_key="Y",
+            command_description="History",
+            command_style=OneColors.DARK_YELLOW,
+            aliases=["HISTORY"],
+        )
+        parser.add_argument(
+            "-n",
+            "--name",
+            help="Filter by execution name.",
+        )
+        parser.add_argument(
+            "-i",
+            "--index",
+            type=int,
+            help="Filter by execution index (0-based).",
+        )
+        parser.add_argument(
+            "-s",
+            "--status",
+            choices=["all", "success", "error"],
+            default="all",
+            help="Filter by execution status (default: all).",
+        )
+        parser.add_argument(
+            "-c",
+            "--clear",
+            action="store_true",
+            help="Clear the Execution History.",
+        )
+        parser.add_argument("-r", "--result", type=int, help="Get the result by index")
+        parser.add_argument(
+            "-l", "--last-result", action="store_true", help="Get the last result"
+        )
         return Command(
             key="Y",
             description="History",
@@ -307,6 +341,8 @@ class Falyx:
             action=Action(name="View Execution History", action=er.summary),
             style=OneColors.DARK_YELLOW,
             simple_help_signature=True,
+            arg_parser=parser,
+            help_text="View the execution history of commands.",
         )
 
     async def _show_help(self, tag: str = "") -> None:

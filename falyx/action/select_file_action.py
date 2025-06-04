@@ -76,7 +76,10 @@ class SelectFileAction(BaseAction):
         self.prompt_message = prompt_message
         self.suffix_filter = suffix_filter
         self.style = style
-        self.console = console or Console(color_system="auto")
+        if isinstance(console, Console):
+            self.console = console
+        elif console:
+            raise ValueError("`console` must be an instance of `rich.console.Console`")
         self.prompt_session = prompt_session or PromptSession()
         self.return_type = self._coerce_return_type(return_type)
 

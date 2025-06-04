@@ -40,7 +40,10 @@ class UserInputAction(BaseAction):
         )
         self.prompt_text = prompt_text
         self.validator = validator
-        self.console = console or Console(color_system="auto")
+        if isinstance(console, Console):
+            self.console = console
+        elif console:
+            raise ValueError("`console` must be an instance of `rich.console.Console`")
         self.prompt_session = prompt_session or PromptSession()
 
     def get_infer_target(self) -> tuple[None, None]:

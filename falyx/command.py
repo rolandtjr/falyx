@@ -44,7 +44,7 @@ from falyx.signals import CancelSignal
 from falyx.themes import OneColors
 from falyx.utils import ensure_async
 
-console = Console(color_system="auto")
+console = Console(color_system="truecolor")
 
 
 class Command(BaseModel):

@@ -67,7 +67,10 @@ class SelectionAction(BaseAction):
         self.return_type: SelectionReturnType = self._coerce_return_type(return_type)
         self.title = title
         self.columns = columns
-        self.console = console or Console(color_system="auto")
+        if isinstance(console, Console):
+            self.console = console
+        elif console:
+            raise ValueError("`console` must be an instance of `rich.console.Console`")
         self.prompt_session = prompt_session or PromptSession()
         self.default_selection = default_selection
         self.prompt_message = prompt_message

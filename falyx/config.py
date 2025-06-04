@@ -18,11 +18,10 @@ from falyx.action.base import BaseAction
 from falyx.command import Command
 from falyx.falyx import Falyx
 from falyx.logger import logger
-from falyx.parsers import CommandArgumentParser
 from falyx.retry import RetryPolicy
 from falyx.themes import OneColors
 
-console = Console(color_system="auto")
+console = Console(color_system="truecolor")
 
 
 def wrap_if_needed(obj: Any, name=None) -> BaseAction | Command:

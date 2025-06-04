@@ -273,7 +273,7 @@ async def prompt_for_index(
     show_table: bool = True,
 ) -> int:
     prompt_session = prompt_session or PromptSession()
-    console = console or Console(color_system="auto")
+    console = console or Console(color_system="truecolor")
 
     if show_table:
         console.print(table, justify="center")
@@ -298,7 +298,7 @@ async def prompt_for_selection(
 ) -> str:
     """Prompt the user to select a key from a set of options. Return the selected key."""
     prompt_session = prompt_session or PromptSession()
-    console = console or Console(color_system="auto")
+    console = console or Console(color_system="truecolor")
 
     if show_table:
         console.print(table, justify="center")
@@ -351,7 +351,7 @@ async def select_value_from_list(
         highlight=highlight,
     )
     prompt_session = prompt_session or PromptSession()
-    console = console or Console(color_system="auto")
+    console = console or Console(color_system="truecolor")
 
     selection_index = await prompt_for_index(
         len(selections) - 1,
@@ -376,7 +376,7 @@ async def select_key_from_dict(
 ) -> Any:
     """Prompt for a key from a dict, returns the key."""
     prompt_session = prompt_session or PromptSession()
-    console = console or Console(color_system="auto")
+    console = console or Console(color_system="truecolor")
 
     console.print(table, justify="center")
 
@@ -401,7 +401,7 @@ async def select_value_from_dict(
 ) -> Any:
     """Prompt for a key from a dict, but return the value."""
     prompt_session = prompt_session or PromptSession()
-    console = console or Console(color_system="auto")
+    console = console or Console(color_system="truecolor")
 
     console.print(table, justify="center")
 

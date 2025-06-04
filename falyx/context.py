@@ -80,8 +80,10 @@ class ExecutionContext(BaseModel):
     start_wall: datetime | None = None
     end_wall: datetime | None = None
 
+    index: int | None = None
+
     extra: dict[str, Any] = Field(default_factory=dict)
-    console: Console = Field(default_factory=lambda: Console(color_system="auto"))
+    console: Console = Field(default_factory=lambda: Console(color_system="truecolor"))
 
     shared_context: SharedContext | None = None
 

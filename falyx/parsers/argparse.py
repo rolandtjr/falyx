@@ -159,7 +159,7 @@ class CommandArgumentParser:
         aliases: list[str] | None = None,
     ) -> None:
         """Initialize the CommandArgumentParser."""
-        self.console = Console(color_system="auto")
+        self.console = Console(color_system="truecolor")
         self.command_key: str = command_key
         self.command_description: str = command_description
         self.command_style: str = command_style

@@ -51,7 +51,10 @@ class MenuAction(BaseAction):
         self.columns = columns
         self.prompt_message = prompt_message
         self.default_selection = default_selection
-        self.console = console or Console(color_system="auto")
+        if isinstance(console, Console):
+            self.console = console
+        elif console:
+            raise ValueError("`console` must be an instance of `rich.console.Console`")
         self.prompt_session = prompt_session or PromptSession()
         self.include_reserved = include_reserved
         self.show_table = show_table

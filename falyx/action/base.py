@@ -74,7 +74,7 @@ class BaseAction(ABC):
         self.inject_into: str = inject_into
         self._never_prompt: bool = never_prompt
         self._skip_in_chain: bool = False
-        self.console = Console(color_system="auto")
+        self.console = Console(color_system="truecolor")
         self.options_manager: OptionsManager | None = None
 
         if logging_hooks:
