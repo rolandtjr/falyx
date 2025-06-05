@@ -8,7 +8,7 @@ from falyx.logger import logger
 def log_before(context: ExecutionContext):
     """Log the start of an action."""
     args = ", ".join(map(repr, context.args))
-    kwargs = ", ".join(f"{k}={v!r}" for k, v in context.kwargs.items())
+    kwargs = ", ".join(f"{key}={value!r}" for key, value in context.kwargs.items())
     signature = ", ".join(filter(None, [args, kwargs]))
     logger.info("[%s] Starting -> %s(%s)", context.name, context.action, signature)
 

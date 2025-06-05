@@ -796,7 +796,12 @@ class Falyx:
     def table(self) -> Table:
         """Creates or returns a custom table to display the menu commands."""
         if callable(self.custom_table):
-            return self.custom_table(self)
+            custom_table = self.custom_table(self)
+            if not isinstance(custom_table, Table):
+                raise FalyxError(
+                    "custom_table must return an instance of rich.table.Table."
+                )
+            return custom_table
         elif isinstance(self.custom_table, Table):
             return self.custom_table
         else:
@@ -834,21 +839,31 @@ class Falyx:
 
         choice = choice.upper()
         name_map = self._name_map
+        run_command = None
         if name_map.get(choice):
+            run_command = name_map[choice]
+        else:
+            prefix_matches = [
+                cmd for key, cmd in name_map.items() if key.startswith(choice)
+            ]
+            if len(prefix_matches) == 1:
+                run_command = prefix_matches[0]
+
+        if run_command:
             if not from_validate:
-                logger.info("Command '%s' selected.", choice)
+                logger.info("Command '%s' selected.", run_command.key)
             if is_preview:
-                return True, name_map[choice], args, kwargs
+                return True, run_command, args, kwargs
             elif self.mode in {FalyxMode.RUN, FalyxMode.RUN_ALL, FalyxMode.PREVIEW}:
-                return False, name_map[choice], args, kwargs
+                return False, run_command, args, kwargs
             try:
-                args, kwargs = await name_map[choice].parse_args(
-                    input_args, from_validate
-                )
+                args, kwargs = await run_command.parse_args(input_args, from_validate)
             except (CommandArgumentError, Exception) as error:
                 if not from_validate:
-                    name_map[choice].show_help()
-                    self.console.print(f"[{OneColors.DARK_RED}]❌ [{choice}]: {error}")
+                    run_command.show_help()
+                    self.console.print(
+                        f"[{OneColors.DARK_RED}]❌ [{run_command.key}]: {error}"
+                    )
                 else:
                     raise ValidationError(
                         message=str(error), cursor_position=len(raw_choices)
@@ -856,11 +871,7 @@ class Falyx:
                 return is_preview, None, args, kwargs
             except HelpSignal:
                 return True, None, args, kwargs
-            return is_preview, name_map[choice], args, kwargs
-
-        prefix_matches = [cmd for key, cmd in name_map.items() if key.startswith(choice)]
-        if len(prefix_matches) == 1:
-            return is_preview, prefix_matches[0], args, kwargs
+            return is_preview, run_command, args, kwargs
 
         fuzzy_matches = get_close_matches(choice, list(name_map.keys()), n=3, cutoff=0.7)
         if fuzzy_matches:
@@ -890,12 +901,14 @@ class Falyx:
                 )
         return is_preview, None, args, kwargs
 
-    def _create_context(self, selected_command: Command) -> ExecutionContext:
-        """Creates a context dictionary for the selected command."""
+    def _create_context(
+        self, selected_command: Command, args: tuple, kwargs: dict[str, Any]
+    ) -> ExecutionContext:
+        """Creates an ExecutionContext object for the selected command."""
         return ExecutionContext(
             name=selected_command.description,
-            args=tuple(),
-            kwargs={},
+            args=args,
+            kwargs=kwargs,
             action=selected_command,
         )
 
@@ -929,7 +942,7 @@ class Falyx:
             logger.info("Back selected: exiting %s", self.get_title())
             return False
 
-        context = self._create_context(selected_command)
+        context = self._create_context(selected_command, args, kwargs)
         context.start_timer()
         try:
             await self.hooks.trigger(HookType.BEFORE, context)
@@ -974,7 +987,7 @@ class Falyx:
             selected_command.description,
         )
 
-        context = self._create_context(selected_command)
+        context = self._create_context(selected_command, args, kwargs)
         context.start_timer()
         try:
             await self.hooks.trigger(HookType.BEFORE, context)

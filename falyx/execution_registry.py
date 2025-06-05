@@ -30,7 +30,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime
 from threading import Lock
-from typing import Any, Literal
+from typing import Literal
 
 from rich import box
 from rich.console import Console
@@ -111,8 +111,8 @@ class ExecutionRegistry:
     def summary(
         cls,
         name: str = "",
-        index: int = -1,
-        result: int = -1,
+        index: int | None = None,
+        result: int | None = None,
         clear: bool = False,
         last_result: bool = False,
         status: Literal["all", "success", "error"] = "all",
@@ -138,7 +138,7 @@ class ExecutionRegistry:
             )
             return
 
-        if result and result >= 0:
+        if result is not None and result >= 0:
             try:
                 result_context = cls._store_by_index[result]
             except KeyError:
@@ -146,7 +146,11 @@ class ExecutionRegistry:
                     f"[{OneColors.DARK_RED}]❌ No execution found for index {index}."
                 )
                 return
-            cls._console.print(result_context.result)
+            cls._console.print(f"{result_context.signature}:")
+            if result_context.exception:
+                cls._console.print(result_context.exception)
+            else:
+                cls._console.print(result_context.result)
             return
 
         if name:
@@ -157,9 +161,10 @@ class ExecutionRegistry:
                 )
                 return
             title = f"📊 Execution History for '{contexts[0].name}'"
-        elif index and index >= 0:
+        elif index is not None and index >= 0:
             try:
                 contexts = [cls._store_by_index[index]]
+                print(contexts)
             except KeyError:
                 cls._console.print(
                     f"[{OneColors.DARK_RED}]❌ No execution found for index {index}."

@@ -70,7 +70,7 @@ class ExecutionContext(BaseModel):
 
     name: str
     args: tuple = ()
-    kwargs: dict = {}
+    kwargs: dict = Field(default_factory=dict)
     action: Any
     result: Any | None = None
     exception: Exception | None = None
@@ -119,6 +119,17 @@ class ExecutionContext(BaseModel):
     @property
     def status(self) -> str:
         return "OK" if self.success else "ERROR"
+
+    @property
+    def signature(self) -> str:
+        """
+        Returns a string representation of the action signature, including
+        its name and arguments.
+        """
+        args = ", ".join(map(repr, self.args))
+        kwargs = ", ".join(f"{key}={value!r}" for key, value in self.kwargs.items())
+        signature = ", ".join(filter(None, [args, kwargs]))
+        return f"{self.name} ({signature})"
 
     def as_dict(self) -> dict:
         return {

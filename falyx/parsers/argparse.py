@@ -629,7 +629,10 @@ class CommandArgumentParser:
                 consumed_positional_indicies.add(j)
 
         if i < len(args):
-            raise CommandArgumentError(f"Unexpected positional argument: {args[i:]}")
+            plural = "s" if len(args[i:]) > 1 else ""
+            raise CommandArgumentError(
+                f"Unexpected positional argument{plural}: {', '.join(args[i:])}"
+            )
 
         return i
 
