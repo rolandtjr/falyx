@@ -1,3 +1,5 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""action_group.py"""
 import asyncio
 import random
 from typing import Any, Callable

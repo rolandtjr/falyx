@@ -1,4 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""command_argument_parser.py"""
 from __future__ import annotations
 
 from copy import deepcopy

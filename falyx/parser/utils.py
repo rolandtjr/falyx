@@ -1,3 +1,4 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 import types
 from datetime import datetime
 from enum import EnumMeta

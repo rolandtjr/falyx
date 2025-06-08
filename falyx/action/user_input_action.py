@@ -1,3 +1,5 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""user_input_action.py"""
 from prompt_toolkit import PromptSession
 from prompt_toolkit.validation import Validator
 from rich.console import Console

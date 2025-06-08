@@ -1,3 +1,5 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""fallback_action.py"""
 from functools import cached_property
 from typing import Any
 

@@ -1,3 +1,5 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""mixins.py"""
 from falyx.action.base import BaseAction
 
 

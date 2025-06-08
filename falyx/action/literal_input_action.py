@@ -1,3 +1,5 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""literal_input_action.py"""
 from __future__ import annotations
 
 from functools import cached_property

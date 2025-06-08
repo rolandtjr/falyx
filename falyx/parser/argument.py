@@ -1,3 +1,5 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""argument.py"""
 from dataclasses import dataclass
 from typing import Any
 

@@ -1,3 +1,5 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""types.py"""
 from __future__ import annotations
 
 from enum import Enum
