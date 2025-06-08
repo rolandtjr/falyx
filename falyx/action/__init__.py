@@ -12,7 +12,7 @@ from .base import BaseAction
 from .chained_action import ChainedAction
 from .fallback_action import FallbackAction
 from .http_action import HTTPAction
-from .io_action import BaseIOAction, ShellAction
+from .io_action import BaseIOAction
 from .literal_input_action import LiteralInputAction
 from .menu_action import MenuAction
 from .process_action import ProcessAction
@@ -20,6 +20,7 @@ from .process_pool_action import ProcessPoolAction
 from .prompt_menu_action import PromptMenuAction
 from .select_file_action import SelectFileAction
 from .selection_action import SelectionAction
+from .shell_action import ShellAction
 from .signal_action import SignalAction
 from .user_input_action import UserInputAction
 
