@@ -11,7 +11,7 @@ from rich.table import Table
 
 from falyx.themes import OneColors
 from falyx.utils import CaseInsensitiveDict, chunks
-from falyx.validators import int_range_validator, key_validator
+from falyx.validators import MultiIndexValidator, MultiKeyValidator
 
 
 @dataclass
@@ -271,7 +271,11 @@ async def prompt_for_index(
     prompt_session: PromptSession | None = None,
     prompt_message: str = "Select an option > ",
     show_table: bool = True,
-) -> int:
+    number_selections: int | str = 1,
+    separator: str = ",",
+    allow_duplicates: bool = False,
+    cancel_key: str = "",
+) -> int | list[int]:
     prompt_session = prompt_session or PromptSession()
     console = console or Console(color_system="truecolor")
 
@@ -280,10 +284,22 @@ async def prompt_for_index(
 
     selection = await prompt_session.prompt_async(
         message=prompt_message,
-        validator=int_range_validator(min_index, max_index),
+        validator=MultiIndexValidator(
+            min_index,
+            max_index,
+            number_selections,
+            separator,
+            allow_duplicates,
+            cancel_key,
+        ),
         default=default_selection,
     )
-    return int(selection)
+
+    if selection.strip() == cancel_key:
+        return int(cancel_key)
+    if isinstance(number_selections, int) and number_selections == 1:
+        return int(selection.strip())
+    return [int(index.strip()) for index in selection.strip().split(separator)]
 
 
 async def prompt_for_selection(
@@ -295,7 +311,11 @@ async def prompt_for_selection(
     prompt_session: PromptSession | None = None,
     prompt_message: str = "Select an option > ",
     show_table: bool = True,
-) -> str:
+    number_selections: int | str = 1,
+    separator: str = ",",
+    allow_duplicates: bool = False,
+    cancel_key: str = "",
+) -> str | list[str]:
     """Prompt the user to select a key from a set of options. Return the selected key."""
     prompt_session = prompt_session or PromptSession()
     console = console or Console(color_system="truecolor")
@@ -305,11 +325,17 @@ async def prompt_for_selection(
 
     selected = await prompt_session.prompt_async(
         message=prompt_message,
-        validator=key_validator(keys),
+        validator=MultiKeyValidator(
+            keys, number_selections, separator, allow_duplicates, cancel_key
+        ),
         default=default_selection,
     )
 
-    return selected
+    if selected.strip() == cancel_key:
+        return cancel_key
+    if isinstance(number_selections, int) and number_selections == 1:
+        return selected.strip()
+    return [key.strip() for key in selected.strip().split(separator)]
 
 
 async def select_value_from_list(
@@ -320,6 +346,10 @@ async def select_value_from_list(
     prompt_session: PromptSession | None = None,
     prompt_message: str = "Select an option > ",
     default_selection: str = "",
+    number_selections: int | str = 1,
+    separator: str = ",",
+    allow_duplicates: bool = False,
+    cancel_key: str = "",
     columns: int = 4,
     caption: str = "",
     box_style: box.Box = box.SIMPLE,
@@ -332,7 +362,7 @@ async def select_value_from_list(
     title_style: str = "",
     caption_style: str = "",
     highlight: bool = False,
-):
+) -> str | list[str]:
     """Prompt for a selection. Return the selected item."""
     table = render_selection_indexed_table(
         title=title,
@@ -360,8 +390,14 @@ async def select_value_from_list(
         console=console,
         prompt_session=prompt_session,
         prompt_message=prompt_message,
+        number_selections=number_selections,
+        separator=separator,
+        allow_duplicates=allow_duplicates,
+        cancel_key=cancel_key,
     )
 
+    if isinstance(selection_index, list):
+        return [selections[i] for i in selection_index]
     return selections[selection_index]
 
 
@@ -373,7 +409,11 @@ async def select_key_from_dict(
     prompt_session: PromptSession | None = None,
     prompt_message: str = "Select an option > ",
     default_selection: str = "",
-) -> Any:
+    number_selections: int | str = 1,
+    separator: str = ",",
+    allow_duplicates: bool = False,
+    cancel_key: str = "",
+) -> str | list[str]:
     """Prompt for a key from a dict, returns the key."""
     prompt_session = prompt_session or PromptSession()
     console = console or Console(color_system="truecolor")
@@ -387,6 +427,10 @@ async def select_key_from_dict(
         console=console,
         prompt_session=prompt_session,
         prompt_message=prompt_message,
+        number_selections=number_selections,
+        separator=separator,
+        allow_duplicates=allow_duplicates,
+        cancel_key=cancel_key,
     )
 
 
@@ -398,7 +442,11 @@ async def select_value_from_dict(
     prompt_session: PromptSession | None = None,
     prompt_message: str = "Select an option > ",
     default_selection: str = "",
-) -> Any:
+    number_selections: int | str = 1,
+    separator: str = ",",
+    allow_duplicates: bool = False,
+    cancel_key: str = "",
+) -> Any | list[Any]:
     """Prompt for a key from a dict, but return the value."""
     prompt_session = prompt_session or PromptSession()
     console = console or Console(color_system="truecolor")
@@ -412,8 +460,14 @@ async def select_value_from_dict(
         console=console,
         prompt_session=prompt_session,
         prompt_message=prompt_message,
+        number_selections=number_selections,
+        separator=separator,
+        allow_duplicates=allow_duplicates,
+        cancel_key=cancel_key,
     )
 
+    if isinstance(selection_key, list):
+        return [selections[key].value for key in selection_key]
     return selections[selection_key].value
 
 
@@ -425,7 +479,11 @@ async def get_selection_from_dict_menu(
     prompt_session: PromptSession | None = None,
     prompt_message: str = "Select an option > ",
     default_selection: str = "",
-):
+    number_selections: int | str = 1,
+    separator: str = ",",
+    allow_duplicates: bool = False,
+    cancel_key: str = "",
+) -> Any | list[Any]:
     """Prompt for a key from a dict, but return the value."""
     table = render_selection_dict_table(
         title,
@@ -439,4 +497,8 @@ async def get_selection_from_dict_menu(
         prompt_session=prompt_session,
         prompt_message=prompt_message,
         default_selection=default_selection,
+        number_selections=number_selections,
+        separator=separator,
+        allow_duplicates=allow_duplicates,
+        cancel_key=cancel_key,
     )

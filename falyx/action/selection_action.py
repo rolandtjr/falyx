@@ -48,6 +48,9 @@ class SelectionAction(BaseAction):
         columns: int = 5,
         prompt_message: str = "Select > ",
         default_selection: str = "",
+        number_selections: int | str = 1,
+        separator: str = ",",
+        allow_duplicates: bool = False,
         inject_last_result: bool = False,
         inject_into: str = "last_result",
         return_type: SelectionReturnType | str = "value",
@@ -73,9 +76,26 @@ class SelectionAction(BaseAction):
             raise ValueError("`console` must be an instance of `rich.console.Console`")
         self.prompt_session = prompt_session or PromptSession()
         self.default_selection = default_selection
+        self.number_selections = number_selections
+        self.separator = separator
+        self.allow_duplicates = allow_duplicates
         self.prompt_message = prompt_message
         self.show_table = show_table
-        self.cancel_key = self._find_cancel_key()
+
+    @property
+    def number_selections(self) -> int | str:
+        return self._number_selections
+
+    @number_selections.setter
+    def number_selections(self, value: int | str):
+        if isinstance(value, int) and value > 0:
+            self._number_selections: int | str = value
+        elif isinstance(value, str):
+            if value not in ("*"):
+                raise ValueError("number_selections string must be '*'")
+            self._number_selections = value
+        else:
+            raise ValueError("number_selections must be a positive integer or '*'")
 
     def _coerce_return_type(
         self, return_type: SelectionReturnType | str
@@ -156,6 +176,38 @@ class SelectionAction(BaseAction):
     def get_infer_target(self) -> tuple[None, None]:
         return None, None
 
+    def _get_result_from_keys(self, keys: str | list[str]) -> Any:
+        if not isinstance(self.selections, dict):
+            raise TypeError("Selections must be a dictionary to get result by keys.")
+        if self.return_type == SelectionReturnType.KEY:
+            result: Any = keys
+        elif self.return_type == SelectionReturnType.VALUE:
+            if isinstance(keys, list):
+                result = [self.selections[key].value for key in keys]
+            elif isinstance(keys, str):
+                result = self.selections[keys].value
+        elif self.return_type == SelectionReturnType.ITEMS:
+            if isinstance(keys, list):
+                result = {key: self.selections[key] for key in keys}
+            elif isinstance(keys, str):
+                result = {keys: self.selections[keys]}
+        elif self.return_type == SelectionReturnType.DESCRIPTION:
+            if isinstance(keys, list):
+                result = [self.selections[key].description for key in keys]
+            elif isinstance(keys, str):
+                result = self.selections[keys].description
+        elif self.return_type == SelectionReturnType.DESCRIPTION_VALUE:
+            if isinstance(keys, list):
+                result = {
+                    self.selections[key].description: self.selections[key].value
+                    for key in keys
+                }
+            elif isinstance(keys, str):
+                result = {self.selections[keys].description: self.selections[keys].value}
+        else:
+            raise ValueError(f"Unsupported return type: {self.return_type}")
+        return result
+
     async def _run(self, *args, **kwargs) -> Any:
         kwargs = self._maybe_inject_last_result(kwargs)
         context = ExecutionContext(
@@ -191,7 +243,7 @@ class SelectionAction(BaseAction):
         if self.never_prompt and not effective_default:
             raise ValueError(
                 f"[{self.name}] 'never_prompt' is True but no valid default_selection "
-                "was provided."
+                "or usable last_result was available."
             )
 
         context.start_timer()
@@ -206,7 +258,7 @@ class SelectionAction(BaseAction):
                     formatter=self.cancel_formatter,
                 )
                 if not self.never_prompt:
-                    index: int | str = await prompt_for_index(
+                    indices: int | list[int] = await prompt_for_index(
                         len(self.selections),
                         table,
                         default_selection=effective_default,
@@ -214,12 +266,30 @@ class SelectionAction(BaseAction):
                         prompt_session=self.prompt_session,
                         prompt_message=self.prompt_message,
                         show_table=self.show_table,
+                        number_selections=self.number_selections,
+                        separator=self.separator,
+                        allow_duplicates=self.allow_duplicates,
+                        cancel_key=self.cancel_key,
                     )
                 else:
-                    index = effective_default
-                if int(index) == int(self.cancel_key):
+                    if effective_default:
+                        indices = int(effective_default)
+                    else:
+                        raise ValueError(
+                            f"[{self.name}] 'never_prompt' is True but no valid "
+                            "default_selection was provided."
+                        )
+
+                if indices == int(self.cancel_key):
                     raise CancelSignal("User cancelled the selection.")
-                result: Any = self.selections[int(index)]
+                if isinstance(indices, list):
+                    result: str | list[str] = [
+                        self.selections[index] for index in indices
+                    ]
+                elif isinstance(indices, int):
+                    result = self.selections[indices]
+                else:
+                    assert False, "unreachable"
             elif isinstance(self.selections, dict):
                 cancel_option = {
                     self.cancel_key: SelectionOption(
@@ -232,7 +302,7 @@ class SelectionAction(BaseAction):
                     columns=self.columns,
                 )
                 if not self.never_prompt:
-                    key = await prompt_for_selection(
+                    keys = await prompt_for_selection(
                         (self.selections | cancel_option).keys(),
                         table,
                         default_selection=effective_default,
@@ -240,25 +310,17 @@ class SelectionAction(BaseAction):
                         prompt_session=self.prompt_session,
                         prompt_message=self.prompt_message,
                         show_table=self.show_table,
+                        number_selections=self.number_selections,
+                        separator=self.separator,
+                        allow_duplicates=self.allow_duplicates,
+                        cancel_key=self.cancel_key,
                     )
                 else:
-                    key = effective_default
-                if key == self.cancel_key:
+                    keys = effective_default
+                if keys == self.cancel_key:
                     raise CancelSignal("User cancelled the selection.")
-                if self.return_type == SelectionReturnType.KEY:
-                    result = key
-                elif self.return_type == SelectionReturnType.VALUE:
-                    result = self.selections[key].value
-                elif self.return_type == SelectionReturnType.ITEMS:
-                    result = {key: self.selections[key]}
-                elif self.return_type == SelectionReturnType.DESCRIPTION:
-                    result = self.selections[key].description
-                elif self.return_type == SelectionReturnType.DESCRIPTION_VALUE:
-                    result = {
-                        self.selections[key].description: self.selections[key].value
-                    }
-                else:
-                    raise ValueError(f"Unsupported return type: {self.return_type}")
+
+                result = self._get_result_from_keys(keys)
             else:
                 raise TypeError(
                     "'selections' must be a list[str] or dict[str, Any], "

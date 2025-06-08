@@ -14,7 +14,7 @@ from typing import Any
 
 from falyx.config import loader
 from falyx.falyx import Falyx
-from falyx.parsers import CommandArgumentParser, get_root_parser, get_subparsers
+from falyx.parser import CommandArgumentParser, get_root_parser, get_subparsers
 
 
 def find_falyx_config() -> Path | None:

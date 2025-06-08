@@ -93,10 +93,7 @@ class BaseIOAction(BaseAction):
         if self.inject_last_result and self.shared_context:
             return self.shared_context.last_result()
 
-        logger.debug(
-            "[%s] No input provided and no last result found for injection.", self.name
-        )
-        raise FalyxError("No input provided and no last result to inject.")
+        return ""
 
     def get_infer_target(self) -> tuple[Callable[..., Any] | None, dict[str, Any] | None]:
         return None, None

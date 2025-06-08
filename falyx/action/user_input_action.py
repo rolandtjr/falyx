@@ -29,6 +29,7 @@ class UserInputAction(BaseAction):
         name: str,
         *,
         prompt_text: str = "Input > ",
+        default_text: str = "",
         validator: Validator | None = None,
         console: Console | None = None,
         prompt_session: PromptSession | None = None,
@@ -45,6 +46,7 @@ class UserInputAction(BaseAction):
         elif console:
             raise ValueError("`console` must be an instance of `rich.console.Console`")
         self.prompt_session = prompt_session or PromptSession()
+        self.default_text = default_text
 
     def get_infer_target(self) -> tuple[None, None]:
         return None, None
@@ -67,6 +69,7 @@ class UserInputAction(BaseAction):
             answer = await self.prompt_session.prompt_async(
                 prompt_text,
                 validator=self.validator,
+                default=kwargs.get("default_text", self.default_text),
             )
             context.result = answer
             await self.hooks.trigger(HookType.ON_SUCCESS, context)

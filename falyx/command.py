@@ -34,8 +34,8 @@ from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
 from falyx.logger import logger
 from falyx.options_manager import OptionsManager
-from falyx.parsers.argparse import CommandArgumentParser
-from falyx.parsers.signature import infer_args_from_func
+from falyx.parser.argparse import CommandArgumentParser
+from falyx.parser.signature import infer_args_from_func
 from falyx.prompt_utils import confirm_async, should_prompt_user
 from falyx.protocols import ArgParserProtocol
 from falyx.retry import RetryPolicy

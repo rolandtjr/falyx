@@ -2,7 +2,7 @@ import asyncio
 from uuid import UUID, uuid4
 
 from falyx import Falyx
-from falyx.parsers import CommandArgumentParser
+from falyx.parser import CommandArgumentParser
 
 flx = Falyx("Test Type Validation")
 

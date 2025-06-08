@@ -5,7 +5,7 @@ from typing import Literal
 
 import pytest
 
-from falyx.parsers.utils import coerce_value
+from falyx.parser.utils import coerce_value
 
 
 # --- Tests ---

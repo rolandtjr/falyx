@@ -2,7 +2,7 @@ import pytest
 
 from falyx.action import Action, SelectionAction
 from falyx.exceptions import CommandArgumentError
-from falyx.parsers import ArgumentAction, CommandArgumentParser
+from falyx.parser import ArgumentAction, CommandArgumentParser
 
 
 def test_add_argument():

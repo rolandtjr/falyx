@@ -6,11 +6,12 @@ from falyx.action.types import FileReturnType
 
 sf = SelectFileAction(
     name="select_file",
-    suffix_filter=".py",
+    suffix_filter=".yaml",
     title="Select a YAML file",
-    prompt_message="Choose > ",
+    prompt_message="Choose 2 > ",
     return_type=FileReturnType.TEXT,
     columns=3,
+    number_selections=2,
 )
 
 flx = Falyx()

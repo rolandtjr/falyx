@@ -14,7 +14,7 @@ from falyx.context import ExecutionContext, SharedContext
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
 from falyx.logger import logger
-from falyx.parsers.utils import same_argument_definitions
+from falyx.parser.utils import same_argument_definitions
 from falyx.themes import OneColors
 
 

@@ -50,9 +50,10 @@ def test_command_str():
     """Test if Command string representation is correct."""
     action = Action("test_action", dummy_action)
     cmd = Command(key="TEST", description="Test Command", action=action)
+    print(cmd)
     assert (
         str(cmd)
-        == "Command(key='TEST', description='Test Command' action='Action(name='test_action', action=dummy_action, args=(), kwargs={}, retry=False)')"
+        == "Command(key='TEST', description='Test Command' action='Action(name='test_action', action=dummy_action, retry=False, rollback=False)')"
     )
 
 

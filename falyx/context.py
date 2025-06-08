@@ -129,7 +129,7 @@ class ExecutionContext(BaseModel):
         args = ", ".join(map(repr, self.args))
         kwargs = ", ".join(f"{key}={value!r}" for key, value in self.kwargs.items())
         signature = ", ".join(filter(None, [args, kwargs]))
-        return f"{self.name} ({signature})"
+        return f"{self.action} ({signature})"
 
     def as_dict(self) -> dict:
         return {

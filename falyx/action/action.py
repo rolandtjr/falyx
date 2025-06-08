@@ -157,6 +157,6 @@ class Action(BaseAction):
         return (
             f"Action(name={self.name!r}, action="
             f"{getattr(self._action, '__name__', repr(self._action))}, "
-            f"args={self.args!r}, kwargs={self.kwargs!r}, "
-            f"retry={self.retry_policy.enabled})"
+            f"retry={self.retry_policy.enabled}, "
+            f"rollback={self.rollback is not None})"
         )

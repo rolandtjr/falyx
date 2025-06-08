@@ -1,7 +1,7 @@
 import pytest
 
 from falyx.exceptions import CommandArgumentError
-from falyx.parsers import CommandArgumentParser
+from falyx.parser import CommandArgumentParser
 
 
 def test_str():

@@ -12,7 +12,7 @@ from rich.text import Text
 
 from falyx.action.base import BaseAction
 from falyx.exceptions import CommandArgumentError
-from falyx.parsers.utils import coerce_value
+from falyx.parser.utils import coerce_value
 from falyx.signals import HelpSignal
 
 

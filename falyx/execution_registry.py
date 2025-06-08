@@ -112,7 +112,7 @@ class ExecutionRegistry:
         cls,
         name: str = "",
         index: int | None = None,
-        result: int | None = None,
+        result_index: int | None = None,
         clear: bool = False,
         last_result: bool = False,
         status: Literal["all", "success", "error"] = "all",
@@ -138,12 +138,12 @@ class ExecutionRegistry:
             )
             return
 
-        if result is not None and result >= 0:
+        if result_index is not None and result_index >= 0:
             try:
-                result_context = cls._store_by_index[result]
+                result_context = cls._store_by_index[result_index]
             except KeyError:
                 cls._console.print(
-                    f"[{OneColors.DARK_RED}]❌ No execution found for index {index}."
+                    f"[{OneColors.DARK_RED}]❌ No execution found for index {result_index}."
                 )
                 return
             cls._console.print(f"{result_context.signature}:")

@@ -1,4 +1,4 @@
-from falyx.parsers import ArgumentAction
+from falyx.parser import ArgumentAction
 
 
 def test_argument_action():

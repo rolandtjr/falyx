@@ -1,6 +1,6 @@
 import pytest
 
-from falyx.parsers import Argument, ArgumentAction
+from falyx.parser import Argument, ArgumentAction
 
 
 def test_positional_text_with_choices():

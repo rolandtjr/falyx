@@ -38,13 +38,14 @@ async def test_action_async_callable():
     action = Action("test_action", async_callable)
     result = await action()
     assert result == "Hello, World!"
+    print(action)
     assert (
         str(action)
-        == "Action(name='test_action', action=async_callable, args=(), kwargs={}, retry=False)"
+        == "Action(name='test_action', action=async_callable, retry=False, rollback=False)"
     )
     assert (
         repr(action)
-        == "Action(name='test_action', action=async_callable, args=(), kwargs={}, retry=False)"
+        == "Action(name='test_action', action=async_callable, retry=False, rollback=False)"
     )
 
 

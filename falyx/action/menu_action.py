@@ -111,7 +111,7 @@ class MenuAction(BaseAction):
             key = effective_default
             if not self.never_prompt:
                 table = self._build_table()
-                key = await prompt_for_selection(
+                key_ = await prompt_for_selection(
                     self.menu_options.keys(),
                     table,
                     default_selection=self.default_selection,
@@ -120,6 +120,10 @@ class MenuAction(BaseAction):
                     prompt_message=self.prompt_message,
                     show_table=self.show_table,
                 )
+                if isinstance(key_, str):
+                    key = key_
+                else:
+                    assert False, "Unreachable, MenuAction only supports single selection"
             option = self.menu_options[key]
             result = await option.action(*args, **kwargs)
             context.result = result

@@ -66,6 +66,9 @@ class SelectFileAction(BaseAction):
         style: str = OneColors.WHITE,
         suffix_filter: str | None = None,
         return_type: FileReturnType | str = FileReturnType.PATH,
+        number_selections: int | str = 1,
+        separator: str = ",",
+        allow_duplicates: bool = False,
         console: Console | None = None,
         prompt_session: PromptSession | None = None,
     ):
@@ -76,12 +79,30 @@ class SelectFileAction(BaseAction):
         self.prompt_message = prompt_message
         self.suffix_filter = suffix_filter
         self.style = style
+        self.number_selections = number_selections
+        self.separator = separator
+        self.allow_duplicates = allow_duplicates
         if isinstance(console, Console):
             self.console = console
         elif console:
             raise ValueError("`console` must be an instance of `rich.console.Console`")
         self.prompt_session = prompt_session or PromptSession()
         self.return_type = self._coerce_return_type(return_type)
+
+    @property
+    def number_selections(self) -> int | str:
+        return self._number_selections
+
+    @number_selections.setter
+    def number_selections(self, value: int | str):
+        if isinstance(value, int) and value > 0:
+            self._number_selections: int | str = value
+        elif isinstance(value, str):
+            if value not in ("*"):
+                raise ValueError("number_selections string must be one of '*'")
+            self._number_selections = value
+        else:
+            raise ValueError("number_selections must be a positive integer or one of '*'")
 
     def _coerce_return_type(self, return_type: FileReturnType | str) -> FileReturnType:
         if isinstance(return_type, FileReturnType):
@@ -163,18 +184,25 @@ class SelectFileAction(BaseAction):
                 title=self.title, selections=options | cancel_option, columns=self.columns
             )
 
-            key = await prompt_for_selection(
+            keys = await prompt_for_selection(
                 (options | cancel_option).keys(),
                 table,
                 console=self.console,
                 prompt_session=self.prompt_session,
                 prompt_message=self.prompt_message,
+                number_selections=self.number_selections,
+                separator=self.separator,
+                allow_duplicates=self.allow_duplicates,
+                cancel_key=cancel_key,
             )
 
-            if key == cancel_key:
-                raise CancelSignal("User canceled the selection.")
+            if isinstance(keys, str):
+                if keys == cancel_key:
+                    raise CancelSignal("User canceled the selection.")
+                result = options[keys].value
+            elif isinstance(keys, list):
+                result = [options[key].value for key in keys]
 
-            result = options[key].value
             context.result = result
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
             return result

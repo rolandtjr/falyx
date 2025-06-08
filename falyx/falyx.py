@@ -59,7 +59,7 @@ from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import Hook, HookManager, HookType
 from falyx.logger import logger
 from falyx.options_manager import OptionsManager
-from falyx.parsers import CommandArgumentParser, FalyxParsers, get_arg_parsers
+from falyx.parser import CommandArgumentParser, FalyxParsers, get_arg_parsers
 from falyx.protocols import ArgParserProtocol
 from falyx.retry import RetryPolicy
 from falyx.signals import BackSignal, CancelSignal, HelpSignal, QuitSignal
@@ -330,7 +330,13 @@ class Falyx:
             action="store_true",
             help="Clear the Execution History.",
         )
-        parser.add_argument("-r", "--result", type=int, help="Get the result by index")
+        parser.add_argument(
+            "-r",
+            "--result",
+            type=int,
+            dest="result_index",
+            help="Get the result by index",
+        )
         parser.add_argument(
             "-l", "--last-result", action="store_true", help="Get the last result"
         )

@@ -1,7 +1,7 @@
 import pytest
 
 from falyx.exceptions import CommandArgumentError
-from falyx.parsers import ArgumentAction, CommandArgumentParser
+from falyx.parser import ArgumentAction, CommandArgumentParser
 
 
 @pytest.mark.asyncio

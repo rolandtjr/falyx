@@ -7,7 +7,7 @@ from dateutil import parser as date_parser
 
 from falyx.action.base import BaseAction
 from falyx.logger import logger
-from falyx.parsers.signature import infer_args_from_func
+from falyx.parser.signature import infer_args_from_func
 
 
 def coerce_bool(value: str) -> bool:
