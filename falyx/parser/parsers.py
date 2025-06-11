@@ -76,14 +76,14 @@ def get_root_parser(
         help="Run in non-interactive mode with all prompts bypassed.",
     )
     parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Enable debug logging for Falyx."
+        "-v", "--verbose", action="store_true", help=f"Enable debug logging for {prog}."
     )
     parser.add_argument(
         "--debug-hooks",
         action="store_true",
         help="Enable default lifecycle debug logging",
     )
-    parser.add_argument("--version", action="store_true", help="Show Falyx version")
+    parser.add_argument("--version", action="store_true", help=f"Show {prog} version")
     return parser
 
 
@@ -98,7 +98,6 @@ def get_subparsers(
     subparsers = parser.add_subparsers(
         title=title,
         description=description,
-        metavar="COMMAND",
         dest="command",
     )
     return subparsers
@@ -124,6 +123,8 @@ def get_arg_parsers(
     subparsers: _SubParsersAction | None = None,
 ) -> FalyxParsers:
     """Returns the argument parser for the CLI."""
+    if epilog is None:
+        epilog = f"Tip: Use '{prog} run ?[COMMAND]' to preview any command from the CLI."
     if root_parser is None:
         parser = get_root_parser(
             prog=prog,
@@ -145,7 +146,14 @@ def get_arg_parsers(
         parser = root_parser
 
     if subparsers is None:
-        subparsers = get_subparsers(parser)
+        if prog == "falyx":
+            subparsers = get_subparsers(
+                parser,
+                title="Falyx Commands",
+                description="Available commands for the Falyx CLI.",
+            )
+        else:
+            subparsers = get_subparsers(parser, title="subcommands", description=None)
     if not isinstance(subparsers, _SubParsersAction):
         raise TypeError("subparsers must be an instance of _SubParsersAction")
 
@@ -154,10 +162,10 @@ def get_arg_parsers(
     if isinstance(commands, dict):
         for command in commands.values():
             run_description.append(command.usage)
-            command_description = command.description or command.help_text
+            command_description = command.help_text or command.description
             run_description.append(f"{' '*24}{command_description}")
     run_epilog = (
-        "Tip: Use 'falyx run ?[COMMAND]' to preview commands by their key or alias."
+        f"Tip: Use '{prog} run ?[COMMAND]' to preview commands by their key or alias."
     )
     run_parser = subparsers.add_parser(
         "run",
@@ -259,7 +267,7 @@ def get_arg_parsers(
         "-t", "--tag", help="Filter commands by tag (case-insensitive)", default=None
     )
 
-    version_parser = subparsers.add_parser("version", help="Show the Falyx version")
+    version_parser = subparsers.add_parser("version", help=f"Show {prog} version")
 
     return FalyxParsers(
         root=parser,

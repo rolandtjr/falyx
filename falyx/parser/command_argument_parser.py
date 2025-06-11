@@ -9,7 +9,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.text import Text
 
-from falyx.action.base import BaseAction
+from falyx.action.base_action import BaseAction
 from falyx.exceptions import CommandArgumentError
 from falyx.parser.argument import Argument
 from falyx.parser.argument_action import ArgumentAction

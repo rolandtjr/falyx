@@ -2,19 +2,24 @@ import asyncio
 
 from falyx import Falyx
 from falyx.action import SelectFileAction
-from falyx.action.types import FileReturnType
+from falyx.action.action_types import FileType
 
 sf = SelectFileAction(
     name="select_file",
     suffix_filter=".yaml",
     title="Select a YAML file",
     prompt_message="Choose 2 > ",
-    return_type=FileReturnType.TEXT,
+    return_type=FileType.TEXT,
     columns=3,
     number_selections=2,
 )
 
-flx = Falyx()
+flx = Falyx(
+    title="File Selection Example",
+    description="This example demonstrates how to select files using Falyx.",
+    version="1.0.0",
+    program="file_select.py",
+)
 
 flx.add_command(
     key="S",

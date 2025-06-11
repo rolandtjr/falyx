@@ -43,7 +43,7 @@ from rich.markdown import Markdown
 from rich.table import Table
 
 from falyx.action.action import Action
-from falyx.action.base import BaseAction
+from falyx.action.base_action import BaseAction
 from falyx.bottom_bar import BottomBar
 from falyx.command import Command
 from falyx.context import ExecutionContext
@@ -346,7 +346,6 @@ class Falyx:
             aliases=["HISTORY"],
             action=Action(name="View Execution History", action=er.summary),
             style=OneColors.DARK_YELLOW,
-            simple_help_signature=True,
             arg_parser=parser,
             help_text="View the execution history of commands.",
         )
@@ -1152,7 +1151,7 @@ class Falyx:
             sys.exit(0)
 
         if self.cli_args.command == "version" or self.cli_args.version:
-            self.console.print(f"[{self.version_style}]{self.program} v{__version__}[/]")
+            self.console.print(f"[{self.version_style}]{self.program} v{self.version}[/]")
             sys.exit(0)
 
         if self.cli_args.command == "preview":

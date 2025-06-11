@@ -8,7 +8,7 @@ Licensed under the MIT License. See LICENSE file for details.
 from .action import Action
 from .action_factory import ActionFactoryAction
 from .action_group import ActionGroup
-from .base import BaseAction
+from .base_action import BaseAction
 from .chained_action import ChainedAction
 from .fallback_action import FallbackAction
 from .http_action import HTTPAction

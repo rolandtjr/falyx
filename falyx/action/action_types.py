@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 
 
-class FileReturnType(Enum):
+class FileType(Enum):
     """Enum for file return types."""
 
     TEXT = "text"
@@ -28,7 +28,7 @@ class FileReturnType(Enum):
         return aliases.get(value, value)
 
     @classmethod
-    def _missing_(cls, value: object) -> FileReturnType:
+    def _missing_(cls, value: object) -> FileType:
         if isinstance(value, str):
             normalized = value.lower()
             alias = cls._get_alias(normalized)
@@ -36,7 +36,7 @@ class FileReturnType(Enum):
                 if member.value == alias:
                     return member
         valid = ", ".join(member.value for member in cls)
-        raise ValueError(f"Invalid FileReturnType: '{value}'. Must be one of: {valid}")
+        raise ValueError(f"Invalid FileType: '{value}'. Must be one of: {valid}")
 
 
 class SelectionReturnType(Enum):

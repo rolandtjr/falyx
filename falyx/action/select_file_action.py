@@ -14,8 +14,8 @@ from prompt_toolkit import PromptSession
 from rich.console import Console
 from rich.tree import Tree
 
-from falyx.action.base import BaseAction
-from falyx.action.types import FileReturnType
+from falyx.action.action_types import FileType
+from falyx.action.base_action import BaseAction
 from falyx.context import ExecutionContext
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookType
@@ -50,7 +50,7 @@ class SelectFileAction(BaseAction):
         prompt_message (str): Message to display when prompting for selection.
         style (str): Style for the selection options.
         suffix_filter (str | None): Restrict to certain file types.
-        return_type (FileReturnType): What to return (path, content, parsed).
+        return_type (FileType): What to return (path, content, parsed).
         console (Console | None): Console instance for output.
         prompt_session (PromptSession | None): Prompt session for user input.
     """
@@ -65,7 +65,7 @@ class SelectFileAction(BaseAction):
         prompt_message: str = "Choose > ",
         style: str = OneColors.WHITE,
         suffix_filter: str | None = None,
-        return_type: FileReturnType | str = FileReturnType.PATH,
+        return_type: FileType | str = FileType.PATH,
         number_selections: int | str = 1,
         separator: str = ",",
         allow_duplicates: bool = False,
@@ -104,35 +104,35 @@ class SelectFileAction(BaseAction):
         else:
             raise ValueError("number_selections must be a positive integer or one of '*'")
 
-    def _coerce_return_type(self, return_type: FileReturnType | str) -> FileReturnType:
-        if isinstance(return_type, FileReturnType):
+    def _coerce_return_type(self, return_type: FileType | str) -> FileType:
+        if isinstance(return_type, FileType):
             return return_type
-        return FileReturnType(return_type)
+        return FileType(return_type)
 
     def get_options(self, files: list[Path]) -> dict[str, SelectionOption]:
         value: Any
         options = {}
         for index, file in enumerate(files):
             try:
-                if self.return_type == FileReturnType.TEXT:
+                if self.return_type == FileType.TEXT:
                     value = file.read_text(encoding="UTF-8")
-                elif self.return_type == FileReturnType.PATH:
+                elif self.return_type == FileType.PATH:
                     value = file
-                elif self.return_type == FileReturnType.JSON:
+                elif self.return_type == FileType.JSON:
                     value = json.loads(file.read_text(encoding="UTF-8"))
-                elif self.return_type == FileReturnType.TOML:
+                elif self.return_type == FileType.TOML:
                     value = toml.loads(file.read_text(encoding="UTF-8"))
-                elif self.return_type == FileReturnType.YAML:
+                elif self.return_type == FileType.YAML:
                     value = yaml.safe_load(file.read_text(encoding="UTF-8"))
-                elif self.return_type == FileReturnType.CSV:
+                elif self.return_type == FileType.CSV:
                     with open(file, newline="", encoding="UTF-8") as csvfile:
                         reader = csv.reader(csvfile)
                         value = list(reader)
-                elif self.return_type == FileReturnType.TSV:
+                elif self.return_type == FileType.TSV:
                     with open(file, newline="", encoding="UTF-8") as tsvfile:
                         reader = csv.reader(tsvfile, delimiter="\t")
                         value = list(reader)
-                elif self.return_type == FileReturnType.XML:
+                elif self.return_type == FileType.XML:
                     tree = ET.parse(file, parser=ET.XMLParser(encoding="UTF-8"))
                     root = tree.getroot()
                     value = ET.tostring(root, encoding="unicode")

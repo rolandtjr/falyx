@@ -7,7 +7,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.tree import Tree
 
-from falyx.action.base import BaseAction
+from falyx.action.base_action import BaseAction
 from falyx.context import ExecutionContext
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookType

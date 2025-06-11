@@ -2,12 +2,12 @@
 """chained_action.py"""
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from rich.tree import Tree
 
 from falyx.action.action import Action
-from falyx.action.base import BaseAction
+from falyx.action.base_action import BaseAction
 from falyx.action.fallback_action import FallbackAction
 from falyx.action.literal_input_action import LiteralInputAction
 from falyx.action.mixins import ActionListMixin
@@ -47,7 +47,7 @@ class ChainedAction(BaseAction, ActionListMixin):
     def __init__(
         self,
         name: str,
-        actions: list[BaseAction | Any] | None = None,
+        actions: Sequence[BaseAction | Callable[..., Any]] | None = None,
         *,
         hooks: HookManager | None = None,
         inject_last_result: bool = False,
@@ -67,7 +67,7 @@ class ChainedAction(BaseAction, ActionListMixin):
         if actions:
             self.set_actions(actions)
 
-    def _wrap_if_needed(self, action: BaseAction | Any) -> BaseAction:
+    def _wrap_if_needed(self, action: BaseAction | Callable[..., Any]) -> BaseAction:
         if isinstance(action, BaseAction):
             return action
         elif callable(action):
@@ -75,13 +75,19 @@ class ChainedAction(BaseAction, ActionListMixin):
         else:
             return LiteralInputAction(action)
 
-    def add_action(self, action: BaseAction | Any) -> None:
+    def add_action(self, action: BaseAction | Callable[..., Any]) -> None:
         action = self._wrap_if_needed(action)
         if self.actions and self.auto_inject and not action.inject_last_result:
             action.inject_last_result = True
         super().add_action(action)
         if hasattr(action, "register_teardown") and callable(action.register_teardown):
             action.register_teardown(self.hooks)
+
+    def set_actions(self, actions: Sequence[BaseAction | Callable[..., Any]]) -> None:
+        """Replaces the current action list with a new one."""
+        self.actions.clear()
+        for action in actions:
+            self.add_action(action)
 
     def get_infer_target(self) -> tuple[Callable[..., Any] | None, dict[str, Any] | None]:
         if self.actions:

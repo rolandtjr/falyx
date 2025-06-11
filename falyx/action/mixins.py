@@ -1,6 +1,8 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """mixins.py"""
-from falyx.action.base import BaseAction
+from typing import Sequence
+
+from falyx.action.base_action import BaseAction
 
 
 class ActionListMixin:
@@ -9,7 +11,7 @@ class ActionListMixin:
     def __init__(self) -> None:
         self.actions: list[BaseAction] = []
 
-    def set_actions(self, actions: list[BaseAction]) -> None:
+    def set_actions(self, actions: Sequence[BaseAction]) -> None:
         """Replaces the current action list with a new one."""
         self.actions.clear()
         for action in actions:

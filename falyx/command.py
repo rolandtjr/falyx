@@ -27,7 +27,7 @@ from rich.console import Console
 from rich.tree import Tree
 
 from falyx.action.action import Action
-from falyx.action.base import BaseAction
+from falyx.action.base_action import BaseAction
 from falyx.context import ExecutionContext
 from falyx.debug import register_debug_hooks
 from falyx.execution_registry import ExecutionRegistry as er

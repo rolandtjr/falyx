@@ -2,12 +2,12 @@
 """action_group.py"""
 import asyncio
 import random
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from rich.tree import Tree
 
 from falyx.action.action import Action
-from falyx.action.base import BaseAction
+from falyx.action.base_action import BaseAction
 from falyx.action.mixins import ActionListMixin
 from falyx.context import ExecutionContext, SharedContext
 from falyx.execution_registry import ExecutionRegistry as er
@@ -54,7 +54,7 @@ class ActionGroup(BaseAction, ActionListMixin):
     def __init__(
         self,
         name: str,
-        actions: list[BaseAction] | None = None,
+        actions: Sequence[BaseAction | Callable[..., Any]] | None = None,
         *,
         hooks: HookManager | None = None,
         inject_last_result: bool = False,
@@ -70,7 +70,7 @@ class ActionGroup(BaseAction, ActionListMixin):
         if actions:
             self.set_actions(actions)
 
-    def _wrap_if_needed(self, action: BaseAction | Any) -> BaseAction:
+    def _wrap_if_needed(self, action: BaseAction | Callable[..., Any]) -> BaseAction:
         if isinstance(action, BaseAction):
             return action
         elif callable(action):
@@ -81,11 +81,17 @@ class ActionGroup(BaseAction, ActionListMixin):
                 f"{type(action).__name__}"
             )
 
-    def add_action(self, action: BaseAction | Any) -> None:
+    def add_action(self, action: BaseAction | Callable[..., Any]) -> None:
         action = self._wrap_if_needed(action)
         super().add_action(action)
         if hasattr(action, "register_teardown") and callable(action.register_teardown):
             action.register_teardown(self.hooks)
+
+    def set_actions(self, actions: Sequence[BaseAction | Callable[..., Any]]) -> None:
+        """Replaces the current action list with a new one."""
+        self.actions.clear()
+        for action in actions:
+            self.add_action(action)
 
     def get_infer_target(self) -> tuple[Callable[..., Any] | None, dict[str, Any] | None]:
         arg_defs = same_argument_definitions(self.actions)

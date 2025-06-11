@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 from rich.tree import Tree
 
-from falyx.action.base import BaseAction
+from falyx.action.base_action import BaseAction
 from falyx.context import ExecutionContext, SharedContext
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType

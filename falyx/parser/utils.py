@@ -6,7 +6,7 @@ from typing import Any, Literal, Union, get_args, get_origin
 
 from dateutil import parser as date_parser
 
-from falyx.action.base import BaseAction
+from falyx.action.base_action import BaseAction
 from falyx.logger import logger
 from falyx.parser.signature import infer_args_from_func
 

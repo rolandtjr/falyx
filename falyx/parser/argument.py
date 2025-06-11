@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from falyx.action.base import BaseAction
+from falyx.action.base_action import BaseAction
 from falyx.parser.argument_action import ArgumentAction
 
 
