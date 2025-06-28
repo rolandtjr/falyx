@@ -2,14 +2,15 @@
 """action_group.py"""
 import asyncio
 import random
-from typing import Any, Callable, Sequence
+from typing import Any, Awaitable, Callable, Sequence
 
 from rich.tree import Tree
 
 from falyx.action.action import Action
+from falyx.action.action_mixins import ActionListMixin
 from falyx.action.base_action import BaseAction
-from falyx.action.mixins import ActionListMixin
 from falyx.context import ExecutionContext, SharedContext
+from falyx.exceptions import EmptyGroupError
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import Hook, HookManager, HookType
 from falyx.logger import logger
@@ -54,7 +55,9 @@ class ActionGroup(BaseAction, ActionListMixin):
     def __init__(
         self,
         name: str,
-        actions: Sequence[BaseAction | Callable[..., Any]] | None = None,
+        actions: (
+            Sequence[BaseAction | Callable[..., Any] | Callable[..., Awaitable]] | None
+        ) = None,
         *,
         hooks: HookManager | None = None,
         inject_last_result: bool = False,
@@ -104,6 +107,8 @@ class ActionGroup(BaseAction, ActionListMixin):
         return None, None
 
     async def _run(self, *args, **kwargs) -> list[tuple[str, Any]]:
+        if not self.actions:
+            raise EmptyGroupError(f"[{self.name}] No actions to execute.")
         shared_context = SharedContext(name=self.name, action=self, is_parallel=True)
         if self.shared_context:
             shared_context.set_shared_result(self.shared_context.last_result())

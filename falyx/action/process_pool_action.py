@@ -7,12 +7,13 @@ import random
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from rich.tree import Tree
 
 from falyx.action.base_action import BaseAction
 from falyx.context import ExecutionContext, SharedContext
+from falyx.exceptions import EmptyPoolError
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
 from falyx.logger import logger
@@ -37,7 +38,7 @@ class ProcessPoolAction(BaseAction):
     def __init__(
         self,
         name: str,
-        actions: list[ProcessTask] | None = None,
+        actions: Sequence[ProcessTask] | None = None,
         *,
         hooks: HookManager | None = None,
         executor: ProcessPoolExecutor | None = None,
@@ -56,7 +57,7 @@ class ProcessPoolAction(BaseAction):
         if actions:
             self.set_actions(actions)
 
-    def set_actions(self, actions: list[ProcessTask]) -> None:
+    def set_actions(self, actions: Sequence[ProcessTask]) -> None:
         """Replaces the current action list with a new one."""
         self.actions.clear()
         for action in actions:
@@ -78,6 +79,8 @@ class ProcessPoolAction(BaseAction):
         return None, None
 
     async def _run(self, *args, **kwargs) -> Any:
+        if not self.actions:
+            raise EmptyPoolError(f"[{self.name}] No actions to execute.")
         shared_context = SharedContext(name=self.name, action=self, is_parallel=True)
         if self.shared_context:
             shared_context.set_shared_result(self.shared_context.last_result())

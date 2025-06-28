@@ -6,7 +6,7 @@ Licensed under the MIT License. See LICENSE file for details.
 """
 
 from .action import Action
-from .action_factory import ActionFactoryAction
+from .action_factory import ActionFactory
 from .action_group import ActionGroup
 from .base_action import BaseAction
 from .chained_action import ChainedAction
@@ -14,6 +14,7 @@ from .fallback_action import FallbackAction
 from .http_action import HTTPAction
 from .io_action import BaseIOAction
 from .literal_input_action import LiteralInputAction
+from .load_file_action import LoadFileAction
 from .menu_action import MenuAction
 from .process_action import ProcessAction
 from .process_pool_action import ProcessPoolAction
@@ -30,7 +31,7 @@ __all__ = [
     "BaseAction",
     "ChainedAction",
     "ProcessAction",
-    "ActionFactoryAction",
+    "ActionFactory",
     "HTTPAction",
     "BaseIOAction",
     "ShellAction",
@@ -43,4 +44,5 @@ __all__ = [
     "UserInputAction",
     "PromptMenuAction",
     "ProcessPoolAction",
+    "LoadFileAction",
 ]

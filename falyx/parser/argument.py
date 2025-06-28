@@ -46,6 +46,7 @@ class Argument:
                 ArgumentAction.STORE,
                 ArgumentAction.APPEND,
                 ArgumentAction.EXTEND,
+                ArgumentAction.ACTION,
             )
             and not self.positional
         ):
@@ -54,6 +55,7 @@ class Argument:
             ArgumentAction.STORE,
             ArgumentAction.APPEND,
             ArgumentAction.EXTEND,
+            ArgumentAction.ACTION,
         ) or isinstance(self.nargs, str):
             choice_text = self.dest
 

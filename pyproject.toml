@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "falyx"
-version = "0.1.53"
+version = "0.1.54"
 description = "Reliable and introspectable async CLI action framework."
 authors = ["Roland Thomas Jr <roland@rtj.dev>"]
 license = "MIT"
@@ -27,6 +27,10 @@ black = { version = "^25.0", allow-prereleases = true }
 mypy = { version = "^1.0", allow-prereleases = true }
 isort = { version = "^5.0", allow-prereleases = true }
 pytest-cov = "^4.0"
+mkdocs = "^1.6.1"
+mkdocs-material = "^9.6.14"
+mkdocstrings = {extras = ["python"], version = "^0.29.1"}
+mike = "^2.1.3"
 
 [tool.poetry.scripts]
 falyx = "falyx.__main__:main"

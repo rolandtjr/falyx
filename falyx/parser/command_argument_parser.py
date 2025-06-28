@@ -177,20 +177,19 @@ class CommandArgumentParser:
         else:
             choices = []
         for choice in choices:
-            if not isinstance(choice, expected_type):
-                try:
-                    coerce_value(choice, expected_type)
-                except Exception as error:
-                    raise CommandArgumentError(
-                        f"Invalid choice {choice!r}: not coercible to {expected_type.__name__} error: {error}"
-                    ) from error
+            try:
+                coerce_value(choice, expected_type)
+            except Exception as error:
+                raise CommandArgumentError(
+                    f"Invalid choice {choice!r}: not coercible to {expected_type.__name__} error: {error}"
+                ) from error
         return choices
 
     def _validate_default_type(
         self, default: Any, expected_type: type, dest: str
     ) -> None:
         """Validate the default value type."""
-        if default is not None and not isinstance(default, expected_type):
+        if default is not None:
             try:
                 coerce_value(default, expected_type)
             except Exception as error:
@@ -203,13 +202,12 @@ class CommandArgumentParser:
     ) -> None:
         if isinstance(default, list):
             for item in default:
-                if not isinstance(item, expected_type):
-                    try:
-                        coerce_value(item, expected_type)
-                    except Exception as error:
-                        raise CommandArgumentError(
-                            f"Default list value {default!r} for '{dest}' cannot be coerced to {expected_type.__name__} error: {error}"
-                        ) from error
+                try:
+                    coerce_value(item, expected_type)
+                except Exception as error:
+                    raise CommandArgumentError(
+                        f"Default list value {default!r} for '{dest}' cannot be coerced to {expected_type.__name__} error: {error}"
+                    ) from error
 
     def _validate_resolver(
         self, action: ArgumentAction, resolver: BaseAction | None
@@ -422,22 +420,22 @@ class CommandArgumentParser:
                 raise CommandArgumentError(
                     f"Expected at least one value for '{spec.dest}'"
                 )
-            while i < len(args) and not args[i].startswith("-"):
+            while i < len(args) and args[i] not in self._keyword:
                 values.append(args[i])
                 i += 1
             assert values, "Expected at least one value for '+' nargs: shouldn't happen"
             return values, i
         elif spec.nargs == "*":
-            while i < len(args) and not args[i].startswith("-"):
+            while i < len(args) and args[i] not in self._keyword:
                 values.append(args[i])
                 i += 1
             return values, i
         elif spec.nargs == "?":
-            if i < len(args) and not args[i].startswith("-"):
+            if i < len(args) and args[i] not in self._keyword:
                 return [args[i]], i + 1
             return [], i
         elif spec.nargs is None:
-            if i < len(args) and not args[i].startswith("-"):
+            if i < len(args) and args[i] not in self._keyword:
                 return [args[i]], i + 1
             return [], i
         assert False, "Invalid nargs value: shouldn't happen"
@@ -524,22 +522,141 @@ class CommandArgumentParser:
 
         return i
 
-    def _expand_posix_bundling(self, args: list[str]) -> list[str]:
+    def _expand_posix_bundling(self, token: str) -> list[str] | str:
         """Expand POSIX-style bundled arguments into separate arguments."""
         expanded = []
-        for token in args:
-            if token.startswith("-") and not token.startswith("--") and len(token) > 2:
-                # POSIX bundle
-                # e.g. -abc -> -a -b -c
-                for char in token[1:]:
-                    flag = f"-{char}"
-                    arg = self._flag_map.get(flag)
-                    if not arg:
-                        raise CommandArgumentError(f"Unrecognized option: {flag}")
-                    expanded.append(flag)
-            else:
-                expanded.append(token)
+        if token.startswith("-") and not token.startswith("--") and len(token) > 2:
+            # POSIX bundle
+            # e.g. -abc -> -a -b -c
+            for char in token[1:]:
+                flag = f"-{char}"
+                arg = self._flag_map.get(flag)
+                if not arg:
+                    raise CommandArgumentError(f"Unrecognized option: {flag}")
+                expanded.append(flag)
+        else:
+            return token
         return expanded
+
+    async def _handle_token(
+        self,
+        token: str,
+        args: list[str],
+        i: int,
+        result: dict[str, Any],
+        positional_args: list[Argument],
+        consumed_positional_indices: set[int],
+        consumed_indices: set[int],
+        from_validate: bool = False,
+    ) -> int:
+        if token in self._keyword:
+            spec = self._keyword[token]
+            action = spec.action
+
+            if action == ArgumentAction.HELP:
+                if not from_validate:
+                    self.render_help()
+                raise HelpSignal()
+            elif action == ArgumentAction.ACTION:
+                assert isinstance(
+                    spec.resolver, BaseAction
+                ), "resolver should be an instance of BaseAction"
+                values, new_i = self._consume_nargs(args, i + 1, spec)
+                try:
+                    typed_values = [coerce_value(value, spec.type) for value in values]
+                except ValueError as error:
+                    raise CommandArgumentError(
+                        f"Invalid value for '{spec.dest}': {error}"
+                    ) from error
+                try:
+                    result[spec.dest] = await spec.resolver(*typed_values)
+                except Exception as error:
+                    raise CommandArgumentError(
+                        f"[{spec.dest}] Action failed: {error}"
+                    ) from error
+                consumed_indices.update(range(i, new_i))
+                i = new_i
+            elif action == ArgumentAction.STORE_TRUE:
+                result[spec.dest] = True
+                consumed_indices.add(i)
+                i += 1
+            elif action == ArgumentAction.STORE_FALSE:
+                result[spec.dest] = False
+                consumed_indices.add(i)
+                i += 1
+            elif action == ArgumentAction.COUNT:
+                result[spec.dest] = result.get(spec.dest, 0) + 1
+                consumed_indices.add(i)
+                i += 1
+            elif action == ArgumentAction.APPEND:
+                assert result.get(spec.dest) is not None, "dest should not be None"
+                values, new_i = self._consume_nargs(args, i + 1, spec)
+                try:
+                    typed_values = [coerce_value(value, spec.type) for value in values]
+                except ValueError as error:
+                    raise CommandArgumentError(
+                        f"Invalid value for '{spec.dest}': {error}"
+                    ) from error
+                if spec.nargs is None:
+                    result[spec.dest].append(spec.type(values[0]))
+                else:
+                    result[spec.dest].append(typed_values)
+                consumed_indices.update(range(i, new_i))
+                i = new_i
+            elif action == ArgumentAction.EXTEND:
+                assert result.get(spec.dest) is not None, "dest should not be None"
+                values, new_i = self._consume_nargs(args, i + 1, spec)
+                try:
+                    typed_values = [coerce_value(value, spec.type) for value in values]
+                except ValueError as error:
+                    raise CommandArgumentError(
+                        f"Invalid value for '{spec.dest}': {error}"
+                    ) from error
+                result[spec.dest].extend(typed_values)
+                consumed_indices.update(range(i, new_i))
+                i = new_i
+            else:
+                values, new_i = self._consume_nargs(args, i + 1, spec)
+                try:
+                    typed_values = [coerce_value(value, spec.type) for value in values]
+                except ValueError as error:
+                    raise CommandArgumentError(
+                        f"Invalid value for '{spec.dest}': {error}"
+                    ) from error
+                if not typed_values and spec.nargs not in ("*", "?"):
+                    raise CommandArgumentError(
+                        f"Expected at least one value for '{spec.dest}'"
+                    )
+                if spec.nargs in (None, 1, "?") and spec.action != ArgumentAction.APPEND:
+                    result[spec.dest] = (
+                        typed_values[0] if len(typed_values) == 1 else typed_values
+                    )
+                else:
+                    result[spec.dest] = typed_values
+                consumed_indices.update(range(i, new_i))
+                i = new_i
+        elif token.startswith("-"):
+            # Handle unrecognized option
+            raise CommandArgumentError(f"Unrecognized flag: {token}")
+        else:
+            # Get the next flagged argument index if it exists
+            next_flagged_index = -1
+            for index, arg in enumerate(args[i:], start=i):
+                if arg in self._keyword:
+                    next_flagged_index = index
+                    break
+            print(f"next_flagged_index: {next_flagged_index}")
+            print(f"{self._keyword_list=}")
+            if next_flagged_index == -1:
+                next_flagged_index = len(args)
+            args_consumed = await self._consume_all_positional_args(
+                args[i:next_flagged_index],
+                result,
+                positional_args,
+                consumed_positional_indices,
+            )
+            i += args_consumed
+        return i
 
     async def parse_args(
         self, args: list[str] | None = None, from_validate: bool = False
@@ -548,132 +665,29 @@ class CommandArgumentParser:
         if args is None:
             args = []
 
-        args = self._expand_posix_bundling(args)
-
         result = {arg.dest: deepcopy(arg.default) for arg in self._arguments}
-        positional_args = [arg for arg in self._arguments if arg.positional]
+        positional_args: list[Argument] = [
+            arg for arg in self._arguments if arg.positional
+        ]
         consumed_positional_indices: set[int] = set()
         consumed_indices: set[int] = set()
 
         i = 0
         while i < len(args):
-            token = args[i]
-            if token in self._keyword:
-                spec = self._keyword[token]
-                action = spec.action
-
-                if action == ArgumentAction.HELP:
-                    if not from_validate:
-                        self.render_help()
-                    raise HelpSignal()
-                elif action == ArgumentAction.ACTION:
-                    assert isinstance(
-                        spec.resolver, BaseAction
-                    ), "resolver should be an instance of BaseAction"
-                    values, new_i = self._consume_nargs(args, i + 1, spec)
-                    try:
-                        typed_values = [
-                            coerce_value(value, spec.type) for value in values
-                        ]
-                    except ValueError as error:
-                        raise CommandArgumentError(
-                            f"Invalid value for '{spec.dest}': {error}"
-                        ) from error
-                    try:
-                        result[spec.dest] = await spec.resolver(*typed_values)
-                    except Exception as error:
-                        raise CommandArgumentError(
-                            f"[{spec.dest}] Action failed: {error}"
-                        ) from error
-                    consumed_indices.update(range(i, new_i))
-                    i = new_i
-                elif action == ArgumentAction.STORE_TRUE:
-                    result[spec.dest] = True
-                    consumed_indices.add(i)
-                    i += 1
-                elif action == ArgumentAction.STORE_FALSE:
-                    result[spec.dest] = False
-                    consumed_indices.add(i)
-                    i += 1
-                elif action == ArgumentAction.COUNT:
-                    result[spec.dest] = result.get(spec.dest, 0) + 1
-                    consumed_indices.add(i)
-                    i += 1
-                elif action == ArgumentAction.APPEND:
-                    assert result.get(spec.dest) is not None, "dest should not be None"
-                    values, new_i = self._consume_nargs(args, i + 1, spec)
-                    try:
-                        typed_values = [
-                            coerce_value(value, spec.type) for value in values
-                        ]
-                    except ValueError as error:
-                        raise CommandArgumentError(
-                            f"Invalid value for '{spec.dest}': {error}"
-                        ) from error
-                    if spec.nargs is None:
-                        result[spec.dest].append(spec.type(values[0]))
-                    else:
-                        result[spec.dest].append(typed_values)
-                    consumed_indices.update(range(i, new_i))
-                    i = new_i
-                elif action == ArgumentAction.EXTEND:
-                    assert result.get(spec.dest) is not None, "dest should not be None"
-                    values, new_i = self._consume_nargs(args, i + 1, spec)
-                    try:
-                        typed_values = [
-                            coerce_value(value, spec.type) for value in values
-                        ]
-                    except ValueError as error:
-                        raise CommandArgumentError(
-                            f"Invalid value for '{spec.dest}': {error}"
-                        ) from error
-                    result[spec.dest].extend(typed_values)
-                    consumed_indices.update(range(i, new_i))
-                    i = new_i
-                else:
-                    values, new_i = self._consume_nargs(args, i + 1, spec)
-                    try:
-                        typed_values = [
-                            coerce_value(value, spec.type) for value in values
-                        ]
-                    except ValueError as error:
-                        raise CommandArgumentError(
-                            f"Invalid value for '{spec.dest}': {error}"
-                        ) from error
-                    if not typed_values and spec.nargs not in ("*", "?"):
-                        raise CommandArgumentError(
-                            f"Expected at least one value for '{spec.dest}'"
-                        )
-                    if (
-                        spec.nargs in (None, 1, "?")
-                        and spec.action != ArgumentAction.APPEND
-                    ):
-                        result[spec.dest] = (
-                            typed_values[0] if len(typed_values) == 1 else typed_values
-                        )
-                    else:
-                        result[spec.dest] = typed_values
-                    consumed_indices.update(range(i, new_i))
-                    i = new_i
-            elif token.startswith("-"):
-                # Handle unrecognized option
-                raise CommandArgumentError(f"Unrecognized flag: {token}")
-            else:
-                # Get the next flagged argument index if it exists
-                next_flagged_index = -1
-                for index, arg in enumerate(args[i:], start=i):
-                    if arg.startswith("-"):
-                        next_flagged_index = index
-                        break
-                if next_flagged_index == -1:
-                    next_flagged_index = len(args)
-                args_consumed = await self._consume_all_positional_args(
-                    args[i:next_flagged_index],
-                    result,
-                    positional_args,
-                    consumed_positional_indices,
-                )
-                i += args_consumed
+            token = self._expand_posix_bundling(args[i])
+            if isinstance(token, list):
+                args[i : i + 1] = token
+                token = args[i]
+            i = await self._handle_token(
+                token,
+                args,
+                i,
+                result,
+                positional_args,
+                consumed_positional_indices,
+                consumed_indices,
+                from_validate=from_validate,
+            )
 
         # Required validation
         for spec in self._arguments:
@@ -797,6 +811,8 @@ class CommandArgumentParser:
                     flags = arg.get_positional_text()
                     arg_line = Text(f"  {flags:<30} ")
                     help_text = arg.help or ""
+                    if help_text and len(flags) > 30:
+                        help_text = f"\n{'':<33}{help_text}"
                     arg_line.append(help_text)
                     self.console.print(arg_line)
             self.console.print("[bold]options:[/bold]")
@@ -805,6 +821,8 @@ class CommandArgumentParser:
                 flags_choice = f"{flags} {arg.get_choice_text()}"
                 arg_line = Text(f"  {flags_choice:<30} ")
                 help_text = arg.help or ""
+                if help_text and len(flags_choice) > 30:
+                    help_text = f"\n{'':<33}{help_text}"
                 arg_line.append(help_text)
                 self.console.print(arg_line)
 

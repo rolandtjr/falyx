@@ -1,6 +1,6 @@
 import pytest
 
-from falyx.action import Action, ActionFactoryAction, ChainedAction
+from falyx.action import Action, ActionFactory, ChainedAction
 
 
 def make_chain(value) -> ChainedAction:
@@ -16,9 +16,7 @@ def make_chain(value) -> ChainedAction:
 
 @pytest.mark.asyncio
 async def test_action_factory_action():
-    action = ActionFactoryAction(
-        name="test_action", factory=make_chain, args=("test_value",)
-    )
+    action = ActionFactory(name="test_action", factory=make_chain, args=("test_value",))
 
     result = await action()
 

@@ -38,7 +38,6 @@ from rich.tree import Tree
 
 from falyx.context import SharedContext
 from falyx.debug import register_debug_hooks
-from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import Hook, HookManager, HookType
 from falyx.logger import logger
 from falyx.options_manager import OptionsManager

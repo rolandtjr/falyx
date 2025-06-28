@@ -33,7 +33,6 @@ def coerce_enum(value: Any, enum_type: EnumMeta) -> Any:
             pass
 
     base_type = type(next(iter(enum_type)).value)
-    print(base_type)
     try:
         coerced_value = base_type(value)
         return enum_type(coerced_value)

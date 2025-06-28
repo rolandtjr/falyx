@@ -29,7 +29,10 @@ flx.add_command(
     ),
     arg_metadata={
         "service": "Service name",
-        "region": {"help": "Deployment region", "choices": ["us-east-1", "us-west-2"]},
+        "region": {
+            "help": "Deployment region",
+            "choices": ["us-east-1", "us-west-2", "eu-west-1"],
+        },
         "verbose": {"help": "Enable verbose mode"},
     },
     tags=["deployment", "service"],

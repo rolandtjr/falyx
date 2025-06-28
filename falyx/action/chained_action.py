@@ -2,15 +2,15 @@
 """chained_action.py"""
 from __future__ import annotations
 
-from typing import Any, Callable, Sequence
+from typing import Any, Awaitable, Callable, Sequence
 
 from rich.tree import Tree
 
 from falyx.action.action import Action
+from falyx.action.action_mixins import ActionListMixin
 from falyx.action.base_action import BaseAction
 from falyx.action.fallback_action import FallbackAction
 from falyx.action.literal_input_action import LiteralInputAction
-from falyx.action.mixins import ActionListMixin
 from falyx.context import ExecutionContext, SharedContext
 from falyx.exceptions import EmptyChainError
 from falyx.execution_registry import ExecutionRegistry as er
@@ -47,7 +47,10 @@ class ChainedAction(BaseAction, ActionListMixin):
     def __init__(
         self,
         name: str,
-        actions: Sequence[BaseAction | Callable[..., Any]] | None = None,
+        actions: (
+            Sequence[BaseAction | Callable[..., Any] | Callable[..., Awaitable[Any]]]
+            | None
+        ) = None,
         *,
         hooks: HookManager | None = None,
         inject_last_result: bool = False,

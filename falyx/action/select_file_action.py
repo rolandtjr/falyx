@@ -107,7 +107,10 @@ class SelectFileAction(BaseAction):
     def _coerce_return_type(self, return_type: FileType | str) -> FileType:
         if isinstance(return_type, FileType):
             return return_type
-        return FileType(return_type)
+        elif isinstance(return_type, str):
+            return FileType(return_type)
+        else:
+            raise TypeError("return_type must be a FileType enum or string")
 
     def get_options(self, files: list[Path]) -> dict[str, SelectionOption]:
         value: Any

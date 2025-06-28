@@ -2,4 +2,4 @@
 """logger.py"""
 import logging
 
-logger = logging.getLogger("falyx")
+logger: logging.Logger = logging.getLogger("falyx")

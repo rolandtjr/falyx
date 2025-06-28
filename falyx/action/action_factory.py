@@ -1,5 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""action_factory.py"""
+"""action_factory_action.py"""
 from typing import Any, Callable
 
 from rich.tree import Tree
@@ -14,7 +14,7 @@ from falyx.themes import OneColors
 from falyx.utils import ensure_async
 
 
-class ActionFactoryAction(BaseAction):
+class ActionFactory(BaseAction):
     """
     Dynamically creates and runs another Action at runtime using a factory function.
 

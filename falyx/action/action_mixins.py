@@ -1,5 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""mixins.py"""
+"""action_mixins.py"""
 from typing import Sequence
 
 from falyx.action.base_action import BaseAction

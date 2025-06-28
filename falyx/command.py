@@ -19,7 +19,7 @@ in building robust interactive menus.
 from __future__ import annotations
 
 import shlex
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from prompt_toolkit.formatted_text import FormattedText
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
@@ -105,7 +105,7 @@ class Command(BaseModel):
 
     key: str
     description: str
-    action: BaseAction | Callable[..., Any]
+    action: BaseAction | Callable[..., Any] | Callable[..., Awaitable[Any]]
     args: tuple = ()
     kwargs: dict[str, Any] = Field(default_factory=dict)
     hidden: bool = False

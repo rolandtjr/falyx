@@ -1,7 +1,7 @@
 import asyncio
 
 from falyx import Falyx
-from falyx.action import ActionFactoryAction, ChainedAction, HTTPAction, SelectionAction
+from falyx.action import ActionFactory, ChainedAction, HTTPAction, SelectionAction
 
 # Selection of a post ID to fetch (just an example set)
 post_selector = SelectionAction(
@@ -24,7 +24,7 @@ async def build_post_action(post_id) -> HTTPAction:
     )
 
 
-post_factory = ActionFactoryAction(
+post_factory = ActionFactory(
     name="Build HTTPAction from Post ID",
     factory=build_post_action,
     inject_last_result=True,

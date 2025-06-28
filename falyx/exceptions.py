@@ -30,5 +30,13 @@ class EmptyChainError(FalyxError):
     """Exception raised when the chain is empty."""
 
 
+class EmptyGroupError(FalyxError):
+    """Exception raised when the chain is empty."""
+
+
+class EmptyPoolError(FalyxError):
+    """Exception raised when the chain is empty."""
+
+
 class CommandArgumentError(FalyxError):
     """Exception raised when there is an error in the command argument parser."""

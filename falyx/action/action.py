@@ -2,7 +2,7 @@
 """action.py"""
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from rich.tree import Tree
 
@@ -42,9 +42,9 @@ class Action(BaseAction):
     def __init__(
         self,
         name: str,
-        action: Callable[..., Any],
+        action: Callable[..., Any] | Callable[..., Awaitable[Any]],
         *,
-        rollback: Callable[..., Any] | None = None,
+        rollback: Callable[..., Any] | Callable[..., Awaitable[Any]] | None = None,
         args: tuple[Any, ...] = (),
         kwargs: dict[str, Any] | None = None,
         hooks: HookManager | None = None,
@@ -69,19 +69,19 @@ class Action(BaseAction):
             self.enable_retry()
 
     @property
-    def action(self) -> Callable[..., Any]:
+    def action(self) -> Callable[..., Awaitable[Any]]:
         return self._action
 
     @action.setter
-    def action(self, value: Callable[..., Any]):
+    def action(self, value: Callable[..., Awaitable[Any]]):
         self._action = ensure_async(value)
 
     @property
-    def rollback(self) -> Callable[..., Any] | None:
+    def rollback(self) -> Callable[..., Awaitable[Any]] | None:
         return self._rollback
 
     @rollback.setter
-    def rollback(self, value: Callable[..., Any] | None):
+    def rollback(self, value: Callable[..., Awaitable[Any]] | None):
         if value is None:
             self._rollback = None
         else:
