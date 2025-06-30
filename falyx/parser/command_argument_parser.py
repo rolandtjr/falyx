@@ -645,8 +645,6 @@ class CommandArgumentParser:
                 if arg in self._keyword:
                     next_flagged_index = index
                     break
-            print(f"next_flagged_index: {next_flagged_index}")
-            print(f"{self._keyword_list=}")
             if next_flagged_index == -1:
                 next_flagged_index = len(args)
             args_consumed = await self._consume_all_positional_args(
