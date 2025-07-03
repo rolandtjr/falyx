@@ -403,8 +403,9 @@ async def test_parse_args_nargs():
     parser.add_argument("--action", action="store_true")
 
     args = await parser.parse_args(["a", "b", "c", "--action"])
+    assert args["files"] == ["a", "b"]
+    assert args["mode"] == "c"
     args = await parser.parse_args(["--action", "a", "b", "c"])
-
     assert args["files"] == ["a", "b"]
     assert args["mode"] == "c"
 

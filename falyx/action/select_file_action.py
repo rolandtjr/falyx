@@ -165,6 +165,11 @@ class SelectFileAction(BaseAction):
         try:
             await self.hooks.trigger(HookType.BEFORE, context)
 
+            if not self.directory.exists():
+                raise FileNotFoundError(f"Directory {self.directory} does not exist.")
+            elif not self.directory.is_dir():
+                raise NotADirectoryError(f"{self.directory} is not a directory.")
+
             files = [
                 file
                 for file in self.directory.iterdir()

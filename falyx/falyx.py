@@ -32,7 +32,6 @@ from functools import cached_property
 from typing import Any, Callable
 
 from prompt_toolkit import PromptSession
-from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.formatted_text import AnyFormattedText
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.patch_stdout import patch_stdout
@@ -46,6 +45,7 @@ from falyx.action.action import Action
 from falyx.action.base_action import BaseAction
 from falyx.bottom_bar import BottomBar
 from falyx.command import Command
+from falyx.completer import FalyxCompleter
 from falyx.context import ExecutionContext
 from falyx.debug import log_after, log_before, log_error, log_success
 from falyx.exceptions import (
@@ -413,20 +413,9 @@ class Falyx:
             arg_parser=parser,
         )
 
-    def _get_completer(self) -> WordCompleter:
+    def _get_completer(self) -> FalyxCompleter:
         """Completer to provide auto-completion for the menu commands."""
-        keys = [self.exit_command.key]
-        keys.extend(self.exit_command.aliases)
-        if self.history_command:
-            keys.append(self.history_command.key)
-            keys.extend(self.history_command.aliases)
-        if self.help_command:
-            keys.append(self.help_command.key)
-            keys.extend(self.help_command.aliases)
-        for cmd in self.commands.values():
-            keys.append(cmd.key)
-            keys.extend(cmd.aliases)
-        return WordCompleter(keys, ignore_case=True)
+        return FalyxCompleter(self)
 
     def _get_validator_error_message(self) -> str:
         """Validator to check if the input is a valid command or toggle key."""

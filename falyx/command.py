@@ -91,6 +91,12 @@ class Command(BaseModel):
         logging_hooks (bool): Whether to attach logging hooks automatically.
         options_manager (OptionsManager): Manages global command-line options.
         arg_parser (CommandArgumentParser): Parses command arguments.
+        arguments (list[dict[str, Any]]): Argument definitions for the command.
+        argument_config (Callable[[CommandArgumentParser], None] | None): Function to configure arguments
+            for the command parser.
+        arg_metadata (dict[str, str | dict[str, Any]]): Metadata for arguments,
+            such as help text or choices.
+        simple_help_signature (bool): Whether to use a simplified help signature.
         custom_parser (ArgParserProtocol | None): Custom argument parser.
         custom_help (Callable[[], str | None] | None): Custom help message generator.
         auto_args (bool): Automatically infer arguments from the action.
@@ -227,7 +233,7 @@ class Command(BaseModel):
         if self.logging_hooks and isinstance(self.action, BaseAction):
             register_debug_hooks(self.action.hooks)
 
-        if self.arg_parser is None:
+        if self.arg_parser is None and not self.custom_parser:
             self.arg_parser = CommandArgumentParser(
                 command_key=self.key,
                 command_description=self.description,

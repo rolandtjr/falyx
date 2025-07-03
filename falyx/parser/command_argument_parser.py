@@ -7,7 +7,6 @@ from typing import Any, Iterable
 
 from rich.console import Console
 from rich.markup import escape
-from rich.text import Text
 
 from falyx.action.base_action import BaseAction
 from falyx.exceptions import CommandArgumentError
@@ -466,6 +465,10 @@ class CommandArgumentParser:
                     or isinstance(next_spec.nargs, str)
                     and next_spec.nargs in ("+", "*", "?")
                 ), f"Invalid nargs value: {spec.nargs}"
+
+                if next_spec.default:
+                    continue
+
                 if next_spec.nargs is None:
                     min_required += 1
                 elif isinstance(next_spec.nargs, int):
@@ -473,9 +476,9 @@ class CommandArgumentParser:
                 elif next_spec.nargs == "+":
                     min_required += 1
                 elif next_spec.nargs == "?":
-                    min_required += 0
+                    continue
                 elif next_spec.nargs == "*":
-                    min_required += 0
+                    continue
 
             slice_args = args[i:] if is_last else args[i : i + (remaining - min_required)]
             values, new_i = self._consume_nargs(slice_args, 0, spec)
@@ -484,9 +487,23 @@ class CommandArgumentParser:
             try:
                 typed = [coerce_value(value, spec.type) for value in values]
             except Exception as error:
-                raise CommandArgumentError(
-                    f"Invalid value for '{spec.dest}': {error}"
-                ) from error
+                if len(args[i - new_i :]) == 1 and args[i - new_i].startswith("-"):
+                    token = args[i - new_i]
+                    valid_flags = [
+                        flag for flag in self._flag_map if flag.startswith(token)
+                    ]
+                    if valid_flags:
+                        raise CommandArgumentError(
+                            f"Unrecognized option '{token}'. Did you mean one of: {', '.join(valid_flags)}?"
+                        ) from error
+                    else:
+                        raise CommandArgumentError(
+                            f"Unrecognized option '{token}'. Use --help to see available options."
+                        ) from error
+                else:
+                    raise CommandArgumentError(
+                        f"Invalid value for '{spec.dest}': {error}"
+                    ) from error
             if spec.action == ArgumentAction.ACTION:
                 assert isinstance(
                     spec.resolver, BaseAction
@@ -497,6 +514,8 @@ class CommandArgumentParser:
                     raise CommandArgumentError(
                         f"[{spec.dest}] Action failed: {error}"
                     ) from error
+            elif not typed and spec.default:
+                result[spec.dest] = spec.default
             elif spec.action == ArgumentAction.APPEND:
                 assert result.get(spec.dest) is not None, "dest should not be None"
                 if spec.nargs is None:
@@ -515,10 +534,22 @@ class CommandArgumentParser:
                 consumed_positional_indicies.add(j)
 
         if i < len(args):
-            plural = "s" if len(args[i:]) > 1 else ""
-            raise CommandArgumentError(
-                f"Unexpected positional argument{plural}: {', '.join(args[i:])}"
-            )
+            if len(args[i:]) == 1 and args[i].startswith("-"):
+                token = args[i]
+                valid_flags = [flag for flag in self._flag_map if flag.startswith(token)]
+                if valid_flags:
+                    raise CommandArgumentError(
+                        f"Unrecognized option '{token}'. Did you mean one of: {', '.join(valid_flags)}?"
+                    )
+                else:
+                    raise CommandArgumentError(
+                        f"Unrecognized option '{token}'. Use --help to see available options."
+                    )
+            else:
+                plural = "s" if len(args[i:]) > 1 else ""
+                raise CommandArgumentError(
+                    f"Unexpected positional argument{plural}: {', '.join(args[i:])}"
+                )
 
         return i
 
@@ -624,8 +655,22 @@ class CommandArgumentParser:
                         f"Invalid value for '{spec.dest}': {error}"
                     ) from error
                 if not typed_values and spec.nargs not in ("*", "?"):
+                    choices = []
+                    if spec.default:
+                        choices.append(f"default={spec.default!r}")
+                    if spec.choices:
+                        choices.append(f"choices={spec.choices!r}")
+                    if choices:
+                        choices_text = ", ".join(choices)
+                        raise CommandArgumentError(
+                            f"Argument '{spec.dest}' requires a value. {choices_text}"
+                        )
+                    if spec.nargs is None:
+                        raise CommandArgumentError(
+                            f"Enter a {spec.type.__name__} value for '{spec.dest}'"
+                        )
                     raise CommandArgumentError(
-                        f"Expected at least one value for '{spec.dest}'"
+                        f"Argument '{spec.dest}' requires a value. Expected {spec.nargs} values."
                     )
                 if spec.nargs in (None, 1, "?") and spec.action != ArgumentAction.APPEND:
                     result[spec.dest] = (
@@ -637,7 +682,15 @@ class CommandArgumentParser:
                 i = new_i
         elif token.startswith("-"):
             # Handle unrecognized option
-            raise CommandArgumentError(f"Unrecognized flag: {token}")
+            valid_flags = [flag for flag in self._flag_map if flag.startswith(token)]
+            if valid_flags:
+                raise CommandArgumentError(
+                    f"Unrecognized option '{token}'. Did you mean one of: {', '.join(valid_flags)}?"
+                )
+            else:
+                raise CommandArgumentError(
+                    f"Unrecognized option '{token}'. Use --help to see available options."
+                )
         else:
             # Get the next flagged argument index if it exists
             next_flagged_index = -1
@@ -692,7 +745,10 @@ class CommandArgumentParser:
             if spec.dest == "help":
                 continue
             if spec.required and not result.get(spec.dest):
-                raise CommandArgumentError(f"Missing required argument: {spec.dest}")
+                help_text = f" help: {spec.help}" if spec.help else ""
+                raise CommandArgumentError(
+                    f"Missing required argument {spec.dest}: {spec.get_choice_text()}{help_text}"
+                )
 
             if spec.choices and result.get(spec.dest) not in spec.choices:
                 raise CommandArgumentError(
@@ -807,22 +863,20 @@ class CommandArgumentParser:
                 self.console.print("[bold]positional:[/bold]")
                 for arg in self._positional.values():
                     flags = arg.get_positional_text()
-                    arg_line = Text(f"  {flags:<30} ")
+                    arg_line = f"  {flags:<30} "
                     help_text = arg.help or ""
                     if help_text and len(flags) > 30:
                         help_text = f"\n{'':<33}{help_text}"
-                    arg_line.append(help_text)
-                    self.console.print(arg_line)
+                    self.console.print(f"{arg_line}{help_text}")
             self.console.print("[bold]options:[/bold]")
             for arg in self._keyword_list:
                 flags = ", ".join(arg.flags)
                 flags_choice = f"{flags} {arg.get_choice_text()}"
-                arg_line = Text(f"  {flags_choice:<30} ")
+                arg_line = f"  {flags_choice:<30} "
                 help_text = arg.help or ""
                 if help_text and len(flags_choice) > 30:
                     help_text = f"\n{'':<33}{help_text}"
-                arg_line.append(help_text)
-                self.console.print(arg_line)
+                self.console.print(f"{arg_line}{help_text}")
 
         # Epilog
         if self.help_epilog:
