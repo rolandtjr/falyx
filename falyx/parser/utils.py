@@ -37,7 +37,8 @@ def coerce_enum(value: Any, enum_type: EnumMeta) -> Any:
         coerced_value = base_type(value)
         return enum_type(coerced_value)
     except (ValueError, TypeError):
-        raise ValueError(f"Value '{value}' could not be coerced to enum type {enum_type}")
+        values = [str(enum.value) for enum in enum_type]
+        raise ValueError(f"'{value}' should be one of {{{', '.join(values)}}}") from None
 
 
 def coerce_value(value: str, target_type: type) -> Any:
@@ -57,7 +58,7 @@ def coerce_value(value: str, target_type: type) -> Any:
                 return coerce_value(value, arg)
             except Exception:
                 continue
-        raise ValueError(f"Value '{value}' could not be coerced to any of {args!r}")
+        raise ValueError(f"Value '{value}' could not be coerced to any of {args}")
 
     if isinstance(target_type, EnumMeta):
         return coerce_enum(value, target_type)

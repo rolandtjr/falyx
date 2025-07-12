@@ -16,6 +16,7 @@ from falyx.exceptions import EmptyChainError
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import Hook, HookManager, HookType
 from falyx.logger import logger
+from falyx.options_manager import OptionsManager
 from falyx.themes import OneColors
 
 
@@ -91,6 +92,11 @@ class ChainedAction(BaseAction, ActionListMixin):
         self.actions.clear()
         for action in actions:
             self.add_action(action)
+
+    def set_options_manager(self, options_manager: OptionsManager) -> None:
+        super().set_options_manager(options_manager)
+        for action in self.actions:
+            action.set_options_manager(options_manager)
 
     def get_infer_target(self) -> tuple[Callable[..., Any] | None, dict[str, Any] | None]:
         if self.actions:
@@ -197,7 +203,7 @@ class ChainedAction(BaseAction, ActionListMixin):
 
     def register_hooks_recursively(self, hook_type: HookType, hook: Hook):
         """Register a hook for all actions and sub-actions."""
-        self.hooks.register(hook_type, hook)
+        super().register_hooks_recursively(hook_type, hook)
         for action in self.actions:
             action.register_hooks_recursively(hook_type, hook)
 

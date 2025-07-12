@@ -3,7 +3,6 @@
 from typing import Any
 
 from prompt_toolkit import PromptSession
-from rich.console import Console
 from rich.tree import Tree
 
 from falyx.action.action_types import SelectionReturnType
@@ -54,7 +53,6 @@ class SelectionAction(BaseAction):
         inject_last_result: bool = False,
         inject_into: str = "last_result",
         return_type: SelectionReturnType | str = "value",
-        console: Console | None = None,
         prompt_session: PromptSession | None = None,
         never_prompt: bool = False,
         show_table: bool = True,
@@ -70,10 +68,6 @@ class SelectionAction(BaseAction):
         self.return_type: SelectionReturnType = self._coerce_return_type(return_type)
         self.title = title
         self.columns = columns
-        if isinstance(console, Console):
-            self.console = console
-        elif console:
-            raise ValueError("`console` must be an instance of `rich.console.Console`")
         self.prompt_session = prompt_session or PromptSession()
         self.default_selection = default_selection
         self.number_selections = number_selections
@@ -262,7 +256,6 @@ class SelectionAction(BaseAction):
                         len(self.selections),
                         table,
                         default_selection=effective_default,
-                        console=self.console,
                         prompt_session=self.prompt_session,
                         prompt_message=self.prompt_message,
                         show_table=self.show_table,
@@ -306,7 +299,6 @@ class SelectionAction(BaseAction):
                         (self.selections | cancel_option).keys(),
                         table,
                         default_selection=effective_default,
-                        console=self.console,
                         prompt_session=self.prompt_session,
                         prompt_message=self.prompt_message,
                         show_table=self.show_table,

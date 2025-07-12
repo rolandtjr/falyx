@@ -14,6 +14,7 @@ from falyx.exceptions import EmptyGroupError
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import Hook, HookManager, HookType
 from falyx.logger import logger
+from falyx.options_manager import OptionsManager
 from falyx.parser.utils import same_argument_definitions
 from falyx.themes.colors import OneColors
 
@@ -95,6 +96,11 @@ class ActionGroup(BaseAction, ActionListMixin):
         self.actions.clear()
         for action in actions:
             self.add_action(action)
+
+    def set_options_manager(self, options_manager: OptionsManager) -> None:
+        super().set_options_manager(options_manager)
+        for action in self.actions:
+            action.set_options_manager(options_manager)
 
     def get_infer_target(self) -> tuple[Callable[..., Any] | None, dict[str, Any] | None]:
         arg_defs = same_argument_definitions(self.actions)

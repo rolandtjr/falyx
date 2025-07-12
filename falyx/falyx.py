@@ -46,6 +46,7 @@ from falyx.action.base_action import BaseAction
 from falyx.bottom_bar import BottomBar
 from falyx.command import Command
 from falyx.completer import FalyxCompleter
+from falyx.console import console
 from falyx.context import ExecutionContext
 from falyx.debug import log_after, log_before, log_error, log_success
 from falyx.exceptions import (
@@ -63,7 +64,7 @@ from falyx.parser import CommandArgumentParser, FalyxParsers, get_arg_parsers
 from falyx.protocols import ArgParserProtocol
 from falyx.retry import RetryPolicy
 from falyx.signals import BackSignal, CancelSignal, HelpSignal, QuitSignal
-from falyx.themes import OneColors, get_nord_theme
+from falyx.themes import OneColors
 from falyx.utils import CaseInsensitiveDict, _noop, chunks
 from falyx.version import __version__
 
@@ -201,7 +202,7 @@ class Falyx:
         self.help_command: Command | None = (
             self._get_help_command() if include_help_command else None
         )
-        self.console: Console = Console(color_system="truecolor", theme=get_nord_theme())
+        self.console: Console = console
         self.welcome_message: str | Markdown | dict[str, Any] = welcome_message
         self.exit_message: str | Markdown | dict[str, Any] = exit_message
         self.hooks: HookManager = HookManager()
@@ -513,6 +514,8 @@ class Falyx:
                 bottom_toolbar=self._get_bottom_bar_render(),
                 key_bindings=self.key_bindings,
                 validate_while_typing=True,
+                interrupt_exception=QuitSignal,
+                eof_exception=QuitSignal,
             )
         return self._prompt_session
 

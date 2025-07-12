@@ -4,7 +4,6 @@ from typing import Any
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import FormattedText, merge_formatted_text
-from rich.console import Console
 from rich.tree import Tree
 
 from falyx.action.base_action import BaseAction
@@ -29,7 +28,6 @@ class PromptMenuAction(BaseAction):
         default_selection: str = "",
         inject_last_result: bool = False,
         inject_into: str = "last_result",
-        console: Console | None = None,
         prompt_session: PromptSession | None = None,
         never_prompt: bool = False,
         include_reserved: bool = True,
@@ -43,10 +41,6 @@ class PromptMenuAction(BaseAction):
         self.menu_options = menu_options
         self.prompt_message = prompt_message
         self.default_selection = default_selection
-        if isinstance(console, Console):
-            self.console = console
-        elif console:
-            raise ValueError("`console` must be an instance of `rich.console.Console`")
         self.prompt_session = prompt_session or PromptSession()
         self.include_reserved = include_reserved
 

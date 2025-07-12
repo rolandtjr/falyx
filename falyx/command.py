@@ -23,11 +23,11 @@ from typing import Any, Awaitable, Callable
 
 from prompt_toolkit.formatted_text import FormattedText
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
-from rich.console import Console
 from rich.tree import Tree
 
 from falyx.action.action import Action
 from falyx.action.base_action import BaseAction
+from falyx.console import console
 from falyx.context import ExecutionContext
 from falyx.debug import register_debug_hooks
 from falyx.execution_registry import ExecutionRegistry as er
@@ -43,8 +43,6 @@ from falyx.retry_utils import enable_retries_recursively
 from falyx.signals import CancelSignal
 from falyx.themes import OneColors
 from falyx.utils import ensure_async
-
-console = Console(color_system="truecolor")
 
 
 class Command(BaseModel):

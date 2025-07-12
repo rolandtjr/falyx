@@ -80,9 +80,14 @@ class LoadFileAction(BaseAction):
     def get_infer_target(self) -> tuple[None, None]:
         return None, None
 
-    def load_file(self) -> Any:
+    async def load_file(self) -> Any:
+        """Load and parse the file based on its type."""
         if self.file_path is None:
             raise ValueError("file_path must be set before loading a file")
+        elif not self.file_path.exists():
+            raise FileNotFoundError(f"File not found: {self.file_path}")
+        elif not self.file_path.is_file():
+            raise ValueError(f"Path is not a regular file: {self.file_path}")
         value: Any = None
         try:
             if self.file_type == FileType.TEXT:
@@ -125,14 +130,7 @@ class LoadFileAction(BaseAction):
             elif self.inject_last_result and self.last_result:
                 self.file_path = self.last_result
 
-            if self.file_path is None:
-                raise ValueError("file_path must be set before loading a file")
-            elif not self.file_path.exists():
-                raise FileNotFoundError(f"File not found: {self.file_path}")
-            elif not self.file_path.is_file():
-                raise ValueError(f"Path is not a regular file: {self.file_path}")
-
-            result = self.load_file()
+            result = await self.load_file()
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
             return result
         except Exception as error:

@@ -11,7 +11,6 @@ from typing import Any
 import toml
 import yaml
 from prompt_toolkit import PromptSession
-from rich.console import Console
 from rich.tree import Tree
 
 from falyx.action.action_types import FileType
@@ -51,7 +50,6 @@ class SelectFileAction(BaseAction):
         style (str): Style for the selection options.
         suffix_filter (str | None): Restrict to certain file types.
         return_type (FileType): What to return (path, content, parsed).
-        console (Console | None): Console instance for output.
         prompt_session (PromptSession | None): Prompt session for user input.
     """
 
@@ -69,7 +67,6 @@ class SelectFileAction(BaseAction):
         number_selections: int | str = 1,
         separator: str = ",",
         allow_duplicates: bool = False,
-        console: Console | None = None,
         prompt_session: PromptSession | None = None,
     ):
         super().__init__(name)
@@ -82,10 +79,6 @@ class SelectFileAction(BaseAction):
         self.number_selections = number_selections
         self.separator = separator
         self.allow_duplicates = allow_duplicates
-        if isinstance(console, Console):
-            self.console = console
-        elif console:
-            raise ValueError("`console` must be an instance of `rich.console.Console`")
         self.prompt_session = prompt_session or PromptSession()
         self.return_type = self._coerce_return_type(return_type)
 
@@ -195,7 +188,6 @@ class SelectFileAction(BaseAction):
             keys = await prompt_for_selection(
                 (options | cancel_option).keys(),
                 table,
-                console=self.console,
                 prompt_session=self.prompt_session,
                 prompt_message=self.prompt_message,
                 number_selections=self.number_selections,

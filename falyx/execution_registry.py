@@ -36,6 +36,7 @@ from rich import box
 from rich.console import Console
 from rich.table import Table
 
+from falyx.console import console
 from falyx.context import ExecutionContext
 from falyx.logger import logger
 from falyx.themes import OneColors

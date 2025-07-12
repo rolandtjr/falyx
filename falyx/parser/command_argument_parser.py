@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.markup import escape
 
 from falyx.action.base_action import BaseAction
+from falyx.console import console
 from falyx.exceptions import CommandArgumentError
 from falyx.parser.argument import Argument
 from falyx.parser.argument_action import ArgumentAction
@@ -46,7 +47,7 @@ class CommandArgumentParser:
         aliases: list[str] | None = None,
     ) -> None:
         """Initialize the CommandArgumentParser."""
-        self.console = Console(color_system="truecolor")
+        self.console: Console = console
         self.command_key: str = command_key
         self.command_description: str = command_description
         self.command_style: str = command_style
@@ -300,6 +301,7 @@ class CommandArgumentParser:
         help: str = "",
         dest: str | None = None,
         resolver: BaseAction | None = None,
+        lazy_resolver: bool = False,
     ) -> None:
         """Add an argument to the parser.
         For `ArgumentAction.ACTION`, `nargs` and `type` determine how many and what kind
@@ -348,6 +350,10 @@ class CommandArgumentParser:
                 f"Default value '{default}' not in allowed choices: {choices}"
             )
         required = self._determine_required(required, positional, nargs)
+        if not isinstance(lazy_resolver, bool):
+            raise CommandArgumentError(
+                f"lazy_resolver must be a boolean, got {type(lazy_resolver)}"
+            )
         argument = Argument(
             flags=flags,
             dest=dest,
@@ -360,6 +366,7 @@ class CommandArgumentParser:
             nargs=nargs,
             positional=positional,
             resolver=resolver,
+            lazy_resolver=lazy_resolver,
         )
         for flag in flags:
             if flag in self._flag_map:
@@ -445,6 +452,7 @@ class CommandArgumentParser:
         result: dict[str, Any],
         positional_args: list[Argument],
         consumed_positional_indicies: set[int],
+        from_validate: bool = False,
     ) -> int:
         remaining_positional_args = [
             (j, spec)
@@ -508,12 +516,13 @@ class CommandArgumentParser:
                 assert isinstance(
                     spec.resolver, BaseAction
                 ), "resolver should be an instance of BaseAction"
-                try:
-                    result[spec.dest] = await spec.resolver(*typed)
-                except Exception as error:
-                    raise CommandArgumentError(
-                        f"[{spec.dest}] Action failed: {error}"
-                    ) from error
+                if not spec.lazy_resolver or not from_validate:
+                    try:
+                        result[spec.dest] = await spec.resolver(*typed)
+                    except Exception as error:
+                        raise CommandArgumentError(
+                            f"[{spec.dest}] Action failed: {error}"
+                        ) from error
             elif not typed and spec.default:
                 result[spec.dest] = spec.default
             elif spec.action == ArgumentAction.APPEND:
@@ -657,21 +666,25 @@ class CommandArgumentParser:
                 if not typed_values and spec.nargs not in ("*", "?"):
                     choices = []
                     if spec.default:
-                        choices.append(f"default={spec.default!r}")
+                        choices.append(f"default={spec.default}")
                     if spec.choices:
-                        choices.append(f"choices={spec.choices!r}")
+                        choices.append(f"choices={spec.choices}")
                     if choices:
                         choices_text = ", ".join(choices)
                         raise CommandArgumentError(
                             f"Argument '{spec.dest}' requires a value. {choices_text}"
                         )
-                    if spec.nargs is None:
+                    elif spec.nargs is None:
+                        try:
+                            raise CommandArgumentError(
+                                f"Enter a {spec.type.__name__} value for '{spec.dest}'"
+                            )
+                        except AttributeError:
+                            raise CommandArgumentError(f"Enter a value for '{spec.dest}'")
+                    else:
                         raise CommandArgumentError(
-                            f"Enter a {spec.type.__name__} value for '{spec.dest}'"
+                            f"Argument '{spec.dest}' requires a value. Expected {spec.nargs} values."
                         )
-                    raise CommandArgumentError(
-                        f"Argument '{spec.dest}' requires a value. Expected {spec.nargs} values."
-                    )
                 if spec.nargs in (None, 1, "?") and spec.action != ArgumentAction.APPEND:
                     result[spec.dest] = (
                         typed_values[0] if len(typed_values) == 1 else typed_values
@@ -705,6 +718,7 @@ class CommandArgumentParser:
                 result,
                 positional_args,
                 consumed_positional_indices,
+                from_validate=from_validate,
             )
             i += args_consumed
         return i
@@ -746,13 +760,19 @@ class CommandArgumentParser:
                 continue
             if spec.required and not result.get(spec.dest):
                 help_text = f" help: {spec.help}" if spec.help else ""
+                if (
+                    spec.action == ArgumentAction.ACTION
+                    and spec.lazy_resolver
+                    and from_validate
+                ):
+                    continue  # Lazy resolvers are not validated here
                 raise CommandArgumentError(
-                    f"Missing required argument {spec.dest}: {spec.get_choice_text()}{help_text}"
+                    f"Missing required argument '{spec.dest}': {spec.get_choice_text()}{help_text}"
                 )
 
             if spec.choices and result.get(spec.dest) not in spec.choices:
                 raise CommandArgumentError(
-                    f"Invalid value for {spec.dest}: must be one of {spec.choices}"
+                    f"Invalid value for '{spec.dest}': must be one of {{{', '.join(spec.choices)}}}"
                 )
 
             if spec.action == ArgumentAction.ACTION:
@@ -761,23 +781,23 @@ class CommandArgumentParser:
             if isinstance(spec.nargs, int) and spec.nargs > 1:
                 assert isinstance(
                     result.get(spec.dest), list
-                ), f"Invalid value for {spec.dest}: expected a list"
+                ), f"Invalid value for '{spec.dest}': expected a list"
                 if not result[spec.dest] and not spec.required:
                     continue
                 if spec.action == ArgumentAction.APPEND:
                     for group in result[spec.dest]:
                         if len(group) % spec.nargs != 0:
                             raise CommandArgumentError(
-                                f"Invalid number of values for {spec.dest}: expected a multiple of {spec.nargs}"
+                                f"Invalid number of values for '{spec.dest}': expected a multiple of {spec.nargs}"
                             )
                 elif spec.action == ArgumentAction.EXTEND:
                     if len(result[spec.dest]) % spec.nargs != 0:
                         raise CommandArgumentError(
-                            f"Invalid number of values for {spec.dest}: expected a multiple of {spec.nargs}"
+                            f"Invalid number of values for '{spec.dest}': expected a multiple of {spec.nargs}"
                         )
                 elif len(result[spec.dest]) != spec.nargs:
                     raise CommandArgumentError(
-                        f"Invalid number of values for {spec.dest}: expected {spec.nargs}, got {len(result[spec.dest])}"
+                        f"Invalid number of values for '{spec.dest}': expected {spec.nargs}, got {len(result[spec.dest])}"
                     )
 
         result.pop("help", None)

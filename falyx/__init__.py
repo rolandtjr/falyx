@@ -12,6 +12,7 @@ from .falyx import Falyx
 
 logger = logging.getLogger("falyx")
 
+
 __all__ = [
     "Falyx",
     "ExecutionRegistry",

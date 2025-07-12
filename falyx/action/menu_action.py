@@ -3,7 +3,6 @@
 from typing import Any
 
 from prompt_toolkit import PromptSession
-from rich.console import Console
 from rich.table import Table
 from rich.tree import Tree
 
@@ -33,7 +32,6 @@ class MenuAction(BaseAction):
         default_selection: str = "",
         inject_last_result: bool = False,
         inject_into: str = "last_result",
-        console: Console | None = None,
         prompt_session: PromptSession | None = None,
         never_prompt: bool = False,
         include_reserved: bool = True,
@@ -51,10 +49,6 @@ class MenuAction(BaseAction):
         self.columns = columns
         self.prompt_message = prompt_message
         self.default_selection = default_selection
-        if isinstance(console, Console):
-            self.console = console
-        elif console:
-            raise ValueError("`console` must be an instance of `rich.console.Console`")
         self.prompt_session = prompt_session or PromptSession()
         self.include_reserved = include_reserved
         self.show_table = show_table
@@ -115,7 +109,6 @@ class MenuAction(BaseAction):
                     self.menu_options.keys(),
                     table,
                     default_selection=self.default_selection,
-                    console=self.console,
                     prompt_session=self.prompt_session,
                     prompt_message=self.prompt_message,
                     show_table=self.show_table,

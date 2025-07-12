@@ -10,6 +10,7 @@ from .action_factory import ActionFactory
 from .action_group import ActionGroup
 from .base_action import BaseAction
 from .chained_action import ChainedAction
+from .confirm_action import ConfirmAction
 from .fallback_action import FallbackAction
 from .http_action import HTTPAction
 from .io_action import BaseIOAction
@@ -19,6 +20,7 @@ from .menu_action import MenuAction
 from .process_action import ProcessAction
 from .process_pool_action import ProcessPoolAction
 from .prompt_menu_action import PromptMenuAction
+from .save_file_action import SaveFileAction
 from .select_file_action import SelectFileAction
 from .selection_action import SelectionAction
 from .shell_action import ShellAction
@@ -45,4 +47,6 @@ __all__ = [
     "PromptMenuAction",
     "ProcessPoolAction",
     "LoadFileAction",
+    "SaveFileAction",
+    "ConfirmAction",
 ]

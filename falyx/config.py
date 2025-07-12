@@ -11,17 +11,15 @@ from typing import Any, Callable
 import toml
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
-from rich.console import Console
 
 from falyx.action.action import Action
 from falyx.action.base_action import BaseAction
 from falyx.command import Command
+from falyx.console import console
 from falyx.falyx import Falyx
 from falyx.logger import logger
 from falyx.retry import RetryPolicy
 from falyx.themes import OneColors
-
-console = Console(color_system="truecolor")
 
 
 def wrap_if_needed(obj: Any, name=None) -> BaseAction | Command:

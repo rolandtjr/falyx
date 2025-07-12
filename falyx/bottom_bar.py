@@ -5,8 +5,8 @@ from typing import Any, Callable
 
 from prompt_toolkit.formatted_text import HTML, merge_formatted_text
 from prompt_toolkit.key_binding import KeyBindings
-from rich.console import Console
 
+from falyx.console import console
 from falyx.options_manager import OptionsManager
 from falyx.themes import OneColors
 from falyx.utils import CaseInsensitiveDict, chunks
@@ -30,7 +30,7 @@ class BottomBar:
         key_validator: Callable[[str], bool] | None = None,
     ) -> None:
         self.columns = columns
-        self.console = Console(color_system="truecolor")
+        self.console: Console = console
         self._named_items: dict[str, Callable[[], HTML]] = {}
         self._value_getters: dict[str, Callable[[], Any]] = CaseInsensitiveDict()
         self.toggle_keys: list[str] = []

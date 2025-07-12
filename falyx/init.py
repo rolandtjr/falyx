@@ -2,7 +2,7 @@
 """init.py"""
 from pathlib import Path
 
-from rich.console import Console
+from falyx.console import console
 
 TEMPLATE_TASKS = """\
 # This file is used by falyx.yaml to define CLI actions.
@@ -97,8 +97,6 @@ commands:
     action: tasks.cleanup
     aliases: [clean, cleanup]
 """
-
-console = Console(color_system="truecolor")
 
 
 def init_project(name: str) -> None:

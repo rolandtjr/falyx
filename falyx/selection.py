@@ -5,10 +5,10 @@ from typing import Any, Callable, KeysView, Sequence
 
 from prompt_toolkit import PromptSession
 from rich import box
-from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
+from falyx.console import console
 from falyx.themes import OneColors
 from falyx.utils import CaseInsensitiveDict, chunks
 from falyx.validators import MultiIndexValidator, MultiKeyValidator
@@ -267,7 +267,6 @@ async def prompt_for_index(
     *,
     min_index: int = 0,
     default_selection: str = "",
-    console: Console | None = None,
     prompt_session: PromptSession | None = None,
     prompt_message: str = "Select an option > ",
     show_table: bool = True,
@@ -277,7 +276,6 @@ async def prompt_for_index(
     cancel_key: str = "",
 ) -> int | list[int]:
     prompt_session = prompt_session or PromptSession()
-    console = console or Console(color_system="truecolor")
 
     if show_table:
         console.print(table, justify="center")
@@ -307,7 +305,6 @@ async def prompt_for_selection(
     table: Table,
     *,
     default_selection: str = "",
-    console: Console | None = None,
     prompt_session: PromptSession | None = None,
     prompt_message: str = "Select an option > ",
     show_table: bool = True,
@@ -318,7 +315,6 @@ async def prompt_for_selection(
 ) -> str | list[str]:
     """Prompt the user to select a key from a set of options. Return the selected key."""
     prompt_session = prompt_session or PromptSession()
-    console = console or Console(color_system="truecolor")
 
     if show_table:
         console.print(table, justify="center")
@@ -342,7 +338,6 @@ async def select_value_from_list(
     title: str,
     selections: Sequence[str],
     *,
-    console: Console | None = None,
     prompt_session: PromptSession | None = None,
     prompt_message: str = "Select an option > ",
     default_selection: str = "",
@@ -381,13 +376,11 @@ async def select_value_from_list(
         highlight=highlight,
     )
     prompt_session = prompt_session or PromptSession()
-    console = console or Console(color_system="truecolor")
 
     selection_index = await prompt_for_index(
         len(selections) - 1,
         table,
         default_selection=default_selection,
-        console=console,
         prompt_session=prompt_session,
         prompt_message=prompt_message,
         number_selections=number_selections,
@@ -405,7 +398,6 @@ async def select_key_from_dict(
     selections: dict[str, SelectionOption],
     table: Table,
     *,
-    console: Console | None = None,
     prompt_session: PromptSession | None = None,
     prompt_message: str = "Select an option > ",
     default_selection: str = "",
@@ -416,7 +408,6 @@ async def select_key_from_dict(
 ) -> str | list[str]:
     """Prompt for a key from a dict, returns the key."""
     prompt_session = prompt_session or PromptSession()
-    console = console or Console(color_system="truecolor")
 
     console.print(table, justify="center")
 
@@ -424,7 +415,6 @@ async def select_key_from_dict(
         selections.keys(),
         table,
         default_selection=default_selection,
-        console=console,
         prompt_session=prompt_session,
         prompt_message=prompt_message,
         number_selections=number_selections,
@@ -438,7 +428,6 @@ async def select_value_from_dict(
     selections: dict[str, SelectionOption],
     table: Table,
     *,
-    console: Console | None = None,
     prompt_session: PromptSession | None = None,
     prompt_message: str = "Select an option > ",
     default_selection: str = "",
@@ -449,7 +438,6 @@ async def select_value_from_dict(
 ) -> Any | list[Any]:
     """Prompt for a key from a dict, but return the value."""
     prompt_session = prompt_session or PromptSession()
-    console = console or Console(color_system="truecolor")
 
     console.print(table, justify="center")
 
@@ -457,7 +445,6 @@ async def select_value_from_dict(
         selections.keys(),
         table,
         default_selection=default_selection,
-        console=console,
         prompt_session=prompt_session,
         prompt_message=prompt_message,
         number_selections=number_selections,
@@ -475,7 +462,6 @@ async def get_selection_from_dict_menu(
     title: str,
     selections: dict[str, SelectionOption],
     *,
-    console: Console | None = None,
     prompt_session: PromptSession | None = None,
     prompt_message: str = "Select an option > ",
     default_selection: str = "",
@@ -493,7 +479,6 @@ async def get_selection_from_dict_menu(
     return await select_value_from_dict(
         selections=selections,
         table=table,
-        console=console,
         prompt_session=prompt_session,
         prompt_message=prompt_message,
         default_selection=default_selection,

@@ -24,6 +24,8 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 from rich.console import Console
 
+from falyx.console import console
+
 
 class ExecutionContext(BaseModel):
     """
@@ -83,7 +85,7 @@ class ExecutionContext(BaseModel):
     index: int | None = None
 
     extra: dict[str, Any] = Field(default_factory=dict)
-    console: Console = Field(default_factory=lambda: Console(color_system="truecolor"))
+    console: Console = console
 
     shared_context: SharedContext | None = None
 

@@ -24,6 +24,7 @@ class Argument:
     nargs: int | str | None = None  # int, '?', '*', '+', None
     positional: bool = False  # True if no leading - or -- in flags
     resolver: BaseAction | None = None  # Action object for the argument
+    lazy_resolver: bool = False  # True if resolver should be called lazily
 
     def get_positional_text(self) -> str:
         """Get the positional text for the argument."""

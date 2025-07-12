@@ -2,7 +2,6 @@
 """user_input_action.py"""
 from prompt_toolkit import PromptSession
 from prompt_toolkit.validation import Validator
-from rich.console import Console
 from rich.tree import Tree
 
 from falyx.action.base_action import BaseAction
@@ -20,7 +19,6 @@ class UserInputAction(BaseAction):
         name (str): Action name.
         prompt_text (str): Prompt text (can include '{last_result}' for interpolation).
         validator (Validator, optional): Prompt Toolkit validator.
-        console (Console, optional): Rich console for rendering.
         prompt_session (PromptSession, optional): Reusable prompt session.
         inject_last_result (bool): Whether to inject last_result into prompt.
         inject_into (str): Key to use for injection (default: 'last_result').
@@ -33,7 +31,6 @@ class UserInputAction(BaseAction):
         prompt_text: str = "Input > ",
         default_text: str = "",
         validator: Validator | None = None,
-        console: Console | None = None,
         prompt_session: PromptSession | None = None,
         inject_last_result: bool = False,
     ):
@@ -43,10 +40,6 @@ class UserInputAction(BaseAction):
         )
         self.prompt_text = prompt_text
         self.validator = validator
-        if isinstance(console, Console):
-            self.console = console
-        elif console:
-            raise ValueError("`console` must be an instance of `rich.console.Console`")
         self.prompt_session = prompt_session or PromptSession()
         self.default_text = default_text
 
