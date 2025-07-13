@@ -36,9 +36,11 @@ class SaveFileAction(BaseAction):
         file_path: str,
         file_type: FileType | str = FileType.TEXT,
         mode: Literal["w", "a"] = "w",
-        inject_last_result: bool = True,
-        inject_into: str = "data",
+        data: Any = None,
         overwrite: bool = True,
+        create_dirs: bool = True,
+        inject_last_result: bool = False,
+        inject_into: str = "data",
     ):
         """
         SaveFileAction allows saving data to a file.
@@ -47,17 +49,22 @@ class SaveFileAction(BaseAction):
             name (str): Name of the action.
             file_path (str | Path): Path to the file where data will be saved.
             file_type (FileType | str): Format to write to (e.g. TEXT, JSON, YAML).
+            mode (Literal["w", "a"]): File mode (default: "w").
+            data (Any): Data to be saved (if not using inject_last_result).
+            overwrite (bool): Whether to overwrite the file if it exists.
+            create_dirs (bool): Whether to create parent directories if they do not exist.
             inject_last_result (bool): Whether to inject result from previous action.
             inject_into (str): Kwarg name to inject the last result as.
-            overwrite (bool): Whether to overwrite the file if it exists.
         """
         super().__init__(
             name=name, inject_last_result=inject_last_result, inject_into=inject_into
         )
         self._file_path = self._coerce_file_path(file_path)
         self._file_type = self._coerce_file_type(file_type)
+        self.data = data
         self.overwrite = overwrite
         self.mode = mode
+        self.create_dirs = create_dirs
 
     @property
     def file_path(self) -> Path | None:
@@ -126,6 +133,14 @@ class SaveFileAction(BaseAction):
         elif self.file_path.exists() and not self.overwrite:
             raise FileExistsError(f"File already exists: {self.file_path}")
 
+        if self.file_path.parent and not self.file_path.parent.exists():
+            if self.create_dirs:
+                self.file_path.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                raise FileNotFoundError(
+                    f"Directory does not exist: {self.file_path.parent}"
+                )
+
         try:
             if self.file_type == FileType.TEXT:
                 self.file_path.write_text(data, encoding="UTF-8")
@@ -175,7 +190,7 @@ class SaveFileAction(BaseAction):
 
     async def _run(self, *args, **kwargs):
         combined_kwargs = self._maybe_inject_last_result(kwargs)
-        data = combined_kwargs.get(self.inject_into)
+        data = self.data or combined_kwargs.get(self.inject_into)
 
         context = ExecutionContext(
             name=self.name, args=args, kwargs=combined_kwargs, action=self

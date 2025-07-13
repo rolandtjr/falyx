@@ -4,7 +4,13 @@ from typing import Any
 from pydantic import BaseModel
 
 from falyx import Falyx
-from falyx.action import Action, ActionFactory, ChainedAction, ConfirmAction
+from falyx.action import (
+    Action,
+    ActionFactory,
+    ChainedAction,
+    ConfirmAction,
+    SaveFileAction,
+)
 from falyx.parser import CommandArgumentParser
 
 
@@ -39,12 +45,18 @@ async def build_json_updates(dogs: list[Dog]) -> list[dict[str, Any]]:
     return [dog.model_dump(mode="json") for dog in dogs]
 
 
-def after_action(dogs) -> None:
+async def save_dogs(dogs) -> None:
     if not dogs:
         print("No dogs processed.")
         return
     for result in dogs:
-        print(Dog(**result))
+        print(f"Saving {Dog(**result)} to file.")
+        await SaveFileAction(
+            name="Save Dog Data",
+            file_path=f"dogs/{result['name']}.json",
+            data=result,
+            file_type="json",
+        )()
 
 
 async def build_chain(dogs: list[Dog]) -> ChainedAction:
@@ -64,8 +76,8 @@ async def build_chain(dogs: list[Dog]) -> ChainedAction:
                 inject_into="dogs",
             ),
             Action(
-                name="after_action",
-                action=after_action,
+                name="save_dogs",
+                action=save_dogs,
                 inject_into="dogs",
             ),
         ],
@@ -91,13 +103,13 @@ def dog_config(parser: CommandArgumentParser) -> None:
 
 
 async def main():
-    flx = Falyx("Dog Post Example")
+    flx = Falyx("Save Dogs Example")
 
     flx.add_command(
         key="D",
-        description="Post Dog Data",
+        description="Save Dog Data",
         action=factory,
-        aliases=["post_dogs"],
+        aliases=["save_dogs"],
         argument_config=dog_config,
     )
 

@@ -9,22 +9,37 @@ from falyx.parser.argument_action import ArgumentAction
 
 @dataclass
 class Argument:
-    """Represents a command-line argument."""
+    """
+    Represents a command-line argument.
+
+    Attributes:
+        flags (tuple[str, ...]): Short and long flags for the argument.
+        dest (str): The destination name for the argument.
+        action (ArgumentAction): The action to be taken when the argument is encountered.
+        type (Any): The type of the argument (e.g., str, int, float) or a callable that converts the argument value.
+        default (Any): The default value if the argument is not provided.
+        choices (list[str] | None): A list of valid choices for the argument.
+        required (bool): True if the argument is required, False otherwise.
+        help (str): Help text for the argument.
+        nargs (int | str | None): Number of arguments expected. Can be an int, '?', '*', '+', or None.
+        positional (bool): True if the argument is positional (no leading - or -- in flags), False otherwise.
+        resolver (BaseAction | None):
+            An action object that resolves the argument, if applicable.
+        lazy_resolver (bool): True if the resolver should be called lazily, False otherwise
+    """
 
     flags: tuple[str, ...]
-    dest: str  # Destination name for the argument
-    action: ArgumentAction = (
-        ArgumentAction.STORE
-    )  # Action to be taken when the argument is encountered
-    type: Any = str  # Type of the argument (e.g., str, int, float) or callable
-    default: Any = None  # Default value if the argument is not provided
-    choices: list[str] | None = None  # List of valid choices for the argument
-    required: bool = False  # True if the argument is required
-    help: str = ""  # Help text for the argument
-    nargs: int | str | None = None  # int, '?', '*', '+', None
-    positional: bool = False  # True if no leading - or -- in flags
-    resolver: BaseAction | None = None  # Action object for the argument
-    lazy_resolver: bool = False  # True if resolver should be called lazily
+    dest: str
+    action: ArgumentAction = ArgumentAction.STORE
+    type: Any = str
+    default: Any = None
+    choices: list[str] | None = None
+    required: bool = False
+    help: str = ""
+    nargs: int | str | None = None
+    positional: bool = False
+    resolver: BaseAction | None = None
+    lazy_resolver: bool = False
 
     def get_positional_text(self) -> str:
         """Get the positional text for the argument."""
