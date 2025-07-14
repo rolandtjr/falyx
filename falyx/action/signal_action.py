@@ -14,7 +14,7 @@ class SignalAction(Action):
     Useful for exiting a menu, going back, or halting execution gracefully.
     """
 
-    def __init__(self, name: str, signal: Exception):
+    def __init__(self, name: str, signal: FlowSignal):
         self.signal = signal
         super().__init__(name, action=self.raise_signal)
 

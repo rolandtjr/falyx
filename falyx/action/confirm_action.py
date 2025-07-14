@@ -56,13 +56,14 @@ class ConfirmAction(BaseAction):
         prompt_session (PromptSession | None): The session to use for input.
         confirm (bool): Whether to prompt the user for confirmation.
         word (str): The word to type for TYPE_WORD confirmation.
-        return_last_result (bool): Whether to return the last result of the action.
+        return_last_result (bool): Whether to return the last result of the action
+                                   instead of a boolean.
     """
 
     def __init__(
         self,
         name: str,
-        message: str = "Continue",
+        message: str = "Confirm?",
         confirm_type: ConfirmType | str = ConfirmType.YES_NO,
         prompt_session: PromptSession | None = None,
         confirm: bool = True,
@@ -114,16 +115,19 @@ class ConfirmAction(BaseAction):
                     session=self.prompt_session,
                 )
             case ConfirmType.YES_NO_CANCEL:
+                error_message = "Enter 'Y', 'y' to confirm, 'N', 'n' to decline, or 'C', 'c' to abort."
                 answer = await self.prompt_session.prompt_async(
-                    f"❓ {self.message} ([Y]es, [N]o, or [C]ancel to abort): ",
-                    validator=words_validator(["Y", "N", "C"]),
+                    f"❓ {self.message} [Y]es, [N]o, or [C]ancel to abort > ",
+                    validator=words_validator(
+                        ["Y", "N", "C"], error_message=error_message
+                    ),
                 )
                 if answer.upper() == "C":
                     raise CancelSignal(f"Action '{self.name}' was cancelled by the user.")
                 return answer.upper() == "Y"
             case ConfirmType.TYPE_WORD:
                 answer = await self.prompt_session.prompt_async(
-                    f"❓ {self.message} (type '{self.word}' to confirm or N/n): ",
+                    f"❓ {self.message} [{self.word}] to confirm or [N/n] > ",
                     validator=word_validator(self.word),
                 )
                 return answer.upper().strip() != "N"
@@ -138,9 +142,10 @@ class ConfirmAction(BaseAction):
                     raise CancelSignal(f"Action '{self.name}' was cancelled by the user.")
                 return answer
             case ConfirmType.OK_CANCEL:
+                error_message = "Enter 'O', 'o' to confirm or 'C', 'c' to abort."
                 answer = await self.prompt_session.prompt_async(
-                    f"❓ {self.message} ([O]k to continue, [C]ancel to abort): ",
-                    validator=words_validator(["O", "C"]),
+                    f"❓ {self.message} [O]k to confirm, [C]ancel to abort > ",
+                    validator=words_validator(["O", "C"], error_message=error_message),
                 )
                 if answer.upper() == "C":
                     raise CancelSignal(f"Action '{self.name}' was cancelled by the user.")
@@ -213,5 +218,5 @@ class ConfirmAction(BaseAction):
     def __str__(self) -> str:
         return (
             f"ConfirmAction(name={self.name}, message={self.message}, "
-            f"confirm_type={self.confirm_type})"
+            f"confirm_type={self.confirm_type}, return_last_result={self.return_last_result})"
         )

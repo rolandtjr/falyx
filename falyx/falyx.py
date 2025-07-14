@@ -1,7 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""falyx.py
-
-Main class for constructing and running Falyx CLI menus.
+"""Main class for constructing and running Falyx CLI menus.
 
 Falyx provides a structured, customizable interactive menu system
 for running commands, actions, and workflows. It supports:

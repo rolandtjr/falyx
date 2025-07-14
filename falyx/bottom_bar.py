@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from prompt_toolkit.formatted_text import HTML, merge_formatted_text
 from prompt_toolkit.key_binding import KeyBindings
+from rich.console import Console
 
 from falyx.console import console
 from falyx.options_manager import OptionsManager

@@ -44,10 +44,12 @@ def yes_no_validator() -> Validator:
             return False
         return True
 
-    return Validator.from_callable(validate, error_message="Enter 'Y' or 'n'.")
+    return Validator.from_callable(validate, error_message="Enter 'Y', 'y' or 'N', 'n'.")
 
 
-def words_validator(keys: Sequence[str] | KeysView[str]) -> Validator:
+def words_validator(
+    keys: Sequence[str] | KeysView[str], error_message: str | None = None
+) -> Validator:
     """Validator for specific word inputs."""
 
     def validate(text: str) -> bool:
@@ -55,9 +57,10 @@ def words_validator(keys: Sequence[str] | KeysView[str]) -> Validator:
             return False
         return True
 
-    return Validator.from_callable(
-        validate, error_message=f"Invalid input. Choices: {{{', '.join(keys)}}}."
-    )
+    if error_message is None:
+        error_message = f"Invalid input. Choices: {{{', '.join(keys)}}}."
+
+    return Validator.from_callable(validate, error_message=error_message)
 
 
 def word_validator(word: str) -> Validator:
@@ -68,7 +71,7 @@ def word_validator(word: str) -> Validator:
             return True
         return text.upper().strip() == word.upper()
 
-    return Validator.from_callable(validate, error_message=f"Enter '{word}' or 'N'.")
+    return Validator.from_callable(validate, error_message=f"Enter '{word}' or 'N', 'n'.")
 
 
 class MultiIndexValidator(Validator):
