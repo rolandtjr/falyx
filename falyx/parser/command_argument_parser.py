@@ -2,6 +2,7 @@
 """command_argument_parser.py"""
 from __future__ import annotations
 
+from collections import defaultdict
 from copy import deepcopy
 from typing import Any, Iterable
 
@@ -13,6 +14,7 @@ from falyx.console import console
 from falyx.exceptions import CommandArgumentError
 from falyx.parser.argument import Argument
 from falyx.parser.argument_action import ArgumentAction
+from falyx.parser.parser_types import false_none, true_none
 from falyx.parser.utils import coerce_value
 from falyx.signals import HelpSignal
 
@@ -33,6 +35,7 @@ class CommandArgumentParser:
     - Support for positional and keyword arguments.
     - Support for default values.
     - Support for boolean flags.
+    - Support for optional boolean flags.
     - Exception handling for invalid arguments.
     - Render Help using Rich library.
     """
@@ -111,10 +114,23 @@ class CommandArgumentParser:
         return dest
 
     def _determine_required(
-        self, required: bool, positional: bool, nargs: int | str | None
+        self,
+        required: bool,
+        positional: bool,
+        nargs: int | str | None,
+        action: ArgumentAction,
     ) -> bool:
         """Determine if the argument is required."""
         if required:
+            if action in (
+                ArgumentAction.STORE_TRUE,
+                ArgumentAction.STORE_FALSE,
+                ArgumentAction.STORE_BOOL_OPTIONAL,
+                ArgumentAction.HELP,
+            ):
+                raise CommandArgumentError(
+                    f"Argument with action {action} cannot be required"
+                )
             return True
         if positional:
             assert (
@@ -143,6 +159,7 @@ class CommandArgumentParser:
             ArgumentAction.STORE_TRUE,
             ArgumentAction.COUNT,
             ArgumentAction.HELP,
+            ArgumentAction.STORE_BOOL_OPTIONAL,
         ):
             if nargs is not None:
                 raise CommandArgumentError(
@@ -163,9 +180,17 @@ class CommandArgumentParser:
         return nargs
 
     def _normalize_choices(
-        self, choices: Iterable | None, expected_type: Any
+        self, choices: Iterable | None, expected_type: Any, action: ArgumentAction
     ) -> list[Any]:
         if choices is not None:
+            if action in (
+                ArgumentAction.STORE_TRUE,
+                ArgumentAction.STORE_FALSE,
+                ArgumentAction.STORE_BOOL_OPTIONAL,
+            ):
+                raise CommandArgumentError(
+                    f"choices cannot be specified for {action} actions"
+                )
             if isinstance(choices, dict):
                 raise CommandArgumentError("choices cannot be a dict")
             try:
@@ -239,6 +264,7 @@ class CommandArgumentParser:
         if action in (
             ArgumentAction.STORE_TRUE,
             ArgumentAction.STORE_FALSE,
+            ArgumentAction.STORE_BOOL_OPTIONAL,
             ArgumentAction.COUNT,
             ArgumentAction.HELP,
         ):
@@ -271,6 +297,14 @@ class CommandArgumentParser:
                 return []
             else:
                 return None
+        elif action in (
+            ArgumentAction.STORE_TRUE,
+            ArgumentAction.STORE_FALSE,
+            ArgumentAction.STORE_BOOL_OPTIONAL,
+        ):
+            raise CommandArgumentError(
+                f"Default value cannot be set for action {action}. It is a boolean flag."
+            )
         return default
 
     def _validate_flags(self, flags: tuple[str, ...]) -> None:
@@ -288,6 +322,66 @@ class CommandArgumentParser:
                 raise CommandArgumentError(
                     f"Flag '{flag}' must be a single character or start with '--'"
                 )
+
+    def _register_store_bool_optional(
+        self,
+        flags: tuple[str, ...],
+        dest: str,
+        help: str,
+    ) -> None:
+        if len(flags) != 1:
+            raise CommandArgumentError(
+                "store_bool_optional action can only have a single flag"
+            )
+        if not flags[0].startswith("--"):
+            raise CommandArgumentError(
+                "store_bool_optional action must use a long flag (e.g. --flag)"
+            )
+        base_flag = flags[0]
+        negated_flag = f"--no-{base_flag.lstrip('-')}"
+
+        argument = Argument(
+            flags=flags,
+            dest=dest,
+            action=ArgumentAction.STORE_BOOL_OPTIONAL,
+            type=true_none,
+            default=None,
+            help=help,
+        )
+
+        negated_argument = Argument(
+            flags=(negated_flag,),
+            dest=dest,
+            action=ArgumentAction.STORE_BOOL_OPTIONAL,
+            type=false_none,
+            default=None,
+            help=help,
+        )
+
+        self._register_argument(argument)
+        self._register_argument(negated_argument)
+
+    def _register_argument(self, argument: Argument):
+
+        for flag in argument.flags:
+            if (
+                flag in self._flag_map
+                and not argument.action == ArgumentAction.STORE_BOOL_OPTIONAL
+            ):
+                existing = self._flag_map[flag]
+                raise CommandArgumentError(
+                    f"Flag '{flag}' is already used by argument '{existing.dest}'"
+                )
+        for flag in argument.flags:
+            self._flag_map[flag] = argument
+            if not argument.positional:
+                self._keyword[flag] = argument
+        self._dest_set.add(argument.dest)
+        self._arguments.append(argument)
+        if argument.positional:
+            self._positional[argument.dest] = argument
+        else:
+            self._keyword_list.append(argument)
 
     def add_argument(
         self,
@@ -334,6 +428,7 @@ class CommandArgumentParser:
             )
         action = self._validate_action(action, positional)
         resolver = self._validate_resolver(action, resolver)
+
         nargs = self._validate_nargs(nargs, action)
         default = self._resolve_default(default, action, nargs)
         if (
@@ -344,46 +439,34 @@ class CommandArgumentParser:
                 self._validate_default_list_type(default, expected_type, dest)
             else:
                 self._validate_default_type(default, expected_type, dest)
-        choices = self._normalize_choices(choices, expected_type)
+        choices = self._normalize_choices(choices, expected_type, action)
         if default is not None and choices and default not in choices:
             raise CommandArgumentError(
                 f"Default value '{default}' not in allowed choices: {choices}"
             )
-        required = self._determine_required(required, positional, nargs)
+        required = self._determine_required(required, positional, nargs, action)
         if not isinstance(lazy_resolver, bool):
             raise CommandArgumentError(
                 f"lazy_resolver must be a boolean, got {type(lazy_resolver)}"
             )
-        argument = Argument(
-            flags=flags,
-            dest=dest,
-            action=action,
-            type=expected_type,
-            default=default,
-            choices=choices,
-            required=required,
-            help=help,
-            nargs=nargs,
-            positional=positional,
-            resolver=resolver,
-            lazy_resolver=lazy_resolver,
-        )
-        for flag in flags:
-            if flag in self._flag_map:
-                existing = self._flag_map[flag]
-                raise CommandArgumentError(
-                    f"Flag '{flag}' is already used by argument '{existing.dest}'"
-                )
-        for flag in flags:
-            self._flag_map[flag] = argument
-            if not positional:
-                self._keyword[flag] = argument
-        self._dest_set.add(dest)
-        self._arguments.append(argument)
-        if positional:
-            self._positional[dest] = argument
+        if action == ArgumentAction.STORE_BOOL_OPTIONAL:
+            self._register_store_bool_optional(flags, dest, help)
         else:
-            self._keyword_list.append(argument)
+            argument = Argument(
+                flags=flags,
+                dest=dest,
+                action=action,
+                type=expected_type,
+                default=default,
+                choices=choices,
+                required=required,
+                help=help,
+                nargs=nargs,
+                positional=positional,
+                resolver=resolver,
+                lazy_resolver=lazy_resolver,
+            )
+            self._register_argument(argument)
 
     def get_argument(self, dest: str) -> Argument | None:
         return next((a for a in self._arguments if a.dest == dest), None)
@@ -622,6 +705,10 @@ class CommandArgumentParser:
                 i += 1
             elif action == ArgumentAction.STORE_FALSE:
                 result[spec.dest] = False
+                consumed_indices.add(i)
+                i += 1
+            elif action == ArgumentAction.STORE_BOOL_OPTIONAL:
+                result[spec.dest] = spec.type(True)
                 consumed_indices.add(i)
                 i += 1
             elif action == ArgumentAction.COUNT:
@@ -889,11 +976,28 @@ class CommandArgumentParser:
                         help_text = f"\n{'':<33}{help_text}"
                     self.console.print(f"{arg_line}{help_text}")
             self.console.print("[bold]options:[/bold]")
+            arg_groups = defaultdict(list)
             for arg in self._keyword_list:
-                flags = ", ".join(arg.flags)
-                flags_choice = f"{flags} {arg.get_choice_text()}"
+                arg_groups[arg.dest].append(arg)
+
+            for group in arg_groups.values():
+                if len(group) == 2 and all(
+                    arg.action == ArgumentAction.STORE_BOOL_OPTIONAL for arg in group
+                ):
+                    # Merge --flag / --no-flag pair into single help line for STORE_BOOL_OPTIONAL
+                    all_flags = tuple(
+                        sorted(
+                            (arg.flags[0] for arg in group),
+                            key=lambda f: f.startswith("--no-"),
+                        )
+                    )
+                else:
+                    all_flags = group[0].flags
+
+                flags = ", ".join(all_flags)
+                flags_choice = f"{flags} {group[0].get_choice_text()}"
                 arg_line = f"  {flags_choice:<30} "
-                help_text = arg.help or ""
+                help_text = group[0].help or ""
                 if help_text and len(flags_choice) > 30:
                     help_text = f"\n{'':<33}{help_text}"
                 self.console.print(f"{arg_line}{help_text}")

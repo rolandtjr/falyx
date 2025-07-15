@@ -98,13 +98,17 @@ def test_enable_retry_not_action():
     cmd = Command(
         key="C",
         description="Retry action",
-        action=DummyInputAction,
+        action=DummyInputAction(
+            name="dummy_input_action",
+        ),
         retry=True,
     )
     assert cmd.retry is True
     with pytest.raises(Exception) as exc_info:
         assert cmd.action.retry_policy.enabled is False
-    assert "'function' object has no attribute 'retry_policy'" in str(exc_info.value)
+    assert "'DummyInputAction' object has no attribute 'retry_policy'" in str(
+        exc_info.value
+    )
 
 
 def test_chain_retry_all():
@@ -134,13 +138,17 @@ def test_chain_retry_all_not_base_action():
     cmd = Command(
         key="E",
         description="Chain with retry",
-        action=DummyInputAction,
+        action=DummyInputAction(
+            name="dummy_input_action",
+        ),
         retry_all=True,
     )
     assert cmd.retry_all is True
     with pytest.raises(Exception) as exc_info:
         assert cmd.action.retry_policy.enabled is False
-    assert "'function' object has no attribute 'retry_policy'" in str(exc_info.value)
+    assert "'DummyInputAction' object has no attribute 'retry_policy'" in str(
+        exc_info.value
+    )
 
 
 @pytest.mark.asyncio

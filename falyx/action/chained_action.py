@@ -17,6 +17,7 @@ from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import Hook, HookManager, HookType
 from falyx.logger import logger
 from falyx.options_manager import OptionsManager
+from falyx.signals import BreakChainSignal
 from falyx.themes import OneColors
 
 
@@ -106,7 +107,7 @@ class ChainedAction(BaseAction, ActionListMixin):
     def _clear_args(self):
         return (), {}
 
-    async def _run(self, *args, **kwargs) -> list[Any]:
+    async def _run(self, *args, **kwargs) -> Any:
         if not self.actions:
             raise EmptyChainError(f"[{self.name}] No actions to execute.")
 
@@ -166,7 +167,11 @@ class ChainedAction(BaseAction, ActionListMixin):
             context.result = all_results if self.return_list else all_results[-1]
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
             return context.result
-
+        except BreakChainSignal as error:
+            logger.info("[%s] Chain broken: %s", self.name, error)
+            context.exception = error
+            shared_context.add_error(shared_context.current_index, error)
+            await self._rollback(context.extra["rollback_stack"], *args, **kwargs)
         except Exception as error:
             context.exception = error
             shared_context.add_error(shared_context.current_index, error)

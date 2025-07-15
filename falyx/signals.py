@@ -10,6 +10,13 @@ class FlowSignal(BaseException):
     """
 
 
+class BreakChainSignal(FlowSignal):
+    """Raised to break the current action chain and return to the previous context."""
+
+    def __init__(self, message: str = "Break chain signal received."):
+        super().__init__(message)
+
+
 class QuitSignal(FlowSignal):
     """Raised to signal an immediate exit from the CLI framework."""
 

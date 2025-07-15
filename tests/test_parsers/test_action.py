@@ -1,6 +1,6 @@
 import pytest
 
-from falyx.action import Action, SelectionAction
+from falyx.action import Action
 from falyx.exceptions import CommandArgumentError
 from falyx.parser import ArgumentAction, CommandArgumentParser
 
@@ -217,11 +217,3 @@ async def test_action_with_default_and_value_positional():
 
     with pytest.raises(CommandArgumentError):
         await parser.parse_args(["be"])
-
-
-# @pytest.mark.asyncio
-# async def test_selection_action():
-#     parser = CommandArgumentParser()
-#     action = SelectionAction("select", selections=["a", "b", "c"])
-#     parser.add_argument("--select", action=ArgumentAction.ACTION, resolver=action)
-#     args = await parser.parse_args(["--select"])

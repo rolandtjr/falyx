@@ -15,9 +15,9 @@ def coerce_bool(value: str) -> bool:
     if isinstance(value, bool):
         return value
     value = value.strip().lower()
-    if value in {"true", "1", "yes", "on"}:
+    if value in {"true", "t", "1", "yes", "on"}:
         return True
-    elif value in {"false", "0", "no", "off"}:
+    elif value in {"false", "f", "0", "no", "off"}:
         return False
     return bool(value)
 

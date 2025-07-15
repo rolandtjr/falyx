@@ -12,6 +12,7 @@ class ArgumentAction(Enum):
     STORE = "store"
     STORE_TRUE = "store_true"
     STORE_FALSE = "store_false"
+    STORE_BOOL_OPTIONAL = "store_bool_optional"
     APPEND = "append"
     EXTEND = "extend"
     COUNT = "count"

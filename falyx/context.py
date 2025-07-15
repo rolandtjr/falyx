@@ -42,7 +42,7 @@ class ExecutionContext(BaseModel):
         kwargs (dict): Keyword arguments passed to the action.
         action (BaseAction | Callable): The action instance being executed.
         result (Any | None): The result of the action, if successful.
-        exception (Exception | None): The exception raised, if execution failed.
+        exception (BaseException | None): The exception raised, if execution failed.
         start_time (float | None): High-resolution performance start time.
         end_time (float | None): High-resolution performance end time.
         start_wall (datetime | None): Wall-clock timestamp when execution began.
@@ -75,7 +75,7 @@ class ExecutionContext(BaseModel):
     kwargs: dict = Field(default_factory=dict)
     action: Any
     result: Any | None = None
-    exception: Exception | None = None
+    exception: BaseException | None = None
 
     start_time: float | None = None
     end_time: float | None = None
@@ -207,7 +207,7 @@ class SharedContext(BaseModel):
     Attributes:
         name (str): Identifier for the context (usually the parent action name).
         results (list[Any]): Captures results from each action, in order of execution.
-        errors (list[tuple[int, Exception]]): Indexed list of errors from failed actions.
+        errors (list[tuple[int, BaseException]]): Indexed list of errors from failed actions.
         current_index (int): Index of the currently executing action (used in chains).
         is_parallel (bool): Whether the context is used in parallel mode (ActionGroup).
         shared_result (Any | None): Optional shared value available to all actions in
@@ -232,7 +232,7 @@ class SharedContext(BaseModel):
     name: str
     action: Any
     results: list[Any] = Field(default_factory=list)
-    errors: list[tuple[int, Exception]] = Field(default_factory=list)
+    errors: list[tuple[int, BaseException]] = Field(default_factory=list)
     current_index: int = -1
     is_parallel: bool = False
     shared_result: Any | None = None
@@ -244,7 +244,7 @@ class SharedContext(BaseModel):
     def add_result(self, result: Any) -> None:
         self.results.append(result)
 
-    def add_error(self, index: int, error: Exception) -> None:
+    def add_error(self, index: int, error: BaseException) -> None:
         self.errors.append((index, error))
 
     def set_shared_result(self, result: Any) -> None:
