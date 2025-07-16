@@ -60,6 +60,8 @@ class ActionGroup(BaseAction, ActionListMixin):
             Sequence[BaseAction | Callable[..., Any] | Callable[..., Awaitable]] | None
         ) = None,
         *,
+        args: tuple[Any, ...] = (),
+        kwargs: dict[str, Any] | None = None,
         hooks: HookManager | None = None,
         inject_last_result: bool = False,
         inject_into: str = "last_result",
@@ -71,6 +73,8 @@ class ActionGroup(BaseAction, ActionListMixin):
             inject_into=inject_into,
         )
         ActionListMixin.__init__(self)
+        self.args = args
+        self.kwargs = kwargs or {}
         if actions:
             self.set_actions(actions)
 
@@ -115,13 +119,17 @@ class ActionGroup(BaseAction, ActionListMixin):
     async def _run(self, *args, **kwargs) -> list[tuple[str, Any]]:
         if not self.actions:
             raise EmptyGroupError(f"[{self.name}] No actions to execute.")
+
+        combined_args = args + self.args
+        combined_kwargs = {**self.kwargs, **kwargs}
+
         shared_context = SharedContext(name=self.name, action=self, is_parallel=True)
         if self.shared_context:
             shared_context.set_shared_result(self.shared_context.last_result())
-        updated_kwargs = self._maybe_inject_last_result(kwargs)
+        updated_kwargs = self._maybe_inject_last_result(combined_kwargs)
         context = ExecutionContext(
             name=self.name,
-            args=args,
+            args=combined_args,
             kwargs=updated_kwargs,
             action=self,
             extra={"results": [], "errors": []},
@@ -131,7 +139,7 @@ class ActionGroup(BaseAction, ActionListMixin):
         async def run_one(action: BaseAction):
             try:
                 prepared = action.prepare(shared_context, self.options_manager)
-                result = await prepared(*args, **updated_kwargs)
+                result = await prepared(*combined_args, **updated_kwargs)
                 shared_context.add_result((action.name, result))
                 context.extra["results"].append((action.name, result))
             except Exception as error:

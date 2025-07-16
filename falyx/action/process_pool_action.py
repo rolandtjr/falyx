@@ -91,9 +91,7 @@ class ProcessPoolAction(BaseAction):
                     f"Cannot inject last result into {self.name}: "
                     f"last result is not pickleable."
                 )
-        print(kwargs)
         updated_kwargs = self._maybe_inject_last_result(kwargs)
-        print(updated_kwargs)
         context = ExecutionContext(
             name=self.name,
             args=args,

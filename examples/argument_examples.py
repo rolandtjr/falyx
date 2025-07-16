@@ -13,6 +13,9 @@ class Place(Enum):
     SAN_FRANCISCO = "San Francisco"
     LONDON = "London"
 
+    def __str__(self):
+        return self.value
+
 
 async def test_args(
     service: str,

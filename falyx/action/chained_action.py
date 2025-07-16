@@ -54,6 +54,8 @@ class ChainedAction(BaseAction, ActionListMixin):
             | None
         ) = None,
         *,
+        args: tuple[Any, ...] = (),
+        kwargs: dict[str, Any] | None = None,
         hooks: HookManager | None = None,
         inject_last_result: bool = False,
         inject_into: str = "last_result",
@@ -67,6 +69,8 @@ class ChainedAction(BaseAction, ActionListMixin):
             inject_into=inject_into,
         )
         ActionListMixin.__init__(self)
+        self.args = args
+        self.kwargs = kwargs or {}
         self.auto_inject = auto_inject
         self.return_list = return_list
         if actions:
@@ -111,13 +115,16 @@ class ChainedAction(BaseAction, ActionListMixin):
         if not self.actions:
             raise EmptyChainError(f"[{self.name}] No actions to execute.")
 
+        combined_args = args + self.args
+        combined_kwargs = {**self.kwargs, **kwargs}
+
         shared_context = SharedContext(name=self.name, action=self)
         if self.shared_context:
             shared_context.add_result(self.shared_context.last_result())
-        updated_kwargs = self._maybe_inject_last_result(kwargs)
+        updated_kwargs = self._maybe_inject_last_result(combined_kwargs)
         context = ExecutionContext(
             name=self.name,
-            args=args,
+            args=combined_args,
             kwargs=updated_kwargs,
             action=self,
             extra={"results": [], "rollback_stack": []},
@@ -136,7 +143,7 @@ class ChainedAction(BaseAction, ActionListMixin):
                 shared_context.current_index = index
                 prepared = action.prepare(shared_context, self.options_manager)
                 try:
-                    result = await prepared(*args, **updated_kwargs)
+                    result = await prepared(*combined_args, **updated_kwargs)
                 except Exception as error:
                     if index + 1 < len(self.actions) and isinstance(
                         self.actions[index + 1], FallbackAction
@@ -155,10 +162,12 @@ class ChainedAction(BaseAction, ActionListMixin):
                         fallback._skip_in_chain = True
                     else:
                         raise
-                args, updated_kwargs = self._clear_args()
                 shared_context.add_result(result)
                 context.extra["results"].append(result)
-                context.extra["rollback_stack"].append(prepared)
+                context.extra["rollback_stack"].append(
+                    (prepared, combined_args, updated_kwargs)
+                )
+                combined_args, updated_kwargs = self._clear_args()
 
             all_results = context.extra["results"]
             assert (
@@ -171,11 +180,11 @@ class ChainedAction(BaseAction, ActionListMixin):
             logger.info("[%s] Chain broken: %s", self.name, error)
             context.exception = error
             shared_context.add_error(shared_context.current_index, error)
-            await self._rollback(context.extra["rollback_stack"], *args, **kwargs)
+            await self._rollback(context.extra["rollback_stack"])
         except Exception as error:
             context.exception = error
             shared_context.add_error(shared_context.current_index, error)
-            await self._rollback(context.extra["rollback_stack"], *args, **kwargs)
+            await self._rollback(context.extra["rollback_stack"])
             await self.hooks.trigger(HookType.ON_ERROR, context)
             raise
         finally:
@@ -184,7 +193,9 @@ class ChainedAction(BaseAction, ActionListMixin):
             await self.hooks.trigger(HookType.ON_TEARDOWN, context)
             er.record(context)
 
-    async def _rollback(self, rollback_stack, *args, **kwargs):
+    async def _rollback(
+        self, rollback_stack: list[tuple[Action, tuple[Any, ...], dict[str, Any]]]
+    ):
         """
         Roll back all executed actions in reverse order.
 
@@ -197,12 +208,12 @@ class ChainedAction(BaseAction, ActionListMixin):
             rollback_stack (list): Actions to roll back.
             *args, **kwargs: Passed to rollback handlers.
         """
-        for action in reversed(rollback_stack):
+        for action, args, kwargs in reversed(rollback_stack):
             rollback = getattr(action, "rollback", None)
             if rollback:
                 try:
                     logger.warning("[%s] Rolling back...", action.name)
-                    await action.rollback(*args, **kwargs)
+                    await rollback(*args, **kwargs)
                 except Exception as error:
                     logger.error("[%s] Rollback failed: %s", action.name, error)
 

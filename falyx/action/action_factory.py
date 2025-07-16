@@ -112,7 +112,16 @@ class ActionFactory(BaseAction):
         tree = parent.add(label) if parent else Tree(label)
 
         try:
-            generated = await self.factory(*self.preview_args, **self.preview_kwargs)
+            generated = None
+            if self.args or self.kwargs:
+                try:
+                    generated = await self.factory(*self.args, **self.kwargs)
+                except TypeError:
+                    ...
+
+            if not generated:
+                generated = await self.factory(*self.preview_args, **self.preview_kwargs)
+
             if isinstance(generated, BaseAction):
                 await generated.preview(parent=tree)
             else:

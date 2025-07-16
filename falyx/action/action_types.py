@@ -61,7 +61,9 @@ class ConfirmType(Enum):
     YES_CANCEL = "yes_cancel"
     YES_NO_CANCEL = "yes_no_cancel"
     TYPE_WORD = "type_word"
+    TYPE_WORD_CANCEL = "type_word_cancel"
     OK_CANCEL = "ok_cancel"
+    ACKNOWLEDGE = "acknowledge"
 
     @classmethod
     def choices(cls) -> list[ConfirmType]:

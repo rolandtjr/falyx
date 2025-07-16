@@ -112,6 +112,14 @@ class ConfirmAction(BaseAction):
                     validator=word_validator(self.word),
                 )
                 return answer.upper().strip() != "N"
+            case ConfirmType.TYPE_WORD_CANCEL:
+                answer = await self.prompt_session.prompt_async(
+                    f"❓ {self.message} [{self.word}] to confirm or [N/n] > ",
+                    validator=word_validator(self.word),
+                )
+                if answer.upper().strip() == "N":
+                    raise CancelSignal(f"Action '{self.name}' was cancelled by the user.")
+                return answer.upper().strip() == self.word.upper().strip()
             case ConfirmType.YES_CANCEL:
                 answer = await confirm_async(
                     self.message,
@@ -131,6 +139,12 @@ class ConfirmAction(BaseAction):
                 if answer.upper() == "C":
                     raise CancelSignal(f"Action '{self.name}' was cancelled by the user.")
                 return answer.upper() == "O"
+            case ConfirmType.ACKNOWLEDGE:
+                answer = await self.prompt_session.prompt_async(
+                    f"❓ {self.message} [A]cknowledge > ",
+                    validator=word_validator("A"),
+                )
+                return answer.upper().strip() == "A"
             case _:
                 raise ValueError(f"Unknown confirm_type: {self.confirm_type}")
 
@@ -151,7 +165,7 @@ class ConfirmAction(BaseAction):
                 and not should_prompt_user(confirm=True, options=self.options_manager)
             ):
                 logger.debug(
-                    "Skipping confirmation for action '%s' as 'confirm' is False or options manager indicates no prompt.",
+                    "Skipping confirmation for '%s' due to never_prompt or options_manager settings.",
                     self.name,
                 )
                 if self.return_last_result:
@@ -189,7 +203,7 @@ class ConfirmAction(BaseAction):
         tree.add(f"[bold]Message:[/] {self.message}")
         tree.add(f"[bold]Type:[/] {self.confirm_type.value}")
         tree.add(f"[bold]Prompt Required:[/] {'No' if self.never_prompt else 'Yes'}")
-        if self.confirm_type == ConfirmType.TYPE_WORD:
+        if self.confirm_type in (ConfirmType.TYPE_WORD, ConfirmType.TYPE_WORD_CANCEL):
             tree.add(f"[bold]Confirmation Word:[/] {self.word}")
         if parent is None:
             self.console.print(tree)
