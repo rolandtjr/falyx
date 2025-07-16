@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from enum import Enum
 from typing import Any
 
 from prompt_toolkit import PromptSession
 from rich.tree import Tree
 
+from falyx.action.action_types import ConfirmType
 from falyx.action.base_action import BaseAction
 from falyx.context import ExecutionContext
 from falyx.execution_registry import ExecutionRegistry as er
@@ -15,25 +15,6 @@ from falyx.prompt_utils import confirm_async, should_prompt_user
 from falyx.signals import CancelSignal
 from falyx.themes import OneColors
 from falyx.validators import word_validator, words_validator
-
-
-class ConfirmType(Enum):
-    """Enum for different confirmation types."""
-
-    YES_NO = "yes_no"
-    YES_CANCEL = "yes_cancel"
-    YES_NO_CANCEL = "yes_no_cancel"
-    TYPE_WORD = "type_word"
-    OK_CANCEL = "ok_cancel"
-
-    @classmethod
-    def choices(cls) -> list[ConfirmType]:
-        """Return a list of all hook type choices."""
-        return list(cls)
-
-    def __str__(self) -> str:
-        """Return the string representation of the confirm type."""
-        return self.value
 
 
 class ConfirmAction(BaseAction):
@@ -66,7 +47,7 @@ class ConfirmAction(BaseAction):
         message: str = "Confirm?",
         confirm_type: ConfirmType | str = ConfirmType.YES_NO,
         prompt_session: PromptSession | None = None,
-        confirm: bool = True,
+        never_prompt: bool = False,
         word: str = "CONFIRM",
         return_last_result: bool = False,
         inject_last_result: bool = True,
@@ -88,11 +69,11 @@ class ConfirmAction(BaseAction):
             name=name,
             inject_last_result=inject_last_result,
             inject_into=inject_into,
+            never_prompt=never_prompt,
         )
         self.message = message
         self.confirm_type = self._coerce_confirm_type(confirm_type)
         self.prompt_session = prompt_session or PromptSession()
-        self.confirm = confirm
         self.word = word
         self.return_last_result = return_last_result
 
@@ -165,11 +146,9 @@ class ConfirmAction(BaseAction):
         try:
             await self.hooks.trigger(HookType.BEFORE, context)
             if (
-                not self.confirm
+                self.never_prompt
                 or self.options_manager
-                and not should_prompt_user(
-                    confirm=self.confirm, options=self.options_manager
-                )
+                and not should_prompt_user(confirm=True, options=self.options_manager)
             ):
                 logger.debug(
                     "Skipping confirmation for action '%s' as 'confirm' is False or options manager indicates no prompt.",
@@ -209,7 +188,7 @@ class ConfirmAction(BaseAction):
         )
         tree.add(f"[bold]Message:[/] {self.message}")
         tree.add(f"[bold]Type:[/] {self.confirm_type.value}")
-        tree.add(f"[bold]Prompt Required:[/] {'Yes' if self.confirm else 'No'}")
+        tree.add(f"[bold]Prompt Required:[/] {'No' if self.never_prompt else 'Yes'}")
         if self.confirm_type == ConfirmType.TYPE_WORD:
             tree.add(f"[bold]Confirmation Word:[/] {self.word}")
         if parent is None:

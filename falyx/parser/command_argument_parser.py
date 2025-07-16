@@ -395,7 +395,7 @@ class CommandArgumentParser:
         help: str = "",
         dest: str | None = None,
         resolver: BaseAction | None = None,
-        lazy_resolver: bool = False,
+        lazy_resolver: bool = True,
     ) -> None:
         """Add an argument to the parser.
         For `ArgumentAction.ACTION`, `nargs` and `type` determine how many and what kind
@@ -852,6 +852,10 @@ class CommandArgumentParser:
                     and spec.lazy_resolver
                     and from_validate
                 ):
+                    if not args:
+                        raise CommandArgumentError(
+                            f"Missing required argument '{spec.dest}': {spec.get_choice_text()}{help_text}"
+                        )
                     continue  # Lazy resolvers are not validated here
                 raise CommandArgumentError(
                     f"Missing required argument '{spec.dest}': {spec.get_choice_text()}{help_text}"
