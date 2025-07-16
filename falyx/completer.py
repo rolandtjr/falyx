@@ -29,6 +29,26 @@ class FalyxCompleter(Completer):
             yield from self._suggest_commands(tokens[0] if tokens else "")
             return
 
+        # Identify command
+        command_key = tokens[0].upper()
+        command = self.falyx._name_map.get(command_key)
+        if not command or not command.arg_parser:
+            return
+
+        # If at end of token, e.g., "--t" vs "--tag ", add a stub so suggest_next sees it
+        parsed_args = tokens[1:] if cursor_at_end_of_token else tokens[1:-1]
+        stub = "" if cursor_at_end_of_token else tokens[-1]
+
+        try:
+            suggestions = command.arg_parser.suggest_next(
+                parsed_args + ([stub] if stub else [])
+            )
+            for suggestion in suggestions:
+                if suggestion.startswith(stub):
+                    yield Completion(suggestion, start_position=-len(stub))
+        except Exception:
+            return
+
     def _suggest_commands(self, prefix: str) -> Iterable[Completion]:
         prefix = prefix.upper()
         keys = [self.falyx.exit_command.key]

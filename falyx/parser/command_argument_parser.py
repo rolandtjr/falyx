@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from copy import deepcopy
+from difflib import get_close_matches
 from typing import Any, Iterable
 
 from rich.console import Console
@@ -913,6 +914,84 @@ class CommandArgumentParser:
             else:
                 kwargs_dict[arg.dest] = parsed[arg.dest]
         return tuple(args_list), kwargs_dict
+
+    def suggest_next(self, args: list[str]) -> list[str]:
+        """
+        Suggest the next possible flags or values given partially typed arguments.
+
+        This does NOT raise errors. It is intended for completions, not validation.
+
+        Returns:
+            A list of possible completions based on the current input.
+        """
+        consumed_positionals = []
+        positional_choices = [
+            str(choice)
+            for arg in self._positional.values()
+            for choice in arg.choices
+            if arg.choices
+        ]
+        if not args:
+            # Nothing entered yet: suggest all top-level flags and positionals
+            if positional_choices:
+                return sorted(set(positional_choices))
+            return sorted(
+                set(
+                    flag
+                    for arg in self._arguments
+                    for flag in arg.flags
+                    if not arg.positional
+                )
+            )
+
+        last = args[-1]
+        suggestions: list[str] = []
+
+        # Case 1: Mid-flag (e.g., "--ver")
+        if last.startswith("-") and not last in self._flag_map:
+            possible_flags = [flag for flag in self._flag_map if flag.startswith(last)]
+            suggestions.extend(possible_flags)
+
+        # Case 2: Flag that expects a value (e.g., ["--tag"])
+        elif last in self._flag_map:
+            arg = self._flag_map[last]
+            if arg.choices:
+                suggestions.extend(arg.choices)
+
+        # Case 3: Just completed a flag, suggest next
+        elif len(args) >= 2 and args[-2] in self._flag_map:
+            # Just gave value for a flag, now suggest next possible
+            used_dests = {
+                self._flag_map[arg].dest for arg in args if arg in self._flag_map
+            }
+            remaining_args = [
+                a
+                for a in self._arguments
+                if not a.positional
+                and a.dest not in used_dests
+                and a.action != ArgumentAction.HELP
+            ]
+            for arg in remaining_args:
+                suggestions.extend(arg.flags)
+
+        # Case 4: Positional values not yet filled
+        else:
+            consumed_positionals = [arg for arg in self._arguments if arg.positional][
+                : len(args)
+            ]
+            remaining_positionals = [
+                arg
+                for arg in self._arguments
+                if arg.positional and arg not in consumed_positionals
+            ]
+            if remaining_positionals:
+                arg = remaining_positionals[0]
+                if arg.choices:
+                    suggestions.extend(arg.choices)
+                else:
+                    suggestions.append(f"<{arg.dest}>")  # generic placeholder
+
+        return sorted(set(suggestions))
 
     def get_options_text(self, plain_text=False) -> str:
         # Options
