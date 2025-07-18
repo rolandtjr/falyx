@@ -26,6 +26,7 @@ class Argument:
         resolver (BaseAction | None):
             An action object that resolves the argument, if applicable.
         lazy_resolver (bool): True if the resolver should be called lazily, False otherwise
+        suggestions (list[str] | None): A list of suggestions for the argument.
     """
 
     flags: tuple[str, ...]
@@ -40,6 +41,7 @@ class Argument:
     positional: bool = False
     resolver: BaseAction | None = None
     lazy_resolver: bool = False
+    suggestions: list[str] | None = None
 
     def get_positional_text(self) -> str:
         """Get the positional text for the argument."""

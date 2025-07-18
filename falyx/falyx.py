@@ -507,7 +507,6 @@ class Falyx:
                 message=self.prompt,
                 multiline=False,
                 completer=self._get_completer(),
-                reserve_space_for_menu=1,
                 validator=CommandValidator(self, self._get_validator_error_message()),
                 bottom_toolbar=self._get_bottom_bar_render(),
                 key_bindings=self.key_bindings,
