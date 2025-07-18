@@ -54,8 +54,10 @@ def infer_args_from_func(
         if arg_type is bool:
             if param.default is False:
                 action = "store_true"
-            else:
+                default = None
+            elif param.default is True:
                 action = "store_false"
+                default = None
 
         if arg_type is list:
             action = "append"
@@ -75,6 +77,7 @@ def infer_args_from_func(
                 "action": action,
                 "help": metadata.get("help", ""),
                 "choices": metadata.get("choices"),
+                "suggestions": metadata.get("suggestions"),
             }
         )
 

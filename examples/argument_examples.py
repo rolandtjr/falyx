@@ -21,11 +21,13 @@ async def test_args(
     service: str,
     place: Place = Place.NEW_YORK,
     region: str = "us-east-1",
+    tag: str | None = None,
     verbose: bool | None = None,
+    number: int | None = None,
 ) -> str:
     if verbose:
-        print(f"Deploying {service} to {region} at {place}...")
-    return f"{service} deployed to {region} at {place}"
+        print(f"Deploying {service}:{tag}:{number} to {region} at {place}...")
+    return f"{service}:{tag}:{number} deployed to {region} at {place}"
 
 
 def default_config(parser: CommandArgumentParser) -> None:
@@ -54,6 +56,17 @@ def default_config(parser: CommandArgumentParser) -> None:
         "--verbose",
         action="store_bool_optional",
         help="Enable verbose output.",
+    )
+    parser.add_argument(
+        "--tag",
+        type=str,
+        help="Optional tag for the deployment.",
+        suggestions=["latest", "stable", "beta"],
+    )
+    parser.add_argument(
+        "--number",
+        type=int,
+        help="Optional number argument.",
     )
 
 
