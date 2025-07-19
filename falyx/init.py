@@ -1,5 +1,23 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""init.py"""
+"""
+Project and global initializer for Falyx CLI environments.
+
+This module defines functions to bootstrap a new Falyx-based CLI project or
+create a global user-level configuration in `~/.config/falyx`.
+
+Functions:
+- `init_project(name: str)`: Creates a new CLI project folder with `tasks.py`
+  and `falyx.yaml` using example actions and config structure.
+- `init_global()`: Creates a shared config in the user's home directory for
+  defining reusable or always-available CLI commands.
+
+Generated files include:
+- `tasks.py`: Python module with `Action`, `ChainedAction`, and async examples
+- `falyx.yaml`: YAML config with command definitions for CLI entry points
+
+Used by:
+- The `falyx init` and `falyx init --global` commands
+"""
 from pathlib import Path
 
 from falyx.console import console

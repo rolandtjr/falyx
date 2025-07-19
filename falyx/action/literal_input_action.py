@@ -1,5 +1,36 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""literal_input_action.py"""
+"""
+Defines `LiteralInputAction`, a lightweight Falyx Action that injects a static,
+predefined value into a `ChainedAction` workflow.
+
+This Action is useful for embedding literal values (e.g., strings, numbers,
+dicts) as part of a CLI pipeline without writing custom callables. It behaves
+like a constant-returning function that can serve as the starting point,
+fallback, or manual override within a sequence of actions.
+
+Key Features:
+- Wraps any static value as a Falyx-compatible Action
+- Fully hookable and previewable like any other Action
+- Enables declarative workflows with no required user input
+- Compatible with auto-injection and shared context in `ChainedAction`
+
+Common Use Cases:
+- Supplying default parameters or configuration values mid-pipeline
+- Starting a chain with a fixed value (e.g., base URL, credentials)
+- Bridging gaps between conditional or dynamically generated Actions
+
+Example:
+    ChainedAction(
+        name="SendStaticMessage",
+        actions=[
+            LiteralInputAction("hello world"),
+            SendMessageAction(),
+        ]
+    )
+
+The `LiteralInputAction` is a foundational building block for pipelines that
+require predictable, declarative value injection at any stage.
+"""
 from __future__ import annotations
 
 from functools import cached_property

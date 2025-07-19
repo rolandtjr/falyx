@@ -1,5 +1,39 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""action_group.py"""
+"""
+Defines `ActionGroup`, a Falyx Action that executes multiple sub-actions concurrently
+using asynchronous parallelism.
+
+`ActionGroup` is designed for workflows where several independent actions can run
+simultaneously to improve responsiveness and reduce latency. It ensures robust error
+isolation, shared result tracking, and full lifecycle hook integration while preserving
+Falyx's introspectability and chaining capabilities.
+
+Key Features:
+- Executes all actions in parallel via `asyncio.gather`
+- Aggregates results as a list of `(name, result)` tuples
+- Collects and reports multiple errors without interrupting execution
+- Compatible with `SharedContext`, `OptionsManager`, and `last_result` injection
+- Teardown-aware: propagates teardown registration across all child actions
+- Fully previewable via Rich tree rendering
+
+Use Cases:
+- Batch execution of independent tasks (e.g., multiple file operations, API calls)
+- Concurrent report generation or validations
+- High-throughput CLI pipelines where latency is critical
+
+Raises:
+- `EmptyGroupError`: If no actions are added to the group
+- `Exception`: Summarizes all failed actions after execution
+
+Example:
+    ActionGroup(
+        name="ParallelChecks",
+        actions=[Action(...), Action(...), ChainedAction(...)],
+    )
+
+This module complements `ChainedAction` by offering breadth-wise (parallel) execution
+as opposed to depth-wise (sequential) execution.
+"""
 import asyncio
 import random
 from typing import Any, Awaitable, Callable, Sequence
@@ -47,6 +81,8 @@ class ActionGroup(BaseAction, ActionListMixin):
     Args:
         name (str): Name of the chain.
         actions (list): List of actions or literals to execute.
+        args (tuple, optional): Positional arguments.
+        kwargs (dict, optional): Keyword arguments.
         hooks (HookManager, optional): Hooks for lifecycle events.
         inject_last_result (bool, optional): Whether to inject last results into kwargs
                                              by default.
@@ -191,7 +227,8 @@ class ActionGroup(BaseAction, ActionListMixin):
 
     def __str__(self):
         return (
-            f"ActionGroup(name={self.name!r}, actions={[a.name for a in self.actions]!r},"
-            f" inject_last_result={self.inject_last_result}, "
-            f"inject_into={self.inject_into!r})"
+            f"ActionGroup(name={self.name}, actions={[a.name for a in self.actions]}, "
+            f"args={self.args!r}, kwargs={self.kwargs!r}, "
+            f"inject_last_result={self.inject_last_result}, "
+            f"inject_into={self.inject_into})"
         )

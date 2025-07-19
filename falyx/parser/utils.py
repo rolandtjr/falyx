@@ -1,4 +1,17 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""
+Contains value coercion and signature comparison utilities for Falyx argument parsing.
+
+This module provides type coercion functions for converting string input into expected
+Python types, including `Enum`, `bool`, `datetime`, and `Literal`. It also supports
+checking whether multiple actions share identical inferred argument definitions.
+
+Functions:
+- coerce_bool: Convert a string to a boolean.
+- coerce_enum: Convert a string or raw value to an Enum instance.
+- coerce_value: General-purpose coercion to a target type (including nested unions, enums, etc.).
+- same_argument_definitions: Check if multiple callables share the same argument structure.
+"""
 import types
 from datetime import datetime
 from enum import EnumMeta
@@ -12,6 +25,17 @@ from falyx.parser.signature import infer_args_from_func
 
 
 def coerce_bool(value: str) -> bool:
+    """
+    Convert a string to a boolean.
+
+    Accepts various truthy and falsy representations such as 'true', 'yes', '0', 'off', etc.
+
+    Args:
+        value (str): The input string or boolean.
+
+    Returns:
+        bool: Parsed boolean result.
+    """
     if isinstance(value, bool):
         return value
     value = value.strip().lower()
@@ -23,6 +47,21 @@ def coerce_bool(value: str) -> bool:
 
 
 def coerce_enum(value: Any, enum_type: EnumMeta) -> Any:
+    """
+    Convert a raw value or string to an Enum instance.
+
+    Tries to resolve by name, value, or coerced base type.
+
+    Args:
+        value (Any): The input value to convert.
+        enum_type (EnumMeta): The target Enum class.
+
+    Returns:
+        Enum: The corresponding Enum instance.
+
+    Raises:
+        ValueError: If the value cannot be resolved to a valid Enum member.
+    """
     if isinstance(value, enum_type):
         return value
 
@@ -42,6 +81,21 @@ def coerce_enum(value: Any, enum_type: EnumMeta) -> Any:
 
 
 def coerce_value(value: str, target_type: type) -> Any:
+    """
+    Attempt to convert a string to the given target type.
+
+    Handles complex typing constructs such as Union, Literal, Enum, and datetime.
+
+    Args:
+        value (str): The input string to convert.
+        target_type (type): The desired type.
+
+    Returns:
+        Any: The coerced value.
+
+    Raises:
+        ValueError: If conversion fails or the value is invalid.
+    """
     origin = get_origin(target_type)
     args = get_args(target_type)
 
@@ -79,7 +133,19 @@ def same_argument_definitions(
     actions: list[Any],
     arg_metadata: dict[str, str | dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]] | None:
+    """
+    Determine if multiple callables resolve to the same argument definitions.
 
+    This is used to infer whether actions in an ActionGroup or ProcessPool can share
+    a unified argument parser.
+
+    Args:
+        actions (list[Any]): A list of BaseAction instances or callables.
+        arg_metadata (dict | None): Optional overrides for argument help or type info.
+
+    Returns:
+        list[dict[str, Any]] | None: The shared argument definitions if consistent, else None.
+    """
     arg_sets = []
     for action in actions:
         if isinstance(action, BaseAction):

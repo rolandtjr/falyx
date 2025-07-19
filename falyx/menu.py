@@ -1,3 +1,19 @@
+"""
+Defines `MenuOption` and `MenuOptionMap`, core components used to construct
+interactive menus within Falyx Actions such as `MenuAction` and `PromptMenuAction`.
+
+Each `MenuOption` represents a single actionable choice with a description,
+styling, and a bound `BaseAction`. `MenuOptionMap` manages collections of these
+options, including support for reserved keys like `B` (Back) and `X` (Exit), which
+can trigger navigation signals when selected.
+
+These constructs enable declarative and reusable menu definitions in both code and config.
+
+Key Components:
+- MenuOption: A user-facing label and action binding
+- MenuOptionMap: A key-aware container for menu options, with reserved entry support
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,7 +28,25 @@ from falyx.utils import CaseInsensitiveDict
 
 @dataclass
 class MenuOption:
-    """Represents a single menu option with a description and an action to execute."""
+    """
+    Represents a single menu entry, including its label and associated action.
+
+    Used in conjunction with `MenuOptionMap` to define interactive command menus.
+    Each `MenuOption` contains a description (shown to the user), a `BaseAction`
+    to execute when selected, and an optional Rich-compatible style.
+
+    Attributes:
+        description (str): The label shown next to the menu key.
+        action (BaseAction): The action to invoke when selected.
+        style (str): A Rich-compatible color/style string for UI display.
+
+    Methods:
+        render(key): Returns a Rich-formatted string for menu display.
+        render_prompt(key): Returns a `FormattedText` object for use in prompt placeholders.
+
+    Raises:
+        TypeError: If `description` is not a string or `action` is not a `BaseAction`.
+    """
 
     description: str
     action: BaseAction
@@ -37,8 +71,27 @@ class MenuOption:
 
 class MenuOptionMap(CaseInsensitiveDict):
     """
-    Manages menu options including validation, reserved key protection,
-    and special signal entries like Quit and Back.
+    A container for storing and managing `MenuOption` objects by key.
+
+    `MenuOptionMap` is used to define the set of available choices in a
+    Falyx menu. Keys are case-insensitive and mapped to `MenuOption` instances.
+    The map supports special reserved keys—`B` for Back and `X` for Exit—unless
+    explicitly disabled via `allow_reserved=False`.
+
+    This class enforces strict typing of menu options and prevents accidental
+    overwrites of reserved keys.
+
+    Args:
+        options (dict[str, MenuOption] | None): Initial options to populate the menu.
+        allow_reserved (bool): If True, allows overriding reserved keys.
+
+    Methods:
+        items(include_reserved): Returns an iterable of menu options,
+                                 optionally filtering out reserved keys.
+
+    Raises:
+        TypeError: If non-`MenuOption` values are assigned.
+        ValueError: If attempting to use or delete a reserved key without permission.
     """
 
     RESERVED_KEYS = {"B", "X"}

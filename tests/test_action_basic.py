@@ -1,6 +1,12 @@
 import pytest
 
-from falyx.action import Action, ChainedAction, FallbackAction, LiteralInputAction
+from falyx.action import (
+    Action,
+    ActionGroup,
+    ChainedAction,
+    FallbackAction,
+    LiteralInputAction,
+)
 from falyx.context import ExecutionContext
 from falyx.execution_registry import ExecutionRegistry as er
 
@@ -38,14 +44,13 @@ async def test_action_async_callable():
     action = Action("test_action", async_callable)
     result = await action()
     assert result == "Hello, World!"
-    print(action)
     assert (
         str(action)
-        == "Action(name='test_action', action=async_callable, retry=False, rollback=False)"
+        == "Action(name='test_action', action=async_callable, args=(), kwargs={}, retry=False, rollback=False)"
     )
     assert (
         repr(action)
-        == "Action(name='test_action', action=async_callable, retry=False, rollback=False)"
+        == "Action(name='test_action', action=async_callable, args=(), kwargs={}, retry=False, rollback=False)"
     )
 
 
@@ -60,11 +65,12 @@ async def test_chained_action():
         return_list=True,
     )
 
+    print(chain)
     result = await chain()
     assert result == [1, 2]
     assert (
         str(chain)
-        == "ChainedAction(name='Simple Chain', actions=['one', 'two'], auto_inject=False, return_list=True)"
+        == "ChainedAction(name=Simple Chain, actions=['one', 'two'], args=(), kwargs={}, auto_inject=False, return_list=True)"
     )
 
 
@@ -73,17 +79,17 @@ async def test_action_group():
     """Test if ActionGroup can be created and used."""
     action1 = Action("one", lambda: 1)
     action2 = Action("two", lambda: 2)
-    group = ChainedAction(
+    group = ActionGroup(
         name="Simple Group",
         actions=[action1, action2],
-        return_list=True,
     )
 
+    print(group)
     result = await group()
-    assert result == [1, 2]
+    assert result == [("one", 1), ("two", 2)]
     assert (
         str(group)
-        == "ChainedAction(name='Simple Group', actions=['one', 'two'], auto_inject=False, return_list=True)"
+        == "ActionGroup(name=Simple Group, actions=['one', 'two'], args=(), kwargs={}, inject_last_result=False, inject_into=last_result)"
     )
 
 

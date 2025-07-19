@@ -1,5 +1,18 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""debug.py"""
+"""
+Provides debug logging hooks for Falyx action execution.
+
+This module defines lifecycle hook functions (`log_before`, `log_success`, `log_after`, `log_error`)
+that can be registered with a `HookManager` to trace command execution.
+
+Logs include:
+- Action invocation with argument signature
+- Success result (with truncation for large outputs)
+- Errors with full exception info
+- Total runtime duration after execution
+
+Also exports `register_debug_hooks()` to register all log hooks in bulk.
+"""
 from falyx.context import ExecutionContext
 from falyx.hook_manager import HookManager, HookType
 from falyx.logger import logger

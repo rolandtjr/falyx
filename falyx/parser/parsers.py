@@ -1,7 +1,22 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""parsers.py
-This module contains the argument parsers used for the Falyx CLI.
 """
+Provides the argument parser infrastructure for the Falyx CLI.
+
+This module defines the `FalyxParsers` dataclass and related utilities for building
+structured CLI interfaces with argparse. It supports top-level CLI commands like
+`run`, `run-all`, `preview`, `list`, and `version`, and integrates seamlessly with
+registered `Command` objects for dynamic help, usage generation, and argument handling.
+
+Key Components:
+- `FalyxParsers`: Container for all CLI subparsers.
+- `get_arg_parsers()`: Factory for generating full parser suite.
+- `get_root_parser()`: Creates the root-level CLI parser with global options.
+- `get_subparsers()`: Helper to attach subcommand parsers to the root parser.
+
+Used internally by the Falyx CLI `run()` entry point to parse arguments and route
+execution across commands and workflows.
+"""
+
 from argparse import (
     REMAINDER,
     ArgumentParser,

@@ -1,5 +1,21 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""utils.py"""
+"""
+General-purpose utilities and helpers for the Falyx CLI framework.
+
+This module includes asynchronous wrappers, logging setup, formatting utilities,
+and small type-safe enhancements such as `CaseInsensitiveDict` and coroutine enforcement.
+
+Features:
+- `ensure_async`: Wraps sync functions as async coroutines.
+- `chunks`: Splits an iterable into fixed-size chunks.
+- `CaseInsensitiveDict`: Dict subclass with case-insensitive string keys.
+- `setup_logging`: Configures Rich or JSON logging based on environment or container detection.
+- `get_program_invocation`: Returns the recommended CLI command to invoke the program.
+- `running_in_container`: Detects if the process is running inside a container.
+
+These utilities support consistent behavior across CLI rendering, logging,
+command parsing, and compatibility layers.
+"""
 from __future__ import annotations
 
 import functools

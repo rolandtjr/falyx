@@ -1,5 +1,6 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""Main class for constructing and running Falyx CLI menus.
+"""
+Main class for constructing and running Falyx CLI menus.
 
 Falyx provides a structured, customizable interactive menu system
 for running commands, actions, and workflows. It supports:
@@ -75,7 +76,7 @@ class FalyxMode(Enum):
 
 
 class CommandValidator(Validator):
-    """Validator to check if the input is a valid command or toggle key."""
+    """Validator to check if the input is a valid command."""
 
     def __init__(self, falyx: Falyx, error_message: str) -> None:
         super().__init__()
@@ -295,6 +296,7 @@ class Falyx:
             aliases=["EXIT", "QUIT"],
             style=OneColors.DARK_RED,
             simple_help_signature=True,
+            ignore_in_history=True,
         )
 
     def _get_history_command(self) -> Command:
@@ -347,6 +349,7 @@ class Falyx:
             style=OneColors.DARK_YELLOW,
             arg_parser=parser,
             help_text="View the execution history of commands.",
+            ignore_in_history=True,
         )
 
     async def _show_help(self, tag: str = "") -> None:
@@ -410,6 +413,7 @@ class Falyx:
             action=Action("Help", self._show_help),
             style=OneColors.LIGHT_YELLOW,
             arg_parser=parser,
+            ignore_in_history=True,
         )
 
     def _get_completer(self) -> FalyxCompleter:
@@ -417,7 +421,7 @@ class Falyx:
         return FalyxCompleter(self)
 
     def _get_validator_error_message(self) -> str:
-        """Validator to check if the input is a valid command or toggle key."""
+        """Validator to check if the input is a valid command."""
         keys = {self.exit_command.key.upper()}
         keys.update({alias.upper() for alias in self.exit_command.aliases})
         if self.history_command:
@@ -431,19 +435,12 @@ class Falyx:
             keys.add(cmd.key.upper())
             keys.update({alias.upper() for alias in cmd.aliases})
 
-        if isinstance(self._bottom_bar, BottomBar):
-            toggle_keys = {key.upper() for key in self._bottom_bar.toggle_keys}
-        else:
-            toggle_keys = set()
-
         commands_str = ", ".join(sorted(keys))
-        toggles_str = ", ".join(sorted(toggle_keys))
 
         message_lines = ["Invalid input. Available keys:"]
         if keys:
             message_lines.append(f"  Commands: {commands_str}")
-        if toggle_keys:
-            message_lines.append(f"  Toggles: {toggles_str}")
+
         error_message = " ".join(message_lines)
         return error_message
 
@@ -473,10 +470,9 @@ class Falyx:
         """Sets the bottom bar for the menu."""
         if bottom_bar is None:
             self._bottom_bar: BottomBar | str | Callable[[], Any] = BottomBar(
-                self.columns, self.key_bindings, key_validator=self.is_key_available
+                self.columns, self.key_bindings
             )
         elif isinstance(bottom_bar, BottomBar):
-            bottom_bar.key_validator = self.is_key_available
             bottom_bar.key_bindings = self.key_bindings
             self._bottom_bar = bottom_bar
         elif isinstance(bottom_bar, str) or callable(bottom_bar):
@@ -544,32 +540,9 @@ class Falyx:
         for key, command in self.commands.items():
             logger.debug("[Command '%s'] hooks:\n%s", key, str(command.hooks))
 
-    def is_key_available(self, key: str) -> bool:
-        key = key.upper()
-        toggles = (
-            self._bottom_bar.toggle_keys
-            if isinstance(self._bottom_bar, BottomBar)
-            else []
-        )
-
-        conflicts = (
-            key in self.commands,
-            key == self.exit_command.key.upper(),
-            self.history_command and key == self.history_command.key.upper(),
-            self.help_command and key == self.help_command.key.upper(),
-            key in toggles,
-        )
-
-        return not any(conflicts)
-
     def _validate_command_key(self, key: str) -> None:
         """Validates the command key to ensure it is unique."""
         key = key.upper()
-        toggles = (
-            self._bottom_bar.toggle_keys
-            if isinstance(self._bottom_bar, BottomBar)
-            else []
-        )
         collisions = []
 
         if key in self.commands:
@@ -580,8 +553,6 @@ class Falyx:
             collisions.append("history command")
         if self.help_command and key == self.help_command.key.upper():
             collisions.append("help command")
-        if key in toggles:
-            collisions.append("toggle")
 
         if collisions:
             raise CommandAlreadyExistsError(
@@ -611,6 +582,7 @@ class Falyx:
             style=style,
             confirm=confirm,
             confirm_message=confirm_message,
+            ignore_in_history=True,
         )
 
     def add_submenu(
@@ -685,6 +657,7 @@ class Falyx:
         auto_args: bool = True,
         arg_metadata: dict[str, str | dict[str, Any]] | None = None,
         simple_help_signature: bool = False,
+        ignore_in_history: bool = False,
     ) -> Command:
         """Adds an command to the menu, preventing duplicates."""
         self._validate_command_key(key)
@@ -729,6 +702,7 @@ class Falyx:
             auto_args=auto_args,
             arg_metadata=arg_metadata or {},
             simple_help_signature=simple_help_signature,
+            ignore_in_history=ignore_in_history,
         )
 
         if hooks:

@@ -1,5 +1,14 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""retry_utils.py"""
+"""
+Utilities for enabling retry behavior across Falyx actions.
+
+This module provides a helper to recursively apply a `RetryPolicy` to an action and its
+nested children (e.g. `ChainedAction`, `ActionGroup`), and register the appropriate
+`RetryHandler` to hook into error handling.
+
+Includes:
+- `enable_retries_recursively`: Attaches a retry policy and error hook to all eligible actions.
+"""
 from falyx.action.action import Action
 from falyx.action.base_action import BaseAction
 from falyx.hook_manager import HookType

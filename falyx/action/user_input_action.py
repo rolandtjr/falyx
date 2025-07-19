@@ -1,5 +1,31 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""user_input_action.py"""
+"""
+Defines `UserInputAction`, a Falyx Action that prompts the user for input using
+Prompt Toolkit and returns the result as a string.
+
+This action is ideal for interactive CLI workflows that require user input mid-pipeline.
+It supports dynamic prompt interpolation, prompt validation, default text fallback,
+and full lifecycle hook execution.
+
+Key Features:
+- Rich Prompt Toolkit integration for input and validation
+- Dynamic prompt formatting using `last_result` injection
+- Optional `Validator` support for structured input (e.g., emails, numbers)
+- Hook lifecycle compatibility (before, on_success, on_error, after, teardown)
+- Preview support for introspection or dry-run flows
+
+Use Cases:
+- Asking for confirmation text or field input mid-chain
+- Injecting user-provided variables into automated pipelines
+- Interactive menu or wizard experiences
+
+Example:
+    UserInputAction(
+        name="GetUsername",
+        prompt_text="Enter your username > ",
+        validator=Validator.from_callable(lambda s: len(s) > 0),
+    )
+"""
 from prompt_toolkit import PromptSession
 from prompt_toolkit.validation import Validator
 from rich.tree import Tree
@@ -13,15 +39,20 @@ from falyx.themes.colors import OneColors
 
 class UserInputAction(BaseAction):
     """
-    Prompts the user for input via PromptSession and returns the result.
+    Prompts the user for textual input and returns their response.
+
+    `UserInputAction` uses Prompt Toolkit to gather input with optional validation,
+    lifecycle hook compatibility, and support for default text. If `inject_last_result`
+    is enabled, the prompt message can interpolate `{last_result}` dynamically.
 
     Args:
-        name (str): Action name.
-        prompt_text (str): Prompt text (can include '{last_result}' for interpolation).
-        validator (Validator, optional): Prompt Toolkit validator.
-        prompt_session (PromptSession, optional): Reusable prompt session.
-        inject_last_result (bool): Whether to inject last_result into prompt.
-        inject_into (str): Key to use for injection (default: 'last_result').
+        name (str): Name of the action (used for introspection and logging).
+        prompt_text (str): The prompt message shown to the user.
+            Can include `{last_result}` if `inject_last_result=True`.
+        default_text (str): Optional default value shown in the prompt.
+        validator (Validator | None): Prompt Toolkit validator for input constraints.
+        prompt_session (PromptSession | None): Optional custom prompt session.
+        inject_last_result (bool): Whether to inject `last_result` into the prompt.
     """
 
     def __init__(

@@ -1,6 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""shell_action.py
-Execute shell commands with input substitution."""
+"""Execute shell commands with input substitution."""
 
 from __future__ import annotations
 

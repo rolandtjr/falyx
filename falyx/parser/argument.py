@@ -1,5 +1,38 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""argument.py"""
+"""
+Defines the `Argument` dataclass used by `CommandArgumentParser` to represent
+individual command-line parameters in a structured, introspectable format.
+
+Each `Argument` instance describes one CLI input, including its flags, type,
+default behavior, action semantics, help text, and optional resolver integration
+for dynamic evaluation.
+
+Falyx uses this structure to support a declarative CLI design, providing flexible
+argument parsing with full support for positional and keyword arguments, coercion,
+completion, and help rendering.
+
+Arguments should be created using `CommandArgumentParser.add_argument()`
+or defined in YAML configurations, allowing for rich introspection and validation.
+
+Key Attributes:
+- `flags`: One or more short/long flags (e.g. `-v`, `--verbose`)
+- `dest`: Internal name used as the key in parsed results
+- `action`: `ArgumentAction` enum describing behavior (store, count, resolve, etc.)
+- `type`: Type coercion or callable converter
+- `default`: Optional fallback value
+- `choices`: Allowed values, if restricted
+- `nargs`: Number of expected values (`int`, `'?'`, `'*'`, `'+'`)
+- `positional`: Whether this argument is positional (no flag)
+- `resolver`: Optional `BaseAction` to resolve argument value dynamically
+- `lazy_resolver`: Whether to defer resolution until needed
+- `suggestions`: Optional completions for interactive shells
+
+Used By:
+- `CommandArgumentParser`
+- `Falyx` runtime parsing
+- Rich-based CLI help generation
+- Completion and preview suggestions
+"""
 from dataclasses import dataclass
 from typing import Any
 
@@ -26,7 +59,7 @@ class Argument:
         resolver (BaseAction | None):
             An action object that resolves the argument, if applicable.
         lazy_resolver (bool): True if the resolver should be called lazily, False otherwise
-        suggestions (list[str] | None): A list of suggestions for the argument.
+        suggestions (list[str] | None): Optional completions for interactive shells
     """
 
     flags: tuple[str, ...]

@@ -1,6 +1,6 @@
 import pytest
 
-from falyx.action.selection_action import SelectionAction
+from falyx.action import SelectionAction
 from falyx.selection import SelectionOption
 
 

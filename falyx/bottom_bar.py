@@ -1,10 +1,42 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""bottom_bar.py"""
+"""
+Provides the `BottomBar` class for managing a customizable bottom status bar in
+Falyx-based CLI applications.
+
+The bottom bar is rendered using `prompt_toolkit` and supports:
+- Rich-formatted static content
+- Live-updating value trackers and counters
+- Toggle switches activated via Ctrl+<key> bindings
+- Config-driven visual and behavioral controls
+
+Each item in the bar is registered by name and rendered in columns across the
+bottom of the terminal. Toggles are linked to user-defined state accessors and
+mutators, and can be automatically bound to `OptionsManager` values for full
+integration with Falyx CLI argument parsing.
+
+Key Features:
+- Live rendering of structured status items using Rich-style HTML
+- Custom or built-in item types: static text, dynamic counters, toggles, value displays
+- Ctrl+key toggle handling via `prompt_toolkit.KeyBindings`
+- Columnar layout with automatic width scaling
+- Optional integration with `OptionsManager` for dynamic state toggling
+
+Usage Example:
+    bar = BottomBar(columns=3)
+    bar.add_static("env", "ENV: dev")
+    bar.add_toggle("d", "Debug", get_debug, toggle_debug)
+    bar.add_value_tracker("attempts", "Retries", get_retry_count)
+    bar.render()
+
+Used by Falyx to provide a persistent UI element showing toggles, system state,
+and runtime telemetry below the input prompt.
+"""
 
 from typing import Any, Callable
 
 from prompt_toolkit.formatted_text import HTML, merge_formatted_text
 from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.key_binding.key_processor import KeyPressEvent
 from rich.console import Console
 
 from falyx.console import console
@@ -28,7 +60,6 @@ class BottomBar:
         self,
         columns: int = 3,
         key_bindings: KeyBindings | None = None,
-        key_validator: Callable[[str], bool] | None = None,
     ) -> None:
         self.columns = columns
         self.console: Console = console
@@ -36,7 +67,6 @@ class BottomBar:
         self._value_getters: dict[str, Callable[[], Any]] = CaseInsensitiveDict()
         self.toggle_keys: list[str] = []
         self.key_bindings = key_bindings or KeyBindings()
-        self.key_validator = key_validator
 
     @staticmethod
     def default_render(label: str, value: Any, fg: str, bg: str, width: int) -> HTML:
@@ -121,17 +151,26 @@ class BottomBar:
         bg_on: str = OneColors.GREEN,
         bg_off: str = OneColors.DARK_RED,
     ) -> None:
+        """
+        Add a toggle to the bottom bar.
+        Always uses the ctrl + key combination for toggling.
+
+        Args:
+            key (str): The key to toggle the state.
+            label (str): The label for the toggle.
+            get_state (Callable[[], bool]): Function to get the current state.
+            toggle_state (Callable[[], None]): Function to toggle the state.
+            fg (str): Foreground color for the label.
+            bg_on (str): Background color when the toggle is ON.
+            bg_off (str): Background color when the toggle is OFF.
+        """
         if not callable(get_state):
             raise ValueError("`get_state` must be a callable returning bool")
         if not callable(toggle_state):
             raise ValueError("`toggle_state` must be a callable")
-        key = key.upper()
+        key = key.lower()
         if key in self.toggle_keys:
             raise ValueError(f"Key {key} is already used as a toggle")
-        if self.key_validator and not self.key_validator(key):
-            raise ValueError(
-                f"Key '{key}' conflicts with existing command, toggle, or reserved key."
-            )
         self._value_getters[key] = get_state
         self.toggle_keys.append(key)
 
@@ -139,16 +178,14 @@ class BottomBar:
             get_state_ = self._value_getters[key]
             color = bg_on if get_state_() else bg_off
             status = "ON" if get_state_() else "OFF"
-            text = f"({key.upper()}) {label}: {status}"
+            text = f"(^{key.lower()}) {label}: {status}"
             return HTML(f"<style bg='{color}' fg='{fg}'>{text:^{self.space}}</style>")
 
         self._add_named(key, render)
 
-        for k in (key.upper(), key.lower()):
-
-            @self.key_bindings.add(k)
-            def _(_):
-                toggle_state()
+        @self.key_bindings.add(f"c-{key.lower()}", eager=True)
+        def _(_: KeyPressEvent):
+            toggle_state()
 
     def add_toggle_from_option(
         self,

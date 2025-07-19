@@ -1,5 +1,23 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""retry.py"""
+"""
+Implements retry logic for Falyx Actions using configurable retry policies.
+
+This module defines:
+- `RetryPolicy`: A configurable model controlling retry behavior (delay, backoff, jitter).
+- `RetryHandler`: A hook-compatible class that manages retry attempts for failed actions.
+
+Used to automatically retry transient failures in leaf-level `Action` objects
+when marked as retryable. Integrates with the Falyx hook lifecycle via `on_error`.
+
+Supports:
+- Exponential backoff with optional jitter
+- Manual or declarative policy control
+- Per-action retry logging and recovery
+
+Example:
+    handler = RetryHandler(RetryPolicy(max_retries=5, delay=1.0))
+    action.hooks.register(HookType.ON_ERROR, handler.retry_on_error)
+"""
 from __future__ import annotations
 
 import asyncio
@@ -12,7 +30,28 @@ from falyx.logger import logger
 
 
 class RetryPolicy(BaseModel):
-    """RetryPolicy"""
+    """
+    Defines a retry strategy for Falyx `Action` objects.
+
+    This model controls whether an action should be retried on failure, and how:
+    - `max_retries`: Maximum number of retry attempts.
+    - `delay`: Initial wait time before the first retry (in seconds).
+    - `backoff`: Multiplier applied to the delay after each failure (≥ 1.0).
+    - `jitter`: Optional random noise added/subtracted from delay to reduce thundering herd issues.
+    - `enabled`: Whether this policy is currently active.
+
+    Retry is only triggered for leaf-level `Action` instances marked with `is_retryable=True`
+    and registered with an appropriate `RetryHandler`.
+
+    Example:
+        RetryPolicy(max_retries=3, delay=1.0, backoff=2.0, jitter=0.2, enabled=True)
+
+    Use `enable_policy()` to activate the policy after construction.
+
+    See Also:
+        - `RetryHandler`: Executes retry logic based on this configuration.
+        - `HookType.ON_ERROR`: The hook type used to trigger retries.
+    """
 
     max_retries: int = Field(default=3, ge=0)
     delay: float = Field(default=1.0, ge=0.0)
@@ -36,7 +75,27 @@ class RetryPolicy(BaseModel):
 
 
 class RetryHandler:
-    """RetryHandler class to manage retry policies for actions."""
+    """
+    Executes retry logic for Falyx actions using a provided `RetryPolicy`.
+
+    This class is intended to be registered as an `on_error` hook. It will
+    re-attempt the failed `Action`'s `action` method using the args/kwargs from
+    the failed context, following exponential backoff and optional jitter.
+
+    Only supports retrying leaf `Action` instances (not ChainedAction or ActionGroup)
+    where `is_retryable=True`.
+
+    Attributes:
+        policy (RetryPolicy): The retry configuration controlling timing and limits.
+
+    Example:
+        handler = RetryHandler(RetryPolicy(max_retries=3, delay=1.0, enabled=True))
+        action.hooks.register(HookType.ON_ERROR, handler.retry_on_error)
+
+    Notes:
+        - Retries are not triggered if the policy is disabled or `max_retries=0`.
+        - All retry attempts and final failure are logged automatically.
+    """
 
     def __init__(self, policy: RetryPolicy = RetryPolicy()):
         self.policy = policy

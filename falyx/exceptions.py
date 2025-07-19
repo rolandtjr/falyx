@@ -1,5 +1,28 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""exceptions.py"""
+"""
+Defines all custom exception classes used in the Falyx CLI framework.
+
+These exceptions provide structured error handling for common failure cases,
+including command conflicts, invalid actions or hooks, parser errors, and execution guards
+like circuit breakers or empty workflows.
+
+All exceptions inherit from `FalyxError`, the base exception for the framework.
+
+Exception Hierarchy:
+- FalyxError
+    ├── CommandAlreadyExistsError
+    ├── InvalidHookError
+    ├── InvalidActionError
+    ├── NotAFalyxError
+    ├── CircuitBreakerOpen
+    ├── EmptyChainError
+    ├── EmptyGroupError
+    ├── EmptyPoolError
+    └── CommandArgumentError
+
+These are raised internally throughout the Falyx system to signal user-facing or
+developer-facing problems that should be caught and reported.
+"""
 
 
 class FalyxError(Exception):

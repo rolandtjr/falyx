@@ -1,5 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""http_action.py
+"""
 Defines an Action subclass for making HTTP requests using aiohttp within Falyx workflows.
 
 Features:
@@ -47,7 +47,7 @@ class HTTPAction(Action):
     - Retry and result injection compatible
 
     Args:
-        name (str): Name of the action.
+        name (str): Name of the action. Used for logging and debugging.
         method (str): HTTP method (e.g., 'GET', 'POST').
         url (str): The request URL.
         headers (dict[str, str], optional): Request headers.

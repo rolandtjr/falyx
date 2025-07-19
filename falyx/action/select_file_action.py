@@ -1,5 +1,47 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""select_file_action.py"""
+"""
+Defines `SelectFileAction`, a Falyx Action that allows users to select one or more
+files from a target directory and optionally return either their content or path,
+parsed based on a selected `FileType`.
+
+This action combines rich interactive selection (via `SelectionOption`) with
+format-aware parsing, making it ideal for loading external resources, injecting
+config files, or dynamically selecting inputs mid-pipeline.
+
+Supports filtering by file suffix, customizable prompt layout, multi-select mode,
+and automatic content parsing for common formats.
+
+Key Features:
+- Lists files from a directory and renders them in a Rich-powered menu
+- Supports suffix filtering (e.g., only `.yaml` or `.json` files)
+- Returns content parsed as `str`, `dict`, `list`, or raw `Path` depending on `FileType`
+- Works in single or multi-selection mode
+- Fully compatible with Falyx hooks and context system
+- Graceful cancellation via `CancelSignal`
+
+Supported Return Types (`FileType`):
+- `TEXT`: UTF-8 string content
+- `PATH`: File path object (`Path`)
+- `JSON`, `YAML`, `TOML`: Parsed dictionaries or lists
+- `CSV`, `TSV`: `list[list[str]]` from structured rows
+- `XML`: `ElementTree.Element` root object
+
+Use Cases:
+- Prompting users to select a config file during setup
+- Dynamically loading data into chained workflows
+- CLI interfaces that require structured file ingestion
+
+Example:
+    SelectFileAction(
+        name="ChooseConfigFile",
+        directory="configs/",
+        suffix_filter=".yaml",
+        return_type="yaml",
+    )
+
+This module is ideal for use cases where file choice is deferred to runtime
+and needs to feed into structured automation pipelines.
+"""
 from __future__ import annotations
 
 import csv
@@ -67,6 +109,7 @@ class SelectFileAction(BaseAction):
         style: str = OneColors.WHITE,
         suffix_filter: str | None = None,
         return_type: FileType | str = FileType.PATH,
+        encoding: str = "UTF-8",
         number_selections: int | str = 1,
         separator: str = ",",
         allow_duplicates: bool = False,
@@ -83,7 +126,8 @@ class SelectFileAction(BaseAction):
         self.separator = separator
         self.allow_duplicates = allow_duplicates
         self.prompt_session = prompt_session or PromptSession()
-        self.return_type = self._coerce_return_type(return_type)
+        self.return_type = FileType(return_type)
+        self.encoding = encoding
 
     @property
     def number_selections(self) -> int | str:
@@ -100,50 +144,45 @@ class SelectFileAction(BaseAction):
         else:
             raise ValueError("number_selections must be a positive integer or one of '*'")
 
-    def _coerce_return_type(self, return_type: FileType | str) -> FileType:
-        if isinstance(return_type, FileType):
-            return return_type
-        elif isinstance(return_type, str):
-            return FileType(return_type)
-        else:
-            raise TypeError("return_type must be a FileType enum or string")
-
     def get_options(self, files: list[Path]) -> dict[str, SelectionOption]:
-        value: Any
         options = {}
         for index, file in enumerate(files):
-            try:
-                if self.return_type == FileType.TEXT:
-                    value = file.read_text(encoding="UTF-8")
-                elif self.return_type == FileType.PATH:
-                    value = file
-                elif self.return_type == FileType.JSON:
-                    value = json.loads(file.read_text(encoding="UTF-8"))
-                elif self.return_type == FileType.TOML:
-                    value = toml.loads(file.read_text(encoding="UTF-8"))
-                elif self.return_type == FileType.YAML:
-                    value = yaml.safe_load(file.read_text(encoding="UTF-8"))
-                elif self.return_type == FileType.CSV:
-                    with open(file, newline="", encoding="UTF-8") as csvfile:
-                        reader = csv.reader(csvfile)
-                        value = list(reader)
-                elif self.return_type == FileType.TSV:
-                    with open(file, newline="", encoding="UTF-8") as tsvfile:
-                        reader = csv.reader(tsvfile, delimiter="\t")
-                        value = list(reader)
-                elif self.return_type == FileType.XML:
-                    tree = ET.parse(file, parser=ET.XMLParser(encoding="UTF-8"))
-                    root = tree.getroot()
-                    value = ET.tostring(root, encoding="unicode")
-                else:
-                    raise ValueError(f"Unsupported return type: {self.return_type}")
-
-                options[str(index)] = SelectionOption(
-                    description=file.name, value=value, style=self.style
-                )
-            except Exception as error:
-                logger.error("Failed to parse %s: %s", file.name, error)
+            options[str(index)] = SelectionOption(
+                description=file.name,
+                value=file,  # Store the Path only — parsing will happen later
+                style=self.style,
+            )
         return options
+
+    def parse_file(self, file: Path) -> Any:
+        value: Any
+        try:
+            if self.return_type == FileType.TEXT:
+                value = file.read_text(encoding=self.encoding)
+            elif self.return_type == FileType.PATH:
+                value = file
+            elif self.return_type == FileType.JSON:
+                value = json.loads(file.read_text(encoding=self.encoding))
+            elif self.return_type == FileType.TOML:
+                value = toml.loads(file.read_text(encoding=self.encoding))
+            elif self.return_type == FileType.YAML:
+                value = yaml.safe_load(file.read_text(encoding=self.encoding))
+            elif self.return_type == FileType.CSV:
+                with open(file, newline="", encoding=self.encoding) as csvfile:
+                    reader = csv.reader(csvfile)
+                    value = list(reader)
+            elif self.return_type == FileType.TSV:
+                with open(file, newline="", encoding=self.encoding) as tsvfile:
+                    reader = csv.reader(tsvfile, delimiter="\t")
+                    value = list(reader)
+            elif self.return_type == FileType.XML:
+                tree = ET.parse(file, parser=ET.XMLParser(encoding=self.encoding))
+                value = tree.getroot()
+            else:
+                raise ValueError(f"Unsupported return type: {self.return_type}")
+        except Exception as error:
+            logger.error("Failed to parse %s: %s", file.name, error)
+        return value
 
     def _find_cancel_key(self, options) -> str:
         """Return first numeric value not already used in the selection dict."""
@@ -202,9 +241,9 @@ class SelectFileAction(BaseAction):
             if isinstance(keys, str):
                 if keys == cancel_key:
                     raise CancelSignal("User canceled the selection.")
-                result = options[keys].value
+                result = self.parse_file(options[keys].value)
             elif isinstance(keys, list):
-                result = [options[key].value for key in keys]
+                result = [self.parse_file(options[key].value) for key in keys]
 
             context.result = result
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
@@ -228,6 +267,7 @@ class SelectFileAction(BaseAction):
         tree.add(f"[dim]Return type:[/] {self.return_type}")
         tree.add(f"[dim]Prompt:[/] {self.prompt_message}")
         tree.add(f"[dim]Columns:[/] {self.columns}")
+        tree.add("[dim]Loading:[/] Lazy (parsing occurs after selection)")
         try:
             files = list(self.directory.iterdir())
             if self.suffix_filter:

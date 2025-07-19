@@ -1,5 +1,19 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""process_pool_action.py"""
+"""
+Defines `ProcessPoolAction`, a parallelized action executor that distributes
+tasks across multiple processes using Python's `concurrent.futures.ProcessPoolExecutor`.
+
+This module enables structured execution of CPU-bound tasks in parallel while
+retaining Falyx's core guarantees: lifecycle hooks, error isolation, execution context
+tracking, and introspectable previews.
+
+Key Components:
+- ProcessTask: Lightweight wrapper for a task + args/kwargs
+- ProcessPoolAction: Parallel action that runs tasks concurrently in separate processes
+
+Use this module to accelerate workflows involving expensive computation or
+external resources that benefit from true parallelism.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -23,6 +37,21 @@ from falyx.themes import OneColors
 
 @dataclass
 class ProcessTask:
+    """
+    Represents a callable task with its arguments for parallel execution.
+
+    This lightweight container is used to queue individual tasks for execution
+    inside a `ProcessPoolAction`.
+
+    Attributes:
+        task (Callable): A function to execute.
+        args (tuple): Positional arguments to pass to the function.
+        kwargs (dict): Keyword arguments to pass to the function.
+
+    Raises:
+        TypeError: If `task` is not callable.
+    """
+
     task: Callable[..., Any]
     args: tuple = ()
     kwargs: dict[str, Any] = field(default_factory=dict)
@@ -33,7 +62,44 @@ class ProcessTask:
 
 
 class ProcessPoolAction(BaseAction):
-    """ """
+    """
+    Executes a set of independent tasks in parallel using a process pool.
+
+    `ProcessPoolAction` is ideal for CPU-bound tasks that benefit from
+    concurrent execution in separate processes. Each task is wrapped in a
+    `ProcessTask` instance and executed in a `concurrent.futures.ProcessPoolExecutor`.
+
+    Key Features:
+    - Parallel, process-based execution
+    - Hook lifecycle support across all stages
+    - Supports argument injection (e.g., `last_result`)
+    - Compatible with retry behavior and shared context propagation
+    - Captures all task results (including exceptions) and records execution context
+
+    Args:
+        name (str): Name of the action. Used for logging and debugging.
+        actions (Sequence[ProcessTask] | None): A list of tasks to run.
+        hooks (HookManager | None): Optional hook manager for lifecycle events.
+        executor (ProcessPoolExecutor | None): Custom executor instance (optional).
+        inject_last_result (bool): Whether to inject the last result into task kwargs.
+        inject_into (str): Name of the kwarg to use for injected result.
+
+    Returns:
+        list[Any]: A list of task results in submission order. Exceptions are preserved.
+
+    Raises:
+        EmptyPoolError: If no actions are registered.
+        ValueError: If injected `last_result` is not pickleable.
+
+    Example:
+        ProcessPoolAction(
+            name="ParallelTransforms",
+            actions=[
+                ProcessTask(func_a, args=(1,)),
+                ProcessTask(func_b, kwargs={"x": 2}),
+            ]
+        )
+    """
 
     def __init__(
         self,

@@ -1,5 +1,49 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""command_argument_parser.py"""
+"""
+This module implements `CommandArgumentParser`, a flexible, rich-aware alternative to
+argparse tailored specifically for Falyx CLI workflows. It provides structured parsing,
+type coercion, flag support, and usage/help rendering for CLI-defined commands.
+
+Unlike argparse, this parser is lightweight, introspectable, and designed to integrate
+deeply with Falyx's Action system, including support for lazy execution and resolver
+binding via `BaseAction`.
+
+Key Features:
+- Declarative argument registration via `add_argument()`
+- Support for positional and keyword flags, type coercion, default values
+- Enum- and action-driven argument semantics via `ArgumentAction`
+- Lazy evaluation of arguments using Falyx `Action` resolvers
+- Optional value completion via suggestions and choices
+- Rich-powered help rendering with grouped display
+- Optional boolean flags via `--flag` / `--no-flag`
+- POSIX-style bundling for single-character flags (`-abc`)
+- Partial parsing for completions and validation via `suggest_next()`
+
+Public Interface:
+- `add_argument(...)`: Register a new argument with type, flags, and behavior.
+- `parse_args(...)`: Parse CLI-style argument list into a `dict[str, Any]`.
+- `parse_args_split(...)`: Return `(*args, **kwargs)` for Action invocation.
+- `render_help()`: Render a rich-styled help panel.
+- `suggest_next(...)`: Return suggested flags or values for completion.
+
+Example Usage:
+    parser = CommandArgumentParser(command_key="D")
+    parser.add_argument("--env", choices=["prod", "dev"], required=True)
+    parser.add_argument("path", type=Path)
+
+    args = await parser.parse_args(["--env", "prod", "./config.yml"])
+
+    # args == {'env': 'prod', 'path': Path('./config.yml')}
+
+    parser.render_help()  # Pretty Rich output
+
+Design Notes:
+This parser intentionally omits argparse-style groups, metavar support,
+and complex multi-level conflict handling. Instead, it favors:
+- Simplicity
+- Completeness
+- Falyx-specific integration (hooks, lifecycle, and error surfaces)
+"""
 from __future__ import annotations
 
 from collections import defaultdict
@@ -407,26 +451,25 @@ class CommandArgumentParser:
         lazy_resolver: bool = True,
         suggestions: list[str] | None = None,
     ) -> None:
-        """Add an argument to the parser.
-        For `ArgumentAction.ACTION`, `nargs` and `type` determine how many and what kind
-        of inputs are passed to the `resolver`.
+        """
+        Define a new argument for the parser.
 
-        The return value of the `resolver` is used directly (no type coercion is applied).
-        Validation, structure, and post-processing should be handled within the `resolver`.
+        Supports positional and flagged arguments, type coercion, default values,
+        validation rules, and optional resolution via `BaseAction`.
 
         Args:
-            name or flags: Either a name or prefixed flags (e.g. 'faylx', '-f', '--falyx').
-            action: The action to be taken when the argument is encountered.
-            nargs: The number of arguments expected.
-            default: The default value if the argument is not provided.
-            type: The type to which the command-line argument should be converted.
-            choices: A container of the allowable values for the argument.
-            required: Whether or not the argument is required.
-            help: A brief description of the argument.
-            dest: The name of the attribute to be added to the object returned by parse_args().
-            resolver: A BaseAction called with optional nargs specified parsed arguments.
-            lazy_resolver: If True, the resolver is called lazily when the argument is accessed.
-            suggestions: A list of suggestions for the argument.
+            *flags (str): The flag(s) or name identifying the argument (e.g., "-v", "--verbose").
+            action (str | ArgumentAction): The argument action type (default: "store").
+            nargs (int | str | None): Number of values the argument consumes.
+            default (Any): Default value if the argument is not provided.
+            type (type): Type to coerce argument values to.
+            choices (Iterable | None): Optional set of allowed values.
+            required (bool): Whether this argument is mandatory.
+            help (str): Help text for rendering in command help.
+            dest (str | None): Custom destination key in result dict.
+            resolver (BaseAction | None): If action="action", the BaseAction to call.
+            lazy_resolver (bool): If True, resolver defers until action is triggered.
+            suggestions (list[str] | None): Optional suggestions for interactive completion.
         """
         expected_type = type
         self._validate_flags(flags)
@@ -486,9 +529,24 @@ class CommandArgumentParser:
             self._register_argument(argument)
 
     def get_argument(self, dest: str) -> Argument | None:
+        """
+        Return the Argument object for a given destination name.
+
+        Args:
+            dest (str): Destination key of the argument.
+
+        Returns:
+            Argument or None: Matching Argument instance, if defined.
+        """
         return next((a for a in self._arguments if a.dest == dest), None)
 
     def to_definition_list(self) -> list[dict[str, Any]]:
+        """
+        Convert argument metadata into a serializable list of dicts.
+
+        Returns:
+            List of definitions for use in config introspection, documentation, or export.
+        """
         defs = []
         for arg in self._arguments:
             defs.append(
@@ -507,7 +565,7 @@ class CommandArgumentParser:
             )
         return defs
 
-    def raise_remaining_args_error(
+    def _raise_remaining_args_error(
         self, token: str, arg_states: dict[str, ArgumentState]
     ) -> None:
         consumed_dests = [
@@ -619,7 +677,7 @@ class CommandArgumentParser:
             except Exception as error:
                 if len(args[i - new_i :]) == 1 and args[i - new_i].startswith("-"):
                     token = args[i - new_i]
-                    self.raise_remaining_args_error(token, arg_states)
+                    self._raise_remaining_args_error(token, arg_states)
                 else:
                     raise CommandArgumentError(
                         f"Invalid value for '{spec.dest}': {error}"
@@ -660,7 +718,7 @@ class CommandArgumentParser:
         if i < len(args):
             if len(args[i:]) == 1 and args[i].startswith("-"):
                 token = args[i]
-                self.raise_remaining_args_error(token, arg_states)
+                self._raise_remaining_args_error(token, arg_states)
             else:
                 plural = "s" if len(args[i:]) > 1 else ""
                 raise CommandArgumentError(
@@ -813,7 +871,7 @@ class CommandArgumentParser:
                 consumed_indices.update(range(i, new_i))
                 i = new_i
         elif token.startswith("-"):
-            self.raise_remaining_args_error(token, arg_states)
+            self._raise_remaining_args_error(token, arg_states)
         else:
             # Get the next flagged argument index if it exists
             next_flagged_index = -1
@@ -837,7 +895,16 @@ class CommandArgumentParser:
     async def parse_args(
         self, args: list[str] | None = None, from_validate: bool = False
     ) -> dict[str, Any]:
-        """Parse Falyx Command arguments."""
+        """
+        Parse arguments into a dictionary of resolved values.
+
+        Args:
+            args (list[str]): The CLI-style argument list.
+            from_validate (bool): If True, enables relaxed resolution for validation mode.
+
+        Returns:
+            dict[str, Any]: Parsed argument result mapping.
+        """
         if args is None:
             args = []
 
@@ -932,9 +999,12 @@ class CommandArgumentParser:
         self, args: list[str], from_validate: bool = False
     ) -> tuple[tuple[Any, ...], dict[str, Any]]:
         """
+        Parse arguments and return both positional and keyword mappings.
+
+        Useful for function-style calling with `*args, **kwargs`.
+
         Returns:
-            tuple[args, kwargs] - Positional arguments in defined order,
-            followed by keyword argument mapping.
+            tuple: (args tuple, kwargs dict)
         """
         parsed = await self.parse_args(args, from_validate)
         args_list = []
@@ -950,12 +1020,15 @@ class CommandArgumentParser:
 
     def suggest_next(self, args: list[str]) -> list[str]:
         """
-        Suggest the next possible flags or values given partially typed arguments.
+        Suggest completions for the next argument based on current input.
 
-        This does NOT raise errors. It is intended for completions, not validation.
+        This is used for interactive shell completion or prompt_toolkit integration.
+
+        Args:
+            args (list[str]): Current partial argument tokens.
 
         Returns:
-            A list of possible completions based on the current input.
+            list[str]: List of suggested completions.
         """
 
         # Case 1: Next positional argument
@@ -1034,6 +1107,12 @@ class CommandArgumentParser:
         return sorted(set(suggestions))
 
     def get_options_text(self, plain_text=False) -> str:
+        """
+        Render all defined arguments as a help-style string.
+
+        Returns:
+            str: A visual description of argument flags and structure.
+        """
         # Options
         # Add all keyword arguments to the options list
         options_list = []
@@ -1057,6 +1136,14 @@ class CommandArgumentParser:
         return " ".join(options_list)
 
     def get_command_keys_text(self, plain_text=False) -> str:
+        """
+        Return formatted string showing the command key and aliases.
+
+        Used in help rendering and introspection.
+
+        Returns:
+            str: The visual command selector line.
+        """
         if plain_text:
             command_keys = " | ".join(
                 [f"{self.command_key}"] + [f"{alias}" for alias in self.aliases]
@@ -1072,7 +1159,12 @@ class CommandArgumentParser:
         return command_keys
 
     def get_usage(self, plain_text=False) -> str:
-        """Get the usage text for the command."""
+        """
+        Render the usage string for this parser.
+
+        Returns:
+            str: A formatted usage line showing syntax and argument structure.
+        """
         command_keys = self.get_command_keys_text(plain_text)
         options_text = self.get_options_text(plain_text)
         if options_text:
@@ -1080,6 +1172,11 @@ class CommandArgumentParser:
         return command_keys
 
     def render_help(self) -> None:
+        """
+        Print formatted help text for this command using Rich output.
+
+        Includes usage, description, argument groups, and optional epilog.
+        """
         usage = self.get_usage()
         self.console.print(f"[bold]usage: {usage}[/bold]\n")
 
@@ -1142,6 +1239,7 @@ class CommandArgumentParser:
         return hash(tuple(sorted(self._arguments, key=lambda a: a.dest)))
 
     def __str__(self) -> str:
+        """Return a human-readable summary of the parser state."""
         positional = sum(arg.positional for arg in self._arguments)
         required = sum(arg.required for arg in self._arguments)
         return (

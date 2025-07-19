@@ -1,5 +1,16 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""prompt_menu_action.py"""
+"""
+Defines `PromptMenuAction`, a Falyx Action that prompts the user to choose from
+a list of labeled options using a single-line prompt input. Each option corresponds
+to a `MenuOption` that wraps a description and an executable action.
+
+Unlike `MenuAction`, this action renders a flat, inline prompt (e.g., `Option1 | Option2`)
+without using a rich table. It is ideal for compact decision points, hotkey-style menus,
+or contextual user input flows.
+
+Key Components:
+- PromptMenuAction: Inline prompt-driven menu runner
+"""
 from typing import Any
 
 from prompt_toolkit import PromptSession
@@ -17,7 +28,53 @@ from falyx.themes import OneColors
 
 
 class PromptMenuAction(BaseAction):
-    """PromptMenuAction class for creating prompt -> actions."""
+    """
+    Displays a single-line interactive prompt for selecting an option from a menu.
+
+    `PromptMenuAction` is a lightweight alternative to `MenuAction`, offering a more
+    compact selection interface. Instead of rendering a full table, it displays
+    available keys inline as a placeholder (e.g., `A | B | C`) and accepts the user's
+    input to execute the associated action.
+
+    Each key is defined in a `MenuOptionMap`, which maps to a `MenuOption` containing
+    a description and an executable action.
+
+    Key Features:
+    - Minimal UI: rendered as a single prompt line with placeholder
+    - Optional fallback to `default_selection` or injected `last_result`
+    - Fully hookable lifecycle (before, success, error, after, teardown)
+    - Supports reserved keys and structured error recovery
+
+    Args:
+        name (str): Name of the action. Used for logging and debugging.
+        menu_options (MenuOptionMap): A mapping of keys to `MenuOption` objects.
+        prompt_message (str): Text displayed before user input (default: "Select > ").
+        default_selection (str): Fallback key if no input is provided.
+        inject_last_result (bool): Whether to use `last_result` as a fallback input key.
+        inject_into (str): Kwarg name under which to inject the last result.
+        prompt_session (PromptSession | None): Custom Prompt Toolkit session.
+        never_prompt (bool): If True, skips user input and uses `default_selection`.
+        include_reserved (bool): Whether to include reserved keys in logic and preview.
+
+    Returns:
+        Any: The result of the selected option's action.
+
+    Raises:
+        BackSignal: If the user signals to return to the previous menu.
+        QuitSignal: If the user signals to exit the CLI entirely.
+        ValueError: If `never_prompt` is enabled but no fallback is available.
+        Exception: If an error occurs during the action's execution.
+
+    Example:
+        PromptMenuAction(
+            name="HotkeyPrompt",
+            menu_options=MenuOptionMap(options={
+                "R": MenuOption("Run", ChainedAction(...)),
+                "S": MenuOption("Skip", Action(...)),
+            }),
+            prompt_message="Choose action > ",
+        )
+    """
 
     def __init__(
         self,

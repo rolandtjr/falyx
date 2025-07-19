@@ -1,5 +1,30 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""hooks.py"""
+"""
+Defines reusable lifecycle hooks for Falyx Actions and Commands.
+
+This module includes:
+- `ResultReporter`: A success hook that displays a formatted result with duration.
+- `CircuitBreaker`: A failure-aware hook manager that prevents repeated execution
+  after a configurable number of failures.
+
+These hooks can be registered on `HookManager` instances via lifecycle stages
+(`before`, `on_error`, `after`, etc.) to enhance resiliency and observability.
+
+Intended for use with:
+- Retryable or unstable actions
+- Interactive CLI feedback
+- Safety checks prior to execution
+
+Example usage:
+    breaker = CircuitBreaker(max_failures=3)
+    hooks.register(HookType.BEFORE, breaker.before_hook)
+    hooks.register(HookType.ON_ERROR, breaker.error_hook)
+    hooks.register(HookType.AFTER, breaker.after_hook)
+
+    reporter = ResultReporter()
+    hooks.register(HookType.ON_SUCCESS, reporter.report)
+"""
+
 import time
 from typing import Any, Callable
 

@@ -1,5 +1,69 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""chained_action.py"""
+"""
+Defines `ChainedAction`, a core Falyx construct for executing a sequence of actions
+in strict order, optionally injecting results from previous steps into subsequent ones.
+
+`ChainedAction` is designed for linear workflows where each step may depend on
+the output of the previous one. It supports rollback semantics, fallback recovery,
+and advanced error handling using `SharedContext`. Literal values are supported via
+automatic wrapping with `LiteralInputAction`.
+
+Key Features:
+- Executes a list of actions sequentially
+- Optional `auto_inject` to forward `last_result` into each step
+- Supports fallback recovery using `FallbackAction` when an error occurs
+- Rollback stack to undo already-completed actions on failure
+- Integrates with the full Falyx hook lifecycle
+- Previews and introspects workflow structure via `Rich`
+
+Use Cases:
+- Ordered pipelines (e.g., build → test → deploy)
+- Data transformations or ETL workflows
+- Linear decision trees or interactive wizards
+
+Special Behaviors:
+- Literal inputs (e.g., strings, numbers) are converted to `LiteralInputAction`
+- If an action raises and is followed by a `FallbackAction`, it will be skipped and recovered
+- If a `BreakChainSignal` is raised, the chain stops early and rollbacks are triggered
+
+Raises:
+- `EmptyChainError`: If no actions are present
+- `BreakChainSignal`: When explicitly triggered by a child action
+- `Exception`: For all unhandled failures during chained execution
+
+Example:
+    ChainedAction(
+        name="DeployFlow",
+        actions=[
+            ActionGroup(
+                name="PreDeploymentChecks",
+                actions=[
+                    Action(
+                        name="ValidateInputs",
+                        action=validate_inputs,
+                    ),
+                    Action(
+                        name="CheckDependencies",
+                        action=check_dependencies,
+                    ),
+                ],
+            ),
+            Action(
+                name="BuildArtifact",
+                action=build_artifact,
+            ),
+            Action(
+                name="Upload",
+                action=upload,
+            ),
+            Action(
+                name="NotifySuccess",
+                action=notify_success,
+            ),
+        ],
+        auto_inject=True,
+    )
+"""
 from __future__ import annotations
 
 from typing import Any, Awaitable, Callable, Sequence
@@ -35,8 +99,10 @@ class ChainedAction(BaseAction, ActionListMixin):
     previous results.
 
     Args:
-        name (str): Name of the chain.
+        name (str): Name of the chain. Used for logging and debugging.
         actions (list): List of actions or literals to execute.
+        args (tuple, optional): Positional arguments.
+        kwargs (dict, optional): Keyword arguments.
         hooks (HookManager, optional): Hooks for lifecycle events.
         inject_last_result (bool, optional): Whether to inject last results into kwargs
                                              by default.
@@ -235,7 +301,8 @@ class ChainedAction(BaseAction, ActionListMixin):
 
     def __str__(self):
         return (
-            f"ChainedAction(name={self.name!r}, "
-            f"actions={[a.name for a in self.actions]!r}, "
+            f"ChainedAction(name={self.name}, "
+            f"actions={[a.name for a in self.actions]}, "
+            f"args={self.args!r}, kwargs={self.kwargs!r}, "
             f"auto_inject={self.auto_inject}, return_list={self.return_list})"
         )

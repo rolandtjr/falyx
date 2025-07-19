@@ -1,5 +1,25 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""save_file_action.py"""
+"""
+Defines `SaveFileAction`, a Falyx Action for writing structured or unstructured data
+to a file in a variety of supported formats.
+
+Supports overwrite control, automatic directory creation, and full lifecycle hook
+integration. Compatible with chaining and injection of upstream results via
+`inject_last_result`.
+
+Supported formats: TEXT, JSON, YAML, TOML, CSV, TSV, XML
+
+Key Features:
+- Auto-serialization of Python data to structured formats
+- Flexible path control with directory creation and overwrite handling
+- Injection of data via chaining (`last_result`)
+- Preview mode with file metadata visualization
+
+Common use cases:
+- Writing processed results to disk
+- Logging artifacts from batch pipelines
+- Exporting config or user input to JSON/YAML for reuse
+"""
 import csv
 import json
 import xml.etree.ElementTree as ET
@@ -22,12 +42,50 @@ from falyx.themes import OneColors
 
 class SaveFileAction(BaseAction):
     """
-    SaveFileAction saves data to a file in the specified format (e.g., TEXT, JSON, YAML).
-    Supports overwrite control and integrates with chaining workflows via inject_last_result.
+    Saves data to a file in the specified format.
 
-    Supported types: TEXT, JSON, YAML, TOML, CSV, TSV, XML
+    `SaveFileAction` serializes and writes input data to disk using the format
+    defined by `file_type`. It supports plain text and structured formats like
+    JSON, YAML, TOML, CSV, TSV, and XML. Files may be overwritten or appended
+    based on settings, and parent directories are created if missing.
 
-    If the file exists and overwrite is False, the action will raise a FileExistsError.
+    Data can be provided directly via the `data` argument or dynamically injected
+    from the previous Action using `inject_last_result`.
+
+    Key Features:
+    - Format-aware saving with validation
+    - Lifecycle hook support (before, success, error, after, teardown)
+    - Chain-compatible via last_result injection
+    - Supports safe overwrite behavior and preview diagnostics
+
+    Args:
+        name (str): Name of the action. Used for logging and debugging.
+        file_path (str | Path): Destination file path.
+        file_type (FileType | str): Output format (e.g., "json", "yaml", "text").
+        mode (Literal["w", "a"]): File mode—write or append. Default is "w".
+        encoding (str): Encoding to use when writing files (default: "UTF-8").
+        data (Any): Data to save. If omitted, uses last_result injection.
+        overwrite (bool): Whether to overwrite existing files. Default is True.
+        create_dirs (bool): Whether to auto-create parent directories.
+        inject_last_result (bool): Inject previous result as input if enabled.
+        inject_into (str): Name of kwarg to inject last_result into (default: "data").
+
+    Returns:
+        str: The full path to the saved file.
+
+    Raises:
+        FileExistsError: If the file exists and `overwrite` is False.
+        FileNotFoundError: If parent directory is missing and `create_dirs` is False.
+        ValueError: If data format is invalid for the target file type.
+        Exception: Any errors encountered during file writing.
+
+    Example:
+        SaveFileAction(
+            name="SaveOutput",
+            file_path="output/data.json",
+            file_type="json",
+            inject_last_result=True
+        )
     """
 
     def __init__(
@@ -36,6 +94,7 @@ class SaveFileAction(BaseAction):
         file_path: str,
         file_type: FileType | str = FileType.TEXT,
         mode: Literal["w", "a"] = "w",
+        encoding: str = "UTF-8",
         data: Any = None,
         overwrite: bool = True,
         create_dirs: bool = True,
@@ -50,6 +109,7 @@ class SaveFileAction(BaseAction):
             file_path (str | Path): Path to the file where data will be saved.
             file_type (FileType | str): Format to write to (e.g. TEXT, JSON, YAML).
             mode (Literal["w", "a"]): File mode (default: "w").
+            encoding (str): Encoding to use when writing files (default: "UTF-8").
             data (Any): Data to be saved (if not using inject_last_result).
             overwrite (bool): Whether to overwrite the file if it exists.
             create_dirs (bool): Whether to create parent directories if they do not exist.
@@ -60,11 +120,12 @@ class SaveFileAction(BaseAction):
             name=name, inject_last_result=inject_last_result, inject_into=inject_into
         )
         self._file_path = self._coerce_file_path(file_path)
-        self._file_type = self._coerce_file_type(file_type)
+        self._file_type = FileType(file_type)
         self.data = data
         self.overwrite = overwrite
         self.mode = mode
         self.create_dirs = create_dirs
+        self.encoding = encoding
 
     @property
     def file_path(self) -> Path | None:
@@ -91,20 +152,6 @@ class SaveFileAction(BaseAction):
     def file_type(self) -> FileType:
         """Get the file type."""
         return self._file_type
-
-    @file_type.setter
-    def file_type(self, value: FileType | str):
-        """Set the file type, converting to FileType if necessary."""
-        self._file_type = self._coerce_file_type(value)
-
-    def _coerce_file_type(self, file_type: FileType | str) -> FileType:
-        """Coerce the file type to a FileType enum."""
-        if isinstance(file_type, FileType):
-            return file_type
-        elif isinstance(file_type, str):
-            return FileType(file_type)
-        else:
-            raise TypeError("file_type must be a FileType enum or string")
 
     def get_infer_target(self) -> tuple[None, None]:
         return None, None
@@ -143,13 +190,15 @@ class SaveFileAction(BaseAction):
 
         try:
             if self.file_type == FileType.TEXT:
-                self.file_path.write_text(data, encoding="UTF-8")
+                self.file_path.write_text(data, encoding=self.encoding)
             elif self.file_type == FileType.JSON:
-                self.file_path.write_text(json.dumps(data, indent=4), encoding="UTF-8")
+                self.file_path.write_text(
+                    json.dumps(data, indent=4), encoding=self.encoding
+                )
             elif self.file_type == FileType.TOML:
-                self.file_path.write_text(toml.dumps(data), encoding="UTF-8")
+                self.file_path.write_text(toml.dumps(data), encoding=self.encoding)
             elif self.file_type == FileType.YAML:
-                self.file_path.write_text(yaml.dump(data), encoding="UTF-8")
+                self.file_path.write_text(yaml.dump(data), encoding=self.encoding)
             elif self.file_type == FileType.CSV:
                 if not isinstance(data, list) or not all(
                     isinstance(row, list) for row in data
@@ -158,7 +207,7 @@ class SaveFileAction(BaseAction):
                         f"{self.file_type.name} file type requires a list of lists"
                     )
                 with open(
-                    self.file_path, mode=self.mode, newline="", encoding="UTF-8"
+                    self.file_path, mode=self.mode, newline="", encoding=self.encoding
                 ) as csvfile:
                     writer = csv.writer(csvfile)
                     writer.writerows(data)
@@ -170,7 +219,7 @@ class SaveFileAction(BaseAction):
                         f"{self.file_type.name} file type requires a list of lists"
                     )
                 with open(
-                    self.file_path, mode=self.mode, newline="", encoding="UTF-8"
+                    self.file_path, mode=self.mode, newline="", encoding=self.encoding
                 ) as tsvfile:
                     writer = csv.writer(tsvfile, delimiter="\t")
                     writer.writerows(data)
@@ -180,7 +229,7 @@ class SaveFileAction(BaseAction):
                 root = ET.Element("root")
                 self._dict_to_xml(data, root)
                 tree = ET.ElementTree(root)
-                tree.write(self.file_path, encoding="UTF-8", xml_declaration=True)
+                tree.write(self.file_path, encoding=self.encoding, xml_declaration=True)
             else:
                 raise ValueError(f"Unsupported file type: {self.file_type}")
 

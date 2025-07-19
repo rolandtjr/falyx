@@ -1,5 +1,15 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""tagged_table.py"""
+"""
+Generates a Rich table view of Falyx commands grouped by their tags.
+
+This module defines a utility function for rendering a custom CLI command
+table that organizes commands into groups based on their first tag. It is
+used to visually separate commands in interactive menus for better clarity
+and discoverability.
+
+Functions:
+- build_tagged_table(flx): Returns a `rich.Table` of commands grouped by tag.
+"""
 from collections import defaultdict
 
 from rich import box

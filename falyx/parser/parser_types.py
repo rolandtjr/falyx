@@ -1,5 +1,10 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""parser_types.py"""
+"""
+Utilities for custom type coercion in Falyx argument parsing.
+
+Provides special-purpose converters used to support optional boolean flags and
+other non-standard argument behaviors within the Falyx CLI parser system.
+"""
 from typing import Any
 
 

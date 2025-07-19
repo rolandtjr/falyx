@@ -1,5 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""io_action.py
+"""
 BaseIOAction: A base class for stream- or buffer-based IO-driven Actions.
 
 This module defines `BaseIOAction`, a specialized variant of `BaseAction`
@@ -48,8 +48,11 @@ class BaseIOAction(BaseAction):
     - `to_output(data)`: Convert result into output string or bytes.
     - `_run(parsed_input, *args, **kwargs)`: Core execution logic.
 
-    Attributes:
+    Args:
+        name (str): Name of the action. Used for logging and debugging.
+        hooks (HookManager | None): Hook manager for lifecycle events.
         mode (str): Either "buffered" or "stream". Controls input behavior.
+        logging_hooks (bool): Whether to register debug hooks for logging.
         inject_last_result (bool): Whether to inject shared context input.
     """
 

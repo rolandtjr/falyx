@@ -1,5 +1,36 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""action_factory_action.py"""
+"""
+Defines `ActionFactory`, a dynamic Falyx Action that defers the construction of its
+underlying logic to runtime using a user-defined factory function.
+
+This pattern is useful when the specific Action to execute cannot be determined until
+execution time—such as when branching on data, generating parameterized HTTP requests,
+or selecting configuration-aware flows. `ActionFactory` integrates seamlessly with the
+Falyx lifecycle system and supports hook propagation, teardown registration, and
+contextual previewing.
+
+Key Features:
+- Accepts a factory function that returns a `BaseAction` instance
+- Supports injection of `last_result` and arbitrary args/kwargs
+- Integrates into chained or standalone workflows
+- Automatically previews generated action tree
+- Propagates shared context and teardown hooks to the returned action
+
+Common Use Cases:
+- Conditional or data-driven action generation
+- Configurable workflows with dynamic behavior
+- Adapter for factory-style dependency injection in CLI flows
+
+Example:
+    def generate_request_action(env):
+        return HTTPAction(f"GET /status/{env}", url=f"https://api/{env}/status")
+
+    ActionFactory(
+        name="GetEnvStatus",
+        factory=generate_request_action,
+        inject_last_result=True,
+    )
+"""
 from typing import Any, Callable
 
 from rich.tree import Tree
@@ -22,10 +53,14 @@ class ActionFactory(BaseAction):
     where the structure of the next action depends on runtime values.
 
     Args:
-        name (str): Name of the action.
+        name (str): Name of the action. Used for logging and debugging.
         factory (Callable): A function that returns a BaseAction given args/kwargs.
         inject_last_result (bool): Whether to inject last_result into the factory.
         inject_into (str): The name of the kwarg to inject last_result as.
+        args (tuple, optional): Positional arguments for the factory.
+        kwargs (dict, optional): Keyword arguments for the factory.
+        preview_args (tuple, optional): Positional arguments for the preview.
+        preview_kwargs (dict, optional): Keyword arguments for the preview.
     """
 
     def __init__(
@@ -133,3 +168,11 @@ class ActionFactory(BaseAction):
 
         if not parent:
             self.console.print(tree)
+
+    def __str__(self) -> str:
+        return (
+            f"ActionFactory(name={self.name!r}, "
+            f"inject_last_result={self.inject_last_result}, "
+            f"factory={self._factory.__name__ if hasattr(self._factory, '__name__') else type(self._factory).__name__}, "
+            f"args={self.args!r}, kwargs={self.kwargs!r})"
+        )

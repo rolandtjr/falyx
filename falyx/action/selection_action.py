@@ -1,5 +1,36 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""selection_action.py"""
+"""
+Defines `SelectionAction`, a highly flexible Falyx Action for interactive or headless
+selection from a list or dictionary of user-defined options.
+
+This module powers workflows that require prompting the user for input, selecting
+configuration presets, branching execution paths, or collecting multiple values
+in a type-safe, hook-compatible, and composable way.
+
+Key Features:
+- Supports both flat lists and structured dictionaries (`SelectionOptionMap`)
+- Handles single or multi-selection with configurable separators
+- Returns results in various formats (key, value, description, item, or mapping)
+- Integrates fully with Falyx lifecycle hooks and `last_result` injection
+- Works in interactive (`prompt_toolkit`) and non-interactive (headless) modes
+- Renders a Rich-based table preview for diagnostics or dry runs
+
+Usage Scenarios:
+- Guided CLI wizards or configuration menus
+- Dynamic branching or conditional step logic
+- User-driven parameterization in chained workflows
+- Reusable pickers for environments, files, datasets, etc.
+
+Example:
+    SelectionAction(
+        name="ChooseMode",
+        selections={"dev": "Development", "prod": "Production"},
+        return_type="key"
+    )
+
+This module is foundational to creating expressive, user-centered CLI experiences
+within Falyx while preserving reproducibility and automation friendliness.
+"""
 from typing import Any
 
 from prompt_toolkit import PromptSession
@@ -114,7 +145,7 @@ class SelectionAction(BaseAction):
         )
         # Setter normalizes to correct type, mypy can't infer that
         self.selections: list[str] | SelectionOptionMap = selections  # type: ignore[assignment]
-        self.return_type: SelectionReturnType = self._coerce_return_type(return_type)
+        self.return_type: SelectionReturnType = SelectionReturnType(return_type)
         self.title = title
         self.columns = columns
         self.prompt_session = prompt_session or PromptSession()
@@ -139,13 +170,6 @@ class SelectionAction(BaseAction):
             self._number_selections = value
         else:
             raise ValueError("number_selections must be a positive integer or '*'")
-
-    def _coerce_return_type(
-        self, return_type: SelectionReturnType | str
-    ) -> SelectionReturnType:
-        if isinstance(return_type, SelectionReturnType):
-            return return_type
-        return SelectionReturnType(return_type)
 
     @property
     def selections(self) -> list[str] | SelectionOptionMap:

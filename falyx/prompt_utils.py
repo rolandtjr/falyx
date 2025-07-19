@@ -1,5 +1,15 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""prompt_utils.py"""
+"""
+Utilities for user interaction prompts in the Falyx CLI framework.
+
+Provides asynchronous confirmation dialogs and helper logic to determine
+whether a user should be prompted based on command-line options.
+
+Includes:
+- `should_prompt_user()` for conditional prompt logic.
+- `confirm_async()` for interactive yes/no confirmation.
+"""
+
 from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import (
     AnyFormattedText,

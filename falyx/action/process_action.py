@@ -1,5 +1,42 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""process_action.py"""
+"""
+Defines `ProcessAction`, a Falyx Action that executes a blocking or CPU-bound function
+in a separate process using `concurrent.futures.ProcessPoolExecutor`.
+
+This is useful for offloading expensive computations or subprocess-compatible operations
+from the main event loop, while maintaining Falyx's composable, hookable, and injectable
+execution model.
+
+`ProcessAction` mirrors the behavior of a normal `Action`, but ensures isolation from
+the asyncio event loop and handles serialization (pickling) of arguments and injected
+state.
+
+Key Features:
+- Runs a callable in a separate Python process
+- Compatible with `last_result` injection for chained workflows
+- Validates that injected values are pickleable before dispatch
+- Supports hook lifecycle (`before`, `on_success`, `on_error`, etc.)
+- Custom executor support for reuse or configuration
+
+Use Cases:
+- CPU-intensive operations (e.g., image processing, simulations, data transformations)
+- Blocking third-party libraries that don't cooperate with asyncio
+- CLI workflows that require subprocess-level parallelism or safety
+
+Example:
+    ProcessAction(
+        name="ComputeChecksum",
+        action=calculate_sha256,
+        args=("large_file.bin",),
+    )
+
+Raises:
+- `ValueError`: If an injected value is not pickleable
+- `Exception`: Propagated from the subprocess on failure
+
+This module enables structured offloading of workload in CLI pipelines while maintaining
+full introspection and lifecycle management.
+"""
 from __future__ import annotations
 
 import asyncio

@@ -1,5 +1,22 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""validators.py"""
+"""
+Input validators for use with Prompt Toolkit and interactive Falyx CLI workflows.
+
+This module defines reusable `Validator` instances and subclasses that enforce valid
+user input during prompts—especially for selection actions, confirmations, and
+argument parsing.
+
+Included Validators:
+- int_range_validator: Enforces numeric input within a range.
+- key_validator: Ensures the entered value matches a valid selection key.
+- yes_no_validator: Restricts input to 'Y' or 'N'.
+- word_validator / words_validator: Accepts specific valid words (case-insensitive).
+- MultiIndexValidator: Validates numeric list input (e.g. "1,2,3").
+- MultiKeyValidator: Validates string key list input (e.g. "A,B,C").
+
+These validators integrate directly into `PromptSession.prompt_async()` to
+enforce correctness and provide helpful error messages.
+"""
 from typing import KeysView, Sequence
 
 from prompt_toolkit.validation import ValidationError, Validator

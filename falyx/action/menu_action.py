@@ -1,5 +1,42 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""menu_action.py"""
+"""
+Defines `MenuAction`, a one-shot, interactive menu-style Falyx Action that presents
+a set of labeled options to the user and executes the corresponding action based on
+their selection.
+
+Unlike the persistent top-level Falyx menu, `MenuAction` is intended for embedded,
+self-contained decision points within a workflow. It supports both interactive and
+non-interactive (headless) usage, integrates fully with the Falyx hook lifecycle,
+and allows optional defaulting or input injection from previous actions.
+
+Each selectable item is defined in a `MenuOptionMap`, mapping a single-character or
+keyword to a `MenuOption`, which includes a description and a corresponding `BaseAction`.
+
+Key Features:
+- Renders a Rich-powered multi-column menu table
+- Accepts custom prompt sessions or tables
+- Supports `last_result` injection for context-aware defaults
+- Gracefully handles `BackSignal` and `QuitSignal` for flow control
+- Compatible with preview trees and introspection tools
+
+Use Cases:
+- In-workflow submenus or branches
+- Interactive control points in chained or grouped workflows
+- Configurable menus for multi-step user-driven automation
+
+Example:
+    MenuAction(
+        name="SelectEnv",
+        menu_options=MenuOptionMap(options={
+            "D": MenuOption("Deploy to Dev", DeployDevAction()),
+            "P": MenuOption("Deploy to Prod", DeployProdAction()),
+        }),
+        default_selection="D",
+    )
+
+This module is ideal for enabling structured, discoverable, and declarative
+menus in both interactive and programmatic CLI automation.
+"""
 from typing import Any
 
 from prompt_toolkit import PromptSession
@@ -19,7 +56,57 @@ from falyx.utils import chunks
 
 
 class MenuAction(BaseAction):
-    """MenuAction class for creating single use menu actions."""
+    """
+    MenuAction displays a one-time interactive menu of predefined options,
+    each mapped to a corresponding Action.
+
+    Unlike the main Falyx menu system, `MenuAction` is intended for scoped,
+    self-contained selection logic—ideal for small in-flow menus, decision branches,
+    or embedded control points in larger workflows.
+
+    Each selectable item is defined in a `MenuOptionMap`, which maps a string key
+    to a `MenuOption`, bundling a description and a callable Action.
+
+    Key Features:
+    - One-shot selection from labeled actions
+    - Optional default or last_result-based selection
+    - Full hook lifecycle (before, success, error, after, teardown)
+    - Works with or without rendering a table (for headless use)
+    - Compatible with `BackSignal` and `QuitSignal` for graceful control flow exits
+
+    Args:
+        name (str): Name of the action. Used for logging and debugging.
+        menu_options (MenuOptionMap): Mapping of keys to `MenuOption` objects.
+        title (str): Table title displayed when prompting the user.
+        columns (int): Number of columns in the rendered table.
+        prompt_message (str): Prompt text displayed before selection.
+        default_selection (str): Key to use if no user input is provided.
+        inject_last_result (bool): Whether to inject `last_result` into args/kwargs.
+        inject_into (str): Key under which to inject `last_result`.
+        prompt_session (PromptSession | None): Custom session for Prompt Toolkit input.
+        never_prompt (bool): If True, skips interaction and uses default or last_result.
+        include_reserved (bool): Whether to include reserved keys (like 'X' for Exit).
+        show_table (bool): Whether to render the Rich menu table.
+        custom_table (Table | None): Pre-rendered Rich Table (bypasses auto-building).
+
+    Returns:
+        Any: The result of the selected option's Action.
+
+    Raises:
+        BackSignal: When the user chooses to return to a previous menu.
+        QuitSignal: When the user chooses to exit the program.
+        ValueError: If `never_prompt=True` but no default selection is resolvable.
+        Exception: Any error raised during the execution of the selected Action.
+
+    Example:
+        MenuAction(
+            name="ChooseBranch",
+            menu_options=MenuOptionMap(options={
+                "A": MenuOption("Run analysis", ActionGroup(...)),
+                "B": MenuOption("Run report", Action(...)),
+            }),
+        )
+    """
 
     def __init__(
         self,

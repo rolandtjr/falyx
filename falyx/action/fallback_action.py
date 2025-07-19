@@ -1,5 +1,41 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""fallback_action.py"""
+"""
+Defines `FallbackAction`, a lightweight recovery Action used within `ChainedAction`
+pipelines to gracefully handle errors or missing results from a preceding step.
+
+When placed immediately after a failing or null-returning Action, `FallbackAction`
+injects the `last_result` and checks whether it is `None`. If so, it substitutes a
+predefined fallback value and allows the chain to continue. If `last_result` is valid,
+it is passed through unchanged.
+
+This mechanism allows workflows to recover from failure or gaps in data
+without prematurely terminating the entire chain.
+
+Key Features:
+- Injects and inspects `last_result`
+- Replaces `None` with a fallback value
+- Consumes upstream errors when used with `ChainedAction`
+- Fully compatible with Falyx's preview and hook systems
+
+Typical Use Cases:
+- Graceful degradation in chained workflows
+- Providing default values when earlier steps are optional
+- Replacing missing data with static or precomputed values
+
+Example:
+    ChainedAction(
+        name="FetchWithFallback",
+        actions=[
+            Action("MaybeFetchRemoteAction", action=fetch_data),
+            FallbackAction(fallback={"data": "default"}),
+            Action("ProcessDataAction", action=process_data),
+        ],
+        auto_inject=True,
+    )
+
+The `FallbackAction` ensures that even if `MaybeFetchRemoteAction` fails or returns
+None, `ProcessDataAction` still receives a usable input.
+"""
 from functools import cached_property
 from typing import Any
 

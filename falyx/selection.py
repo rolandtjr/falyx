@@ -1,5 +1,17 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""selection.py"""
+"""
+Provides interactive selection utilities for Falyx CLI actions.
+
+This module defines `SelectionOption` objects, selection maps, and rich-powered
+rendering functions to build interactive selection prompts using `prompt_toolkit`.
+It supports:
+- Grid-based and dictionary-based selection menus
+- Index- or key-driven multi-select prompts
+- Formatted Rich tables for CLI visual menus
+- Cancel keys, defaults, and duplication control
+
+Used by `SelectionAction` and other prompt-driven workflows within Falyx.
+"""
 from dataclasses import dataclass
 from typing import Any, Callable, KeysView, Sequence
 

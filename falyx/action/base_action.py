@@ -1,6 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""base_action.py
-
+"""
 Core action system for Falyx.
 
 This module defines the building blocks for executable actions and workflows,
@@ -50,10 +49,16 @@ class BaseAction(ABC):
     complex actions like `ChainedAction` or `ActionGroup`. They can also
     be run independently or as part of Falyx.
 
-    inject_last_result (bool): Whether to inject the previous action's result
-                               into kwargs.
-    inject_into (str): The name of the kwarg key to inject the result as
-                       (default: 'last_result').
+    Args:
+        name (str): Name of the action. Used for logging and debugging.
+        hooks (HookManager | None): Hook manager for lifecycle events.
+        inject_last_result (bool): Whether to inject the previous action's result
+                                   into kwargs.
+        inject_into (str): The name of the kwarg key to inject the result as
+                           (default: 'last_result').
+        never_prompt (bool | None): Whether to never prompt for input.
+        logging_hooks (bool): Whether to register debug hooks for logging.
+        ignore_in_history (bool): Whether to ignore this action in execution history last result.
     """
 
     def __init__(
@@ -65,6 +70,7 @@ class BaseAction(ABC):
         inject_into: str = "last_result",
         never_prompt: bool | None = None,
         logging_hooks: bool = False,
+        ignore_in_history: bool = False,
     ) -> None:
         self.name = name
         self.hooks = hooks or HookManager()
@@ -76,6 +82,7 @@ class BaseAction(ABC):
         self._skip_in_chain: bool = False
         self.console: Console = console
         self.options_manager: OptionsManager | None = None
+        self.ignore_in_history: bool = ignore_in_history
 
         if logging_hooks:
             register_debug_hooks(self.hooks)

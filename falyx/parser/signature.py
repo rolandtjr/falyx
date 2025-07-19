@@ -1,4 +1,15 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""
+Provides utilities for introspecting Python callables and extracting argument
+metadata compatible with Falyx's `CommandArgumentParser`.
+
+This module is primarily used to auto-generate command argument definitions from
+function signatures, enabling seamless integration of plain functions into the
+Falyx CLI with minimal boilerplate.
+
+Functions:
+- infer_args_from_func: Generate a list of argument definitions based on a function's signature.
+"""
 import inspect
 from typing import Any, Callable
 
@@ -10,8 +21,18 @@ def infer_args_from_func(
     arg_metadata: dict[str, str | dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Infer argument definitions from a callable's signature.
-    Returns a list of kwargs suitable for CommandArgumentParser.add_argument.
+    Infer CLI-style argument definitions from a function signature.
+
+    This utility inspects the parameters of a function and returns a list of dictionaries,
+    each of which can be passed to `CommandArgumentParser.add_argument()`.
+
+    Args:
+        func (Callable | None): The function to inspect.
+        arg_metadata (dict | None): Optional metadata overrides for help text, type hints,
+                                    choices, and suggestions for each parameter.
+
+    Returns:
+        list[dict[str, Any]]: A list of argument definitions inferred from the function.
     """
     if not callable(func):
         logger.debug("Provided argument is not callable: %s", func)

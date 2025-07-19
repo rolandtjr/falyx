@@ -1,5 +1,21 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""signals.py"""
+"""
+Defines flow control signals used internally by the Falyx CLI framework.
+
+These signals are raised to interrupt or redirect CLI execution flow
+(e.g., returning to a menu, quitting, or displaying help) without
+being treated as traditional exceptions.
+
+All signals inherit from `FlowSignal`, which is a subclass of `BaseException`
+to ensure they bypass standard `except Exception` blocks.
+
+Signals:
+- BreakChainSignal: Exit a chained action early.
+- QuitSignal: Terminate the CLI session.
+- BackSignal: Return to the previous menu or caller.
+- CancelSignal: Cancel the current operation.
+- HelpSignal: Trigger help output in interactive flows.
+"""
 
 
 class FlowSignal(BaseException):

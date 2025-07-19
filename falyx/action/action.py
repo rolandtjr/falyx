@@ -1,5 +1,38 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""action.py"""
+"""
+Defines `Action`, the core atomic unit in the Falyx CLI framework, used to wrap and
+execute a single callable or coroutine with structured lifecycle support.
+
+An `Action` is the simplest building block in Falyx's execution model, enabling
+developers to turn ordinary Python functions into hookable, retryable, introspectable
+workflow steps. It supports synchronous or asynchronous callables, argument injection,
+rollback handlers, and retry policies.
+
+Key Features:
+- Lifecycle hooks: `before`, `on_success`, `on_error`, `after`, `on_teardown`
+- Optional `last_result` injection for chained workflows
+- Retry logic via configurable `RetryPolicy` and `RetryHandler`
+- Rollback function support for recovery and undo behavior
+- Rich preview output for introspection and dry-run diagnostics
+
+Usage Scenarios:
+- Wrapping business logic, utility functions, or external API calls
+- Converting lightweight callables into structured CLI actions
+- Composing workflows using `Action`, `ChainedAction`, or `ActionGroup`
+
+Example:
+    def compute(x, y):
+        return x + y
+
+    Action(
+        name="AddNumbers",
+        action=compute,
+        args=(2, 3),
+    )
+
+This module serves as the foundation for building robust, observable,
+and composable CLI automation flows in Falyx.
+"""
 from __future__ import annotations
 
 from typing import Any, Awaitable, Callable
@@ -27,11 +60,11 @@ class Action(BaseAction):
     - Optional rollback handlers for undo logic.
 
     Args:
-        name (str): Name of the action.
+        name (str): Name of the action. Used for logging and debugging.
         action (Callable): The function or coroutine to execute.
         rollback (Callable, optional): Rollback function to undo the action.
-        args (tuple, optional): Static positional arguments.
-        kwargs (dict, optional): Static keyword arguments.
+        args (tuple, optional): Positional arguments.
+        kwargs (dict, optional): Keyword arguments.
         hooks (HookManager, optional): Hook manager for lifecycle events.
         inject_last_result (bool, optional): Enable last_result injection.
         inject_into (str, optional): Name of injected key.
@@ -157,6 +190,7 @@ class Action(BaseAction):
         return (
             f"Action(name={self.name!r}, action="
             f"{getattr(self._action, '__name__', repr(self._action))}, "
+            f"args={self.args!r}, kwargs={self.kwargs!r}, "
             f"retry={self.retry_policy.enabled}, "
             f"rollback={self.rollback is not None})"
         )

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
+from traceback import format_exception
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -75,7 +76,8 @@ class ExecutionContext(BaseModel):
     kwargs: dict = Field(default_factory=dict)
     action: Any
     result: Any | None = None
-    exception: BaseException | None = None
+    traceback: str | None = None
+    _exception: BaseException | None = None
 
     start_time: float | None = None
     end_time: float | None = None
@@ -123,6 +125,16 @@ class ExecutionContext(BaseModel):
         return "OK" if self.success else "ERROR"
 
     @property
+    def exception(self) -> BaseException | None:
+        return self._exception
+
+    @exception.setter
+    def exception(self, exc: BaseException | None):
+        self._exception = exc
+        if exc is not None:
+            self.traceback = "".join(format_exception(exc)).strip()
+
+    @property
     def signature(self) -> str:
         """
         Returns a string representation of the action signature, including
@@ -138,6 +150,7 @@ class ExecutionContext(BaseModel):
             "name": self.name,
             "result": self.result,
             "exception": repr(self.exception) if self.exception else None,
+            "traceback": self.traceback,
             "duration": self.duration,
             "extra": self.extra,
         }

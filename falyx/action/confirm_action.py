@@ -1,3 +1,43 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+"""
+Defines `ConfirmAction`, a Falyx Action that prompts the user for confirmation
+before continuing execution.
+
+`ConfirmAction` supports a wide range of confirmation strategies, including:
+- Yes/No-style prompts
+- OK/Cancel dialogs
+- Typed confirmation (e.g., "CONFIRM" or "DELETE")
+- Acknowledge-only flows
+
+It is useful for adding safety gates, user-driven approval steps, or destructive
+operation guards in CLI workflows. This Action supports both interactive use and
+non-interactive (headless) behavior via `never_prompt`, as well as full hook lifecycle
+integration and optional result passthrough.
+
+Key Features:
+- Supports all common confirmation types (see `ConfirmType`)
+- Integrates with `PromptSession` for prompt_toolkit-based UX
+- Configurable fallback word validation and behavior on cancel
+- Can return the injected `last_result` instead of a boolean
+- Fully compatible with Falyx hooks, preview, and result injection
+
+Use Cases:
+- Safety checks before deleting, pushing, or overwriting resources
+- Gatekeeping interactive workflows
+- Validating irreversible or sensitive operations
+
+Example:
+    ConfirmAction(
+        name="ConfirmDeploy",
+        message="Are you sure you want to deploy to production?",
+        confirm_type="yes_no_cancel",
+    )
+
+Raises:
+- `CancelSignal`: When the user chooses to abort the action
+- `ValueError`: If an invalid `confirm_type` is provided
+"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -30,7 +70,7 @@ class ConfirmAction(BaseAction):
     with an operation.
 
     Attributes:
-        name (str): Name of the action.
+        name (str): Name of the action. Used for logging and debugging.
         message (str): The confirmation message to display.
         confirm_type (ConfirmType | str): The type of confirmation to use.
             Options include YES_NO, YES_CANCEL, YES_NO_CANCEL, TYPE_WORD, and OK_CANCEL.
@@ -72,18 +112,10 @@ class ConfirmAction(BaseAction):
             never_prompt=never_prompt,
         )
         self.message = message
-        self.confirm_type = self._coerce_confirm_type(confirm_type)
+        self.confirm_type = ConfirmType(confirm_type)
         self.prompt_session = prompt_session or PromptSession()
         self.word = word
         self.return_last_result = return_last_result
-
-    def _coerce_confirm_type(self, confirm_type: ConfirmType | str) -> ConfirmType:
-        """Coerce the confirm_type to a ConfirmType enum."""
-        if isinstance(confirm_type, ConfirmType):
-            return confirm_type
-        elif isinstance(confirm_type, str):
-            return ConfirmType(confirm_type)
-        return ConfirmType(confirm_type)
 
     async def _confirm(self) -> bool:
         """Confirm the action with the user."""

@@ -1,6 +1,41 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""config.py
-Configuration loader for Falyx CLI commands."""
+"""
+Configuration loader and schema definitions for the Falyx CLI framework.
+
+This module supports config-driven initialization of CLI commands and submenus
+from YAML or TOML files. It enables declarative command definitions, auto-imports
+Python callables from dotted paths, and wraps them in `Action` or `Command` objects
+as needed.
+
+Features:
+- Parses Falyx command and submenu definitions from YAML or TOML.
+- Supports hooks, retry policies, confirm prompts, spinners, aliases, and tags.
+- Dynamically imports Python functions/classes from `action:` strings.
+- Wraps user callables into Falyx `Command` or `Action` instances.
+- Validates prompt and retry configuration using `pydantic` models.
+
+Main Components:
+- `FalyxConfig`: Pydantic model for top-level config structure.
+- `RawCommand`: Intermediate command definition model from raw config.
+- `Submenu`: Schema for nested CLI menus.
+- `loader(path)`: Loads and returns a fully constructed `Falyx` instance.
+
+Typical Config (YAML):
+```yaml
+title: My CLI
+commands:
+  - key: A
+    description: Say hello
+    action: my_package.tasks.hello
+    aliases: [hi]
+    tags: [example]
+```
+
+Example:
+    from falyx.config import loader
+    cli = loader("falyx.yaml")
+    cli.run()
+"""
 from __future__ import annotations
 
 import importlib

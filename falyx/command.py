@@ -1,6 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""command.py
-
+"""
 Defines the Command class for Falyx CLI.
 
 Commands are callable units representing a menu option or CLI task,
@@ -92,12 +91,13 @@ class Command(BaseModel):
         arguments (list[dict[str, Any]]): Argument definitions for the command.
         argument_config (Callable[[CommandArgumentParser], None] | None): Function to configure arguments
             for the command parser.
-        arg_metadata (dict[str, str | dict[str, Any]]): Metadata for arguments,
-            such as help text or choices.
-        simple_help_signature (bool): Whether to use a simplified help signature.
         custom_parser (ArgParserProtocol | None): Custom argument parser.
         custom_help (Callable[[], str | None] | None): Custom help message generator.
         auto_args (bool): Automatically infer arguments from the action.
+        arg_metadata (dict[str, str | dict[str, Any]]): Metadata for arguments,
+            such as help text or choices.
+        simple_help_signature (bool): Whether to use a simplified help signature.
+        ignore_in_history (bool): Whether to ignore this command in execution history last result.
 
     Methods:
         __call__(): Executes the command, respecting hooks and retries.
@@ -140,6 +140,7 @@ class Command(BaseModel):
     auto_args: bool = True
     arg_metadata: dict[str, str | dict[str, Any]] = Field(default_factory=dict)
     simple_help_signature: bool = False
+    ignore_in_history: bool = False
 
     _context: ExecutionContext | None = PrivateAttr(default=None)
 
@@ -242,6 +243,9 @@ class Command(BaseModel):
             )
             for arg_def in self.get_argument_definitions():
                 self.arg_parser.add_argument(*arg_def.pop("flags"), **arg_def)
+
+        if self.ignore_in_history and isinstance(self.action, BaseAction):
+            self.action.ignore_in_history = True
 
     def _inject_options_manager(self) -> None:
         """Inject the options manager into the action if applicable."""

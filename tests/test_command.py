@@ -53,7 +53,7 @@ def test_command_str():
     print(cmd)
     assert (
         str(cmd)
-        == "Command(key='TEST', description='Test Command' action='Action(name='test_action', action=dummy_action, retry=False, rollback=False)')"
+        == "Command(key='TEST', description='Test Command' action='Action(name='test_action', action=dummy_action, args=(), kwargs={}, retry=False, rollback=False)')"
     )
 
 

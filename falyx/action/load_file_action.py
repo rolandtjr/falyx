@@ -1,5 +1,41 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""load_file_action.py"""
+"""
+Defines `LoadFileAction`, a Falyx Action for reading and parsing the contents of a file
+at runtime in a structured, introspectable, and lifecycle-aware manner.
+
+This action supports multiple common file types—including plain text, structured data
+formats (JSON, YAML, TOML), tabular formats (CSV, TSV), XML, and raw Path objects—
+making it ideal for configuration loading, data ingestion, and file-driven workflows.
+
+It integrates seamlessly with Falyx pipelines and supports `last_result` injection,
+Rich-powered previews, and lifecycle hook execution.
+
+Key Features:
+- Format-aware parsing for structured and unstructured files
+- Supports injection of `last_result` as the target file path
+- Headless-compatible via `never_prompt` and argument overrides
+- Lifecycle hooks: before, success, error, after, teardown
+- Preview renders file metadata, size, modified timestamp, and parsed content
+- Fully typed and alias-compatible via `FileType`
+
+Supported File Types:
+- `TEXT`: Raw text string (UTF-8)
+- `PATH`: The file path itself as a `Path` object
+- `JSON`, `YAML`, `TOML`: Parsed into `dict` or `list`
+- `CSV`, `TSV`: Parsed into `list[list[str]]`
+- `XML`: Returns the root `ElementTree.Element`
+
+Example:
+    LoadFileAction(
+        name="LoadSettings",
+        file_path="config/settings.yaml",
+        file_type="yaml"
+    )
+
+This module is a foundational building block for file-driven CLI workflows in Falyx.
+It is often paired with `SaveFileAction`, `SelectionAction`, or `ConfirmAction` for
+robust and interactive pipelines.
+"""
 import csv
 import json
 import xml.etree.ElementTree as ET
@@ -21,13 +57,58 @@ from falyx.themes import OneColors
 
 
 class LoadFileAction(BaseAction):
-    """LoadFileAction allows loading and parsing files of various types."""
+    """
+    LoadFileAction loads and parses the contents of a file at runtime.
+
+    This action supports multiple common file formats—including plain text, JSON,
+    YAML, TOML, XML, CSV, and TSV—and returns a parsed representation of the file.
+    It can be used to inject external data into a CLI workflow, load configuration files,
+    or process structured datasets interactively or in headless mode.
+
+    Key Features:
+    - Supports rich previewing of file metadata and contents
+    - Auto-injects `last_result` as `file_path` if configured
+    - Hookable at every lifecycle stage (before, success, error, after, teardown)
+    - Supports both static and dynamic file targets (via args or injected values)
+
+    Args:
+        name (str): Name of the action for tracking and logging.
+        file_path (str | Path | None): Path to the file to be loaded. Can be passed
+            directly or injected via `last_result`.
+        file_type (FileType | str): Type of file to parse. Options include:
+            TEXT, JSON, YAML, TOML, CSV, TSV, XML, PATH.
+        encoding (str): Encoding to use when reading files (default: 'UTF-8').
+        inject_last_result (bool): Whether to use the last result as the file path.
+        inject_into (str): Name of the kwarg to inject `last_result` into (default: 'file_path').
+
+    Returns:
+        Any: The parsed file content. Format depends on `file_type`:
+            - TEXT: str
+            - JSON/YAML/TOML: dict or list
+            - CSV/TSV: list[list[str]]
+            - XML: xml.etree.ElementTree
+            - PATH: Path object
+
+    Raises:
+        ValueError: If `file_path` is missing or invalid.
+        FileNotFoundError: If the file does not exist.
+        TypeError: If `file_type` is unsupported or the factory does not return a BaseAction.
+        Any parsing errors will be logged but not raised unless fatal.
+
+    Example:
+        LoadFileAction(
+            name="LoadConfig",
+            file_path="config/settings.yaml",
+            file_type="yaml"
+        )
+    """
 
     def __init__(
         self,
         name: str,
         file_path: str | Path | None = None,
         file_type: FileType | str = FileType.TEXT,
+        encoding: str = "UTF-8",
         inject_last_result: bool = False,
         inject_into: str = "file_path",
     ):
@@ -35,7 +116,8 @@ class LoadFileAction(BaseAction):
             name=name, inject_last_result=inject_last_result, inject_into=inject_into
         )
         self._file_path = self._coerce_file_path(file_path)
-        self._file_type = self._coerce_file_type(file_type)
+        self._file_type = FileType(file_type)
+        self.encoding = encoding
 
     @property
     def file_path(self) -> Path | None:
@@ -63,20 +145,6 @@ class LoadFileAction(BaseAction):
         """Get the file type."""
         return self._file_type
 
-    @file_type.setter
-    def file_type(self, value: FileType | str):
-        """Set the file type, converting to FileType if necessary."""
-        self._file_type = self._coerce_file_type(value)
-
-    def _coerce_file_type(self, file_type: FileType | str) -> FileType:
-        """Coerce the file type to a FileType enum."""
-        if isinstance(file_type, FileType):
-            return file_type
-        elif isinstance(file_type, str):
-            return FileType(file_type)
-        else:
-            raise TypeError("file_type must be a FileType enum or string")
-
     def get_infer_target(self) -> tuple[None, None]:
         return None, None
 
@@ -91,27 +159,29 @@ class LoadFileAction(BaseAction):
         value: Any = None
         try:
             if self.file_type == FileType.TEXT:
-                value = self.file_path.read_text(encoding="UTF-8")
+                value = self.file_path.read_text(encoding=self.encoding)
             elif self.file_type == FileType.PATH:
                 value = self.file_path
             elif self.file_type == FileType.JSON:
-                value = json.loads(self.file_path.read_text(encoding="UTF-8"))
+                value = json.loads(self.file_path.read_text(encoding=self.encoding))
             elif self.file_type == FileType.TOML:
-                value = toml.loads(self.file_path.read_text(encoding="UTF-8"))
+                value = toml.loads(self.file_path.read_text(encoding=self.encoding))
             elif self.file_type == FileType.YAML:
-                value = yaml.safe_load(self.file_path.read_text(encoding="UTF-8"))
+                value = yaml.safe_load(self.file_path.read_text(encoding=self.encoding))
             elif self.file_type == FileType.CSV:
-                with open(self.file_path, newline="", encoding="UTF-8") as csvfile:
+                with open(self.file_path, newline="", encoding=self.encoding) as csvfile:
                     reader = csv.reader(csvfile)
                     value = list(reader)
             elif self.file_type == FileType.TSV:
-                with open(self.file_path, newline="", encoding="UTF-8") as tsvfile:
+                with open(self.file_path, newline="", encoding=self.encoding) as tsvfile:
                     reader = csv.reader(tsvfile, delimiter="\t")
                     value = list(reader)
             elif self.file_type == FileType.XML:
-                tree = ET.parse(self.file_path, parser=ET.XMLParser(encoding="UTF-8"))
+                tree = ET.parse(
+                    self.file_path, parser=ET.XMLParser(encoding=self.encoding)
+                )
                 root = tree.getroot()
-                value = ET.tostring(root, encoding="unicode")
+                value = root
             else:
                 raise ValueError(f"Unsupported return type: {self.file_type}")
 
