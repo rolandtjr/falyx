@@ -75,7 +75,7 @@ class ExecutionRegistry:
     _store_by_name: dict[str, list[ExecutionContext]] = defaultdict(list)
     _store_by_index: dict[int, ExecutionContext] = {}
     _store_all: list[ExecutionContext] = []
-    _console = Console(color_system="truecolor")
+    _console: Console = console
     _index = 0
     _lock = Lock()
 
@@ -205,8 +205,8 @@ class ExecutionRegistry:
             elif status.lower() in ["all", "success"]:
                 final_status = f"[{OneColors.GREEN}]✅ Success"
                 final_result = repr(ctx.result)
-                if len(final_result) > 1000:
-                    final_result = f"{final_result[:1000]}..."
+                if len(final_result) > 50:
+                    final_result = f"{final_result[:50]}..."
             else:
                 continue
 

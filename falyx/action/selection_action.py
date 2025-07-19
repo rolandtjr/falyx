@@ -25,11 +25,60 @@ from falyx.themes import OneColors
 
 class SelectionAction(BaseAction):
     """
-    A selection action that prompts the user to select an option from a list or
-    dictionary. The selected option is then returned as the result of the action.
+    A Falyx Action for interactively or programmatically selecting one or more items
+    from a list or dictionary of options.
 
-    If return_key is True, the key of the selected option is returned instead of
-    the value.
+    `SelectionAction` supports both `list[str]` and `dict[str, SelectionOption]`
+    inputs. It renders a prompt (unless `never_prompt=True`), validates user input
+    or injected defaults, and returns a structured result based on the specified
+    `return_type`.
+
+    It is commonly used for item pickers, confirmation flows, dynamic parameterization,
+    or guided workflows in interactive or headless CLI pipelines.
+
+    Features:
+    - Supports single or multiple selections (`number_selections`)
+    - Dictionary mode allows rich metadata (description, value, style)
+    - Flexible return values: key(s), value(s), item(s), description(s), or mappings
+    - Fully hookable lifecycle (`before`, `on_success`, `on_error`, `after`, `on_teardown`)
+    - Default selection logic supports previous results (`last_result`)
+    - Can run in headless mode using `never_prompt` and fallback defaults
+
+    Args:
+        name (str): Action name for tracking and logging.
+        selections (list[str] | dict[str, SelectionOption] | dict[str, Any]):
+            The available choices. If a plain dict is passed, values are converted
+            into `SelectionOption` instances.
+        title (str): Title shown in the selection UI (default: "Select an option").
+        columns (int): Number of columns in the selection table.
+        prompt_message (str): Input prompt for the user (default: "Select > ").
+        default_selection (str | list[str]): Key(s) or index(es) used as fallback selection.
+        number_selections (int | str): Max number of choices allowed (or "*" for unlimited).
+        separator (str): Character used to separate multi-selections (default: ",").
+        allow_duplicates (bool): Whether duplicate selections are allowed.
+        inject_last_result (bool): If True, attempts to inject the last result as default.
+        inject_into (str): The keyword name for injected value (default: "last_result").
+        return_type (SelectionReturnType | str): The type of result to return.
+        prompt_session (PromptSession | None): Reused or customized prompt_toolkit session.
+        never_prompt (bool): If True, skips prompting and uses default_selection or last_result.
+        show_table (bool): Whether to render the selection table before prompting.
+
+    Returns:
+        Any: The selected result(s), shaped according to `return_type`.
+
+    Raises:
+        CancelSignal: If the user chooses the cancel option.
+        ValueError: If configuration is invalid or no selection can be resolved.
+        TypeError: If `selections` is not a supported type.
+
+    Example:
+        SelectionAction(
+            name="PickEnv",
+            selections={"dev": "Development", "prod": "Production"},
+            return_type="key",
+        )
+
+    This Action supports use in both interactive menus and chained, non-interactive CLI flows.
     """
 
     def __init__(
@@ -46,7 +95,7 @@ class SelectionAction(BaseAction):
         title: str = "Select an option",
         columns: int = 5,
         prompt_message: str = "Select > ",
-        default_selection: str = "",
+        default_selection: str | list[str] = "",
         number_selections: int | str = 1,
         separator: str = ",",
         allow_duplicates: bool = False,
@@ -202,6 +251,95 @@ class SelectionAction(BaseAction):
             raise ValueError(f"Unsupported return type: {self.return_type}")
         return result
 
+    async def _resolve_effective_default(self) -> str:
+        effective_default: str | list[str] = self.default_selection
+        maybe_result = self.last_result
+        if self.number_selections == 1:
+            if isinstance(effective_default, list):
+                effective_default = effective_default[0] if effective_default else ""
+            elif isinstance(maybe_result, list):
+                maybe_result = maybe_result[0] if maybe_result else ""
+            default = await self._resolve_single_default(maybe_result)
+            if not default:
+                default = await self._resolve_single_default(effective_default)
+            if not default and self.inject_last_result:
+                logger.warning(
+                    "[%s] Injected last result '%s' not found in selections",
+                    self.name,
+                    maybe_result,
+                )
+            return default
+
+        if maybe_result and isinstance(maybe_result, list):
+            maybe_result = [
+                await self._resolve_single_default(item) for item in maybe_result
+            ]
+            if (
+                maybe_result
+                and self.number_selections != "*"
+                and len(maybe_result) != self.number_selections
+            ):
+                raise ValueError(
+                    f"[{self.name}] 'number_selections' is {self.number_selections}, "
+                    f"but last_result has a different length: {len(maybe_result)}."
+                )
+            return self.separator.join(maybe_result)
+        elif effective_default and isinstance(effective_default, list):
+            effective_default = [
+                await self._resolve_single_default(item) for item in effective_default
+            ]
+            if (
+                effective_default
+                and self.number_selections != "*"
+                and len(effective_default) != self.number_selections
+            ):
+                raise ValueError(
+                    f"[{self.name}] 'number_selections' is {self.number_selections}, "
+                    f"but default_selection has a different length: {len(effective_default)}."
+                )
+            return self.separator.join(effective_default)
+        if self.inject_last_result:
+            logger.warning(
+                "[%s] Injected last result '%s' not found in selections",
+                self.name,
+                maybe_result,
+            )
+        return ""
+
+    async def _resolve_single_default(self, maybe_result: str) -> str:
+        effective_default = ""
+        if isinstance(self.selections, dict):
+            if str(maybe_result) in self.selections:
+                effective_default = str(maybe_result)
+            elif maybe_result in (
+                selection.value for selection in self.selections.values()
+            ):
+                selection = [
+                    key
+                    for key, sel in self.selections.items()
+                    if sel.value == maybe_result
+                ]
+                if selection:
+                    effective_default = selection[0]
+            elif maybe_result in (
+                selection.description for selection in self.selections.values()
+            ):
+                selection = [
+                    key
+                    for key, sel in self.selections.items()
+                    if sel.description == maybe_result
+                ]
+                if selection:
+                    effective_default = selection[0]
+        elif isinstance(self.selections, list):
+            if str(maybe_result).isdigit() and int(maybe_result) in range(
+                len(self.selections)
+            ):
+                effective_default = maybe_result
+            elif maybe_result in self.selections:
+                effective_default = str(self.selections.index(maybe_result))
+        return effective_default
+
     async def _run(self, *args, **kwargs) -> Any:
         kwargs = self._maybe_inject_last_result(kwargs)
         context = ExecutionContext(
@@ -211,28 +349,7 @@ class SelectionAction(BaseAction):
             action=self,
         )
 
-        effective_default = str(self.default_selection)
-        maybe_result = str(self.last_result)
-        if isinstance(self.selections, dict):
-            if maybe_result in self.selections:
-                effective_default = maybe_result
-            elif self.inject_last_result:
-                logger.warning(
-                    "[%s] Injected last result '%s' not found in selections",
-                    self.name,
-                    maybe_result,
-                )
-        elif isinstance(self.selections, list):
-            if maybe_result.isdigit() and int(maybe_result) in range(
-                len(self.selections)
-            ):
-                effective_default = maybe_result
-            elif self.inject_last_result:
-                logger.warning(
-                    "[%s] Injected last result '%s' not found in selections",
-                    self.name,
-                    maybe_result,
-                )
+        effective_default = await self._resolve_effective_default()
 
         if self.never_prompt and not effective_default:
             raise ValueError(
@@ -251,6 +368,9 @@ class SelectionAction(BaseAction):
                     columns=self.columns,
                     formatter=self.cancel_formatter,
                 )
+                if effective_default is None or isinstance(effective_default, int):
+                    effective_default = ""
+
                 if not self.never_prompt:
                     indices: int | list[int] = await prompt_for_index(
                         len(self.selections),
@@ -265,8 +385,13 @@ class SelectionAction(BaseAction):
                         cancel_key=self.cancel_key,
                     )
                 else:
-                    if effective_default:
+                    if effective_default and self.number_selections == 1:
                         indices = int(effective_default)
+                    elif effective_default:
+                        indices = [
+                            int(index)
+                            for index in effective_default.split(self.separator)
+                        ]
                     else:
                         raise ValueError(
                             f"[{self.name}] 'never_prompt' is True but no valid "
@@ -308,7 +433,15 @@ class SelectionAction(BaseAction):
                         cancel_key=self.cancel_key,
                     )
                 else:
-                    keys = effective_default
+                    if effective_default and self.number_selections == 1:
+                        keys = effective_default
+                    elif effective_default:
+                        keys = effective_default.split(self.separator)
+                    else:
+                        raise ValueError(
+                            f"[{self.name}] 'never_prompt' is True but no valid "
+                            "default_selection was provided."
+                        )
                 if keys == self.cancel_key:
                     raise CancelSignal("User cancelled the selection.")
 
@@ -337,13 +470,13 @@ class SelectionAction(BaseAction):
 
         if isinstance(self.selections, list):
             sub = tree.add(f"[dim]Type:[/] List[str] ({len(self.selections)} items)")
-            for i, item in enumerate(self.selections[:10]):  # limit to 10
+            for i, item in enumerate(self.selections[:10]):
                 sub.add(f"[dim]{i}[/]: {item}")
             if len(self.selections) > 10:
                 sub.add(f"[dim]... ({len(self.selections) - 10} more)[/]")
         elif isinstance(self.selections, dict):
             sub = tree.add(
-                f"[dim]Type:[/] Dict[str, (str, Any)] ({len(self.selections)} items)"
+                f"[dim]Type:[/] Dict[str, SelectionOption] ({len(self.selections)} items)"
             )
             for i, (key, option) in enumerate(list(self.selections.items())[:10]):
                 sub.add(f"[dim]{key}[/]: {option.description}")
@@ -353,9 +486,30 @@ class SelectionAction(BaseAction):
             tree.add(f"[{OneColors.DARK_RED_b}]Invalid selections type[/]")
             return
 
-        tree.add(f"[dim]Default:[/] '{self.default_selection or self.last_result}'")
-        tree.add(f"[dim]Return:[/] {self.return_type.name.capitalize()}")
+        default = self.default_selection or self.last_result
+        if isinstance(default, list):
+            default_display = self.separator.join(str(d) for d in default)
+        else:
+            default_display = str(default or "")
+
+        tree.add(f"[dim]Default:[/] '{default_display}'")
+
+        return_behavior = {
+            "KEY": "selected key(s)",
+            "VALUE": "mapped value(s)",
+            "DESCRIPTION": "description(s)",
+            "ITEMS": "SelectionOption object(s)",
+            "DESCRIPTION_VALUE": "{description: value}",
+        }.get(self.return_type.name, self.return_type.name)
+
+        tree.add(
+            f"[dim]Return:[/] {self.return_type.name.capitalize()} → {return_behavior}"
+        )
         tree.add(f"[dim]Prompt:[/] {'Disabled' if self.never_prompt else 'Enabled'}")
+        tree.add(f"[dim]Columns:[/] {self.columns}")
+        tree.add(
+            f"[dim]Multi-select:[/] {'Yes' if self.number_selections != 1 else 'No'}"
+        )
 
         if not parent:
             self.console.print(tree)

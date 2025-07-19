@@ -30,7 +30,7 @@ from falyx.themes import OneColors
 
 class SelectFileAction(BaseAction):
     """
-    SelectFileAction allows users to select a file from a directory and return:
+    SelectFileAction allows users to select a file(s) from a directory and return:
     - file content (as text, JSON, CSV, etc.)
     - or the file path itself.
 
@@ -50,6 +50,9 @@ class SelectFileAction(BaseAction):
         style (str): Style for the selection options.
         suffix_filter (str | None): Restrict to certain file types.
         return_type (FileType): What to return (path, content, parsed).
+        number_selections (int | str): How many files to select (1, 2, '*').
+        separator (str): Separator for multiple selections.
+        allow_duplicates (bool): Allow selecting the same file multiple times.
         prompt_session (PromptSession | None): Prompt session for user input.
     """
 
@@ -217,7 +220,7 @@ class SelectFileAction(BaseAction):
             er.record(context)
 
     async def preview(self, parent: Tree | None = None):
-        label = f"[{OneColors.GREEN}]📁 SelectFilesAction[/] '{self.name}'"
+        label = f"[{OneColors.GREEN}]📁 SelectFileAction[/] '{self.name}'"
         tree = parent.add(label) if parent else Tree(label)
 
         tree.add(f"[dim]Directory:[/] {str(self.directory)}")
@@ -243,6 +246,6 @@ class SelectFileAction(BaseAction):
 
     def __str__(self) -> str:
         return (
-            f"SelectFilesAction(name={self.name!r}, dir={str(self.directory)!r}, "
+            f"SelectFileAction(name={self.name!r}, dir={str(self.directory)!r}, "
             f"suffix_filter={self.suffix_filter!r}, return_type={self.return_type})"
         )

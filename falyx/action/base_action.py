@@ -63,7 +63,7 @@ class BaseAction(ABC):
         hooks: HookManager | None = None,
         inject_last_result: bool = False,
         inject_into: str = "last_result",
-        never_prompt: bool = False,
+        never_prompt: bool | None = None,
         logging_hooks: bool = False,
     ) -> None:
         self.name = name
@@ -72,7 +72,7 @@ class BaseAction(ABC):
         self.shared_context: SharedContext | None = None
         self.inject_last_result: bool = inject_last_result
         self.inject_into: str = inject_into
-        self._never_prompt: bool = never_prompt
+        self._never_prompt: bool | None = never_prompt
         self._skip_in_chain: bool = False
         self.console: Console = console
         self.options_manager: OptionsManager | None = None
@@ -122,7 +122,9 @@ class BaseAction(ABC):
 
     @property
     def never_prompt(self) -> bool:
-        return self.get_option("never_prompt", self._never_prompt)
+        if self._never_prompt is not None:
+            return self._never_prompt
+        return self.get_option("never_prompt", False)
 
     def prepare(
         self, shared_context: SharedContext, options_manager: OptionsManager | None = None
