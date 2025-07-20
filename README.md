@@ -181,7 +181,7 @@ View full execution history:
        3   Run My Pipeline             09:23:55    09:24:03      8.082s   ❌ Error      RuntimeError('Random failure!')
 ```
 
-Inspect traceback on failure:
+Inspect result by index:
 
 ```bash
 > history --result-index 0
@@ -189,7 +189,7 @@ Action(name='step_1', action=flaky_step, args=(), kwargs={}, retry=True, rollbac
 ok
 ```
 
-Print last result:
+Print last result includes tracebacks:
 
 ```bash
 > history --last-result

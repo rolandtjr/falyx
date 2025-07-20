@@ -149,14 +149,18 @@ class RetryHandler:
             sleep_delay = current_delay
             if self.policy.jitter > 0:
                 sleep_delay += random.uniform(-self.policy.jitter, self.policy.jitter)
-
+            logger.debug(
+                "[%s] Error: %s",
+                name,
+                last_error,
+            )
             logger.info(
                 "[%s] Retrying (%s/%s) in %ss due to '%s'...",
                 name,
                 retries_done,
                 self.policy.max_retries,
                 current_delay,
-                last_error,
+                last_error.__class__.__name__,
             )
             await asyncio.sleep(current_delay)
             try:
@@ -168,12 +172,17 @@ class RetryHandler:
             except Exception as retry_error:
                 last_error = retry_error
                 current_delay *= self.policy.backoff
+                logger.debug(
+                    "[%s] Error: %s",
+                    name,
+                    retry_error,
+                )
                 logger.warning(
                     "[%s] Retry attempt %s/%s failed due to '%s'.",
                     name,
                     retries_done,
                     self.policy.max_retries,
-                    retry_error,
+                    retry_error.__class__.__name__,
                 )
 
         context.exception = last_error

@@ -883,7 +883,13 @@ class Falyx:
         self, selected_command: Command, error: Exception
     ) -> None:
         """Handles errors that occur during the action of the selected command."""
-        logger.exception("Error executing '%s': %s", selected_command.description, error)
+        logger.debug(
+            "[%s] '%s' failed with error: %s",
+            selected_command.key,
+            selected_command.description,
+            error,
+            exc_info=True,
+        )
         self.console.print(
             f"[{OneColors.DARK_RED}]An error occurred while executing "
             f"{selected_command.description}:[/] {error}"
@@ -973,12 +979,7 @@ class Falyx:
         except Exception as error:
             context.exception = error
             await self.hooks.trigger(HookType.ON_ERROR, context)
-            logger.error(
-                "[run_key] Failed: %s — %s: %s",
-                selected_command.description,
-                type(error).__name__,
-                error,
-            )
+            await self._handle_action_error(selected_command, error)
             raise FalyxError(
                 f"[run_key] ❌ '{selected_command.description}' failed."
             ) from error
