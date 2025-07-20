@@ -30,6 +30,8 @@ from typing import Any, Awaitable, Callable, TypeVar
 import pythonjsonlogger.json
 from rich.logging import RichHandler
 
+from falyx.console import console
+
 T = TypeVar("T")
 
 
@@ -180,6 +182,7 @@ def setup_logging(
 
     if mode == "cli":
         console_handler: RichHandler | logging.StreamHandler = RichHandler(
+            console=console,
             rich_tracebacks=True,
             show_time=True,
             show_level=True,

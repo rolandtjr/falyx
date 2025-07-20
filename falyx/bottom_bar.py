@@ -56,6 +56,8 @@ class BottomBar:
             Must return True if key is available, otherwise False.
     """
 
+    RESERVED_CTRL_KEYS = {"c", "d", "z"}
+
     def __init__(
         self,
         columns: int = 3,
@@ -164,13 +166,18 @@ class BottomBar:
             bg_on (str): Background color when the toggle is ON.
             bg_off (str): Background color when the toggle is OFF.
         """
+        key = key.lower()
+        if key in self.RESERVED_CTRL_KEYS:
+            raise ValueError(
+                f"'{key}' is a reserved terminal control key and cannot be used for toggles."
+            )
         if not callable(get_state):
             raise ValueError("`get_state` must be a callable returning bool")
         if not callable(toggle_state):
             raise ValueError("`toggle_state` must be a callable")
-        key = key.lower()
         if key in self.toggle_keys:
             raise ValueError(f"Key {key} is already used as a toggle")
+
         self._value_getters[key] = get_state
         self.toggle_keys.append(key)
 

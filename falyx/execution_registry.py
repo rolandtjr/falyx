@@ -190,7 +190,11 @@ class ExecutionRegistry:
         if last_result:
             for ctx in reversed(cls._store_all):
                 if not ctx.action.ignore_in_history:
-                    cls._console.print(ctx.result)
+                    cls._console.print(f"{ctx.signature}:")
+                    if ctx.traceback:
+                        cls._console.print(ctx.traceback)
+                    else:
+                        cls._console.print(ctx.result)
                     return
             cls._console.print(
                 f"[{OneColors.DARK_RED}]❌ No valid executions found to display last result."

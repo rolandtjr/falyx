@@ -333,9 +333,8 @@ class Falyx:
         )
         parser.add_argument(
             "-r",
-            "--result",
+            "--result-index",
             type=int,
-            dest="result_index",
             help="Get the result by index",
         )
         parser.add_argument(

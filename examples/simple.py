@@ -11,15 +11,15 @@ setup_logging()
 # A flaky async step that fails randomly
 async def flaky_step() -> str:
     await asyncio.sleep(0.2)
-    if random.random() < 0.3:
+    if random.random() < 0.5:
         raise RuntimeError("Random failure!")
-    print("Flaky step succeeded!")
+    print("ok")
     return "ok"
 
 
 # Create a retry handler
-step1 = Action(name="step_1", action=flaky_step, retry=True)
-step2 = Action(name="step_2", action=flaky_step, retry=True)
+step1 = Action(name="step_1", action=flaky_step)
+step2 = Action(name="step_2", action=flaky_step)
 
 # Chain the actions
 chain = ChainedAction(name="my_pipeline", actions=[step1, step2])
@@ -33,6 +33,8 @@ falyx.add_command(
     logging_hooks=True,
     preview_before_confirm=True,
     confirm=True,
+    retry_all=True,
+    spinner=True,
 )
 
 # Entry point

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "falyx"
-version = "0.1.65"
+version = "0.1.66"
 description = "Reliable and introspectable async CLI action framework."
 authors = ["Roland Thomas Jr <roland@rtj.dev>"]
 license = "MIT"

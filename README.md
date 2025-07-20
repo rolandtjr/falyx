@@ -10,7 +10,7 @@
 - ⚙️ Full lifecycle hooks (before, after, success, error, teardown)
 - 📊 Execution tracing, logging, and introspection
 - 🧙‍♂️ Async-first design with Process support
-- 🧩 Extensible CLI menus and customizable output
+- 🧩 Extensible CLI menus, customizable bottom bars, and keyboard shortcuts
 
 > Built for developers who value *clarity*, *resilience*, and *visibility* in their terminal workflows.
 
@@ -21,12 +21,13 @@
 Modern CLI tools deserve the same resilience as production systems. Falyx makes it easy to:
 
 - Compose workflows using `Action`, `ChainedAction`, or `ActionGroup`
-- Inject the result of one step into the next (`last_result`)
-- Handle flaky operations with retries and exponential backoff
+- Inject the result of one step into the next (`last_result` / `auto_inject`)
+- Handle flaky operations with retries, backoff, and jitter
 - Roll back safely on failure with structured undo logic
-- Add observability with execution timing, result tracking, and hooks
+- Add observability with timing, tracebacks, and lifecycle hooks
 - Run in both interactive *and* headless (scriptable) modes
-- Customize output with Rich `Table`s (grouping, theming, etc.)
+- Support config-driven workflows with YAML or TOML
+- Visualize tagged command groups and menu state via Rich tables
 
 ---
 
@@ -60,6 +61,7 @@ async def flaky_step():
     await asyncio.sleep(0.2)
     if random.random() < 0.5:
         raise RuntimeError("Random failure!")
+    print("ok")
     return "ok"
 
 # Create the actions
@@ -78,6 +80,8 @@ falyx.add_command(
     preview_before_confirm=True,
     confirm=True,
     retry_all=True,
+    spinner=True,
+    style="cyan",
 )
 
 # Entry point
@@ -86,76 +90,131 @@ if __name__ == "__main__":
 ```
 
 ```bash
-❯ python simple.py
-                                🚀 Falyx Demo
+$ python simple.py
+                          🚀 Falyx Demo
 
-  [R] Run My Pipeline
-  [Y] History                                         [Q] Exit
+           [R] Run My Pipeline
+           [H] Help              [Y] History   [X] Exit
 
 >
 ```
 
 ```bash
-❯ python simple.py run R
+$ python simple.py run r
 Command: 'R' — Run My Pipeline
 └── ⛓ ChainedAction 'my_pipeline'
     ├── ⚙ Action 'step_1'
     │   ↻ Retries: 3x, delay 1.0s, backoff 2.0x
     └── ⚙ Action 'step_2'
         ↻ Retries: 3x, delay 1.0s, backoff 2.0x
-Confirm execution of R — Run My Pipeline (calls `my_pipeline`)  [Y/n] y
-[2025-04-15 22:03:57] WARNING   ⚠️ Retry attempt 1/3 failed due to 'Random failure!'.
-✅ Result: ['ok', 'ok']
+❓ Confirm execution of R — Run My Pipeline (calls `my_pipeline`)  [Y/n] > y
+[2025-07-20 09:29:35] WARNING   Retry attempt 1/3 failed due to 'Random failure!'.
+ok
+[2025-07-20 09:29:38] WARNING   Retry attempt 1/3 failed due to 'Random failure!'.
+ok
 ```
 
 ---
 
 ## 📦 Core Features
 
-- ✅ Async-native `Action`, `ChainedAction`, `ActionGroup`
-- 🔁 Retry policies + exponential backoff
-- ⛓ Rollbacks on chained failures
-- 🎛️ Headless or interactive CLI with argparse and prompt_toolkit
-- 📊 Built-in execution registry, result tracking, and timing
-- 🧠 Supports `ProcessAction` for CPU-bound workloads
-- 🧩 Custom `Table` rendering for CLI menu views
-- 🔍 Hook lifecycle: `before`, `on_success`, `on_error`, `after`, `on_teardown`
+- ✅ Async-native `Action`, `ChainedAction`, `ActionGroup`, `ProcessAction`
+- 🔁 Retry policies with delay, backoff, jitter — opt-in per action or globally
+- ⛓ Rollbacks and lifecycle hooks for chained execution
+- 🎛️ Headless or interactive CLI powered by `argparse` + `prompt_toolkit`
+- 📊 In-memory `ExecutionRegistry` with result tracking, timing, and tracebacks
+- 🌐 CLI menu construction via config files or Python
+- ⚡ Bottom bar toggle switches and counters with `Ctrl+<key>` shortcuts
+- 🔍 Structured confirmation prompts and help rendering
+- 🪵 Flexible logging: Rich console for devs, JSON logs for ops
 
 ---
 
-## 🔍 Execution Trace
+### 🧰 Building Blocks
 
-```bash
-[2025-04-14 10:33:22] DEBUG    [Step 1] ⚙ flaky_step()
-[2025-04-14 10:33:22] INFO     [Step 1] 🔁 Retrying (1/3) in 1.0s...
-[2025-04-14 10:33:23] DEBUG    [Step 1] ✅ Success | Result: ok
-[2025-04-14 10:33:23] DEBUG    [My Pipeline] ✅ Result: ['ok', 'ok']
+- **`Action`**: A single unit of async (or sync) logic
+- **`ChainedAction`**: Execute a sequence of actions, with rollback and injection
+- **`ActionGroup`**: Run actions concurrently and collect results
+- **`ProcessAction`**: Use `multiprocessing` for CPU-bound workflows
+- **`Falyx`**: Interactive or headless CLI controller with history, menus, and theming
+- **`ExecutionContext`**: Metadata store per invocation (name, args, result, timing)
+- **`HookManager`**: Attach `before`, `after`, `on_success`, `on_error`, `on_teardown`
+
+---
+
+### 🔍 Logging
+```
+2025-07-20 09:29:32 [falyx] [INFO] Command 'R' selected.
+2025-07-20 09:29:32 [falyx] [INFO] [run_key] Executing: R — Run My Pipeline
+2025-07-20 09:29:33 [falyx] [INFO] [my_pipeline] Starting -> ChainedAction(name=my_pipeline, actions=['step_1', 'step_2'], args=(), kwargs={}, auto_inject=False, return_list=False)()
+2025-07-20 09:29:33 [falyx] [INFO] [step_1] Retrying (1/3) in 1.0s due to 'Random failure!'...
+2025-07-20 09:29:35 [falyx] [WARNING] [step_1] Retry attempt 1/3 failed due to 'Random failure!'.
+2025-07-20 09:29:35 [falyx] [INFO] [step_1] Retrying (2/3) in 2.0s due to 'Random failure!'...
+2025-07-20 09:29:37 [falyx] [INFO] [step_1] Retry succeeded on attempt 2.
+2025-07-20 09:29:37 [falyx] [INFO] [step_1] Recovered: step_1
+2025-07-20 09:29:37 [falyx] [DEBUG] [step_1] status=OK duration=3.627s result='ok' exception=None
+2025-07-20 09:29:37 [falyx] [INFO] [step_2] Retrying (1/3) in 1.0s due to 'Random failure!'...
+2025-07-20 09:29:38 [falyx] [WARNING] [step_2] Retry attempt 1/3 failed due to 'Random failure!'.
+2025-07-20 09:29:38 [falyx] [INFO] [step_2] Retrying (2/3) in 2.0s due to 'Random failure!'...
+2025-07-20 09:29:40 [falyx] [INFO] [step_2] Retry succeeded on attempt 2.
+2025-07-20 09:29:40 [falyx] [INFO] [step_2] Recovered: step_2
+2025-07-20 09:29:40 [falyx] [DEBUG] [step_2] status=OK duration=3.609s result='ok' exception=None
+2025-07-20 09:29:40 [falyx] [DEBUG] [my_pipeline] Success -> Result: 'ok'
+2025-07-20 09:29:40 [falyx] [DEBUG] [my_pipeline] Finished in 7.237s
+2025-07-20 09:29:40 [falyx] [DEBUG] [my_pipeline] status=OK duration=7.237s result='ok' exception=None
+2025-07-20 09:29:40 [falyx] [DEBUG] [Run My Pipeline] status=OK duration=7.238s result='ok' exception=None
 ```
 
----
+### 📊 History Tracking
 
-### 🧱 Core Building Blocks
+View full execution history:
 
-#### `Action`
-A single async unit of work. Painless retry support.
+```bash
+> history
+                                                   📊 Execution History
 
-#### `ChainedAction`
-Run tasks in sequence. Supports rollback on failure and context propagation.
+   Index   Name                           Start         End    Duration   Status        Result / Exception
+ ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+       0   step_1                      09:23:55    09:23:55      0.201s   ✅ Success    'ok'
+       1   step_2                      09:23:55    09:24:03      7.829s   ❌ Error      RuntimeError('Random failure!')
+       2   my_pipeline                 09:23:55    09:24:03      8.080s   ❌ Error      RuntimeError('Random failure!')
+       3   Run My Pipeline             09:23:55    09:24:03      8.082s   ❌ Error      RuntimeError('Random failure!')
+```
 
-#### `ActionGroup`
-Run tasks in parallel. Useful for fan-out operations like batch API calls.
+Inspect traceback on failure:
 
-#### `ProcessAction`
-Offload CPU-bound work to another process — no extra code needed.
+```bash
+> history --result-index 0
+Action(name='step_1', action=flaky_step, args=(), kwargs={}, retry=True, rollback=False) ():
+ok
+```
 
-#### `Falyx`
-Your CLI controller — powers menus, subcommands, history, bottom bars, and more.
+Print last result:
 
-#### `ExecutionContext`
-Tracks metadata, arguments, timing, and results for each action execution.
-
-#### `HookManager`
-Registers and triggers lifecycle hooks (`before`, `after`, `on_error`, etc.) for actions and commands.
+```bash
+> history --last-result
+Command(key='R', description='Run My Pipeline' action='ChainedAction(name=my_pipeline, actions=['step_1', 'step_2'],
+args=(), kwargs={}, auto_inject=False, return_list=False)') ():
+Traceback (most recent call last):
+  File ".../falyx/command.py", line 291, in __call__
+    result = await self.action(*combined_args, **combined_kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ".../falyx/action/base_action.py", line 91, in __call__
+    return await self._run(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ".../falyx/action/chained_action.py", line 212, in _run
+    result = await prepared(*combined_args, **updated_kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ".../falyx/action/base_action.py", line 91, in __call__
+    return await self._run(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ".../falyx/action/action.py", line 157, in _run
+    result = await self.action(*combined_args, **combined_kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ".../falyx/examples/simple.py", line 15, in flaky_step
+    raise RuntimeError("Random failure!")
+RuntimeError: Random failure!
+```
 
 ---
 
@@ -163,6 +222,6 @@ Registers and triggers lifecycle hooks (`before`, `after`, `on_error`, etc.) for
 
 > “Like a phalanx: organized, resilient, and reliable.”
 
-Falyx is designed for developers who don’t just want CLI tools to run — they want them to **fail meaningfully**, **recover gracefully**, and **log clearly**.
+Falyx is designed for developers who don’t just want CLI tools to run — they want them to **fail meaningfully**, **recover intentionally**, and **log clearly**.
 
 ---
