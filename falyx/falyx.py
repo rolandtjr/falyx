@@ -64,7 +64,7 @@ from falyx.protocols import ArgParserProtocol
 from falyx.retry import RetryPolicy
 from falyx.signals import BackSignal, CancelSignal, HelpSignal, QuitSignal
 from falyx.themes import OneColors
-from falyx.utils import CaseInsensitiveDict, _noop, chunks
+from falyx.utils import CaseInsensitiveDict, _noop, chunks, ensure_async
 from falyx.version import __version__
 
 
@@ -1091,7 +1091,8 @@ class Falyx:
         if callback:
             if not callable(callback):
                 raise FalyxError("Callback must be a callable function.")
-            callback(self.cli_args)
+            async_callback = ensure_async(callback)
+            await async_callback(self.cli_args)
 
         if not self.options.get("never_prompt"):
             self.options.set("never_prompt", self._never_prompt)

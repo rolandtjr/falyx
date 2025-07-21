@@ -86,7 +86,7 @@ class FalyxCompleter(Completer):
             if not command.arg_parser:
                 return
             suggestions = command.arg_parser.suggest_next(
-                parsed_args + ([stub] if stub else [])
+                parsed_args + ([stub] if stub else []), cursor_at_end_of_token
             )
             for suggestion in suggestions:
                 if suggestion.startswith(stub):

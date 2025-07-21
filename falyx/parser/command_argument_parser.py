@@ -1018,7 +1018,9 @@ class CommandArgumentParser:
                 kwargs_dict[arg.dest] = parsed[arg.dest]
         return tuple(args_list), kwargs_dict
 
-    def suggest_next(self, args: list[str]) -> list[str]:
+    def suggest_next(
+        self, args: list[str], cursor_at_end_of_token: bool = False
+    ) -> list[str]:
         """
         Suggest completions for the next argument based on current input.
 
@@ -1026,6 +1028,7 @@ class CommandArgumentParser:
 
         Args:
             args (list[str]): Current partial argument tokens.
+            cursor_at_end_of_token (bool): True if space at end of args
 
         Returns:
             list[str]: List of suggested completions.
@@ -1096,6 +1099,7 @@ class CommandArgumentParser:
                 and last not in arg.suggestions
                 and not any(last.startswith(suggestion) for suggestion in arg.suggestions)
                 and any(suggestion.startswith(last) for suggestion in arg.suggestions)
+                and not cursor_at_end_of_token
             ):
                 suggestions.extend(arg.suggestions)
             else:
