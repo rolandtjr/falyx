@@ -14,8 +14,11 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import (
     AnyFormattedText,
     FormattedText,
+    StyleAndTextTuples,
     merge_formatted_text,
 )
+from rich.console import Console
+from rich.text import Text
 
 from falyx.options_manager import OptionsManager
 from falyx.themes import OneColors
@@ -56,3 +59,31 @@ async def confirm_async(
         validator=yes_no_validator(),
     )
     return answer.upper() == "Y"
+
+
+def rich_text_to_prompt_text(text: Text | str | StyleAndTextTuples) -> StyleAndTextTuples:
+    """
+    Convert a Rich Text object to a list of (style, text) tuples
+    compatible with prompt_toolkit.
+    """
+    if isinstance(text, list):
+        if all(isinstance(pair, tuple) and len(pair) == 2 for pair in text):
+            return text
+        raise TypeError("Expected list of (style, text) tuples")
+
+    if isinstance(text, str):
+        text = Text.from_markup(text)
+
+    if not isinstance(text, Text):
+        raise TypeError("Expected str, rich.text.Text, or list of (style, text) tuples")
+
+    console = Console(color_system=None, file=None, width=999, legacy_windows=False)
+    segments = text.render(console)
+
+    prompt_fragments: StyleAndTextTuples = []
+    for segment in segments:
+        style = segment.style or ""
+        string = segment.text
+        if string:
+            prompt_fragments.append((str(style), string))
+    return prompt_fragments

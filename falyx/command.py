@@ -98,6 +98,7 @@ class Command(BaseModel):
             such as help text or choices.
         simple_help_signature (bool): Whether to use a simplified help signature.
         ignore_in_history (bool): Whether to ignore this command in execution history last result.
+        program: (str | None): The parent program name.
 
     Methods:
         __call__(): Executes the command, respecting hooks and retries.
@@ -141,6 +142,7 @@ class Command(BaseModel):
     arg_metadata: dict[str, str | dict[str, Any]] = Field(default_factory=dict)
     simple_help_signature: bool = False
     ignore_in_history: bool = False
+    program: str | None = None
 
     _context: ExecutionContext | None = PrivateAttr(default=None)
 
@@ -240,6 +242,8 @@ class Command(BaseModel):
                 help_text=self.help_text,
                 help_epilog=self.help_epilog,
                 aliases=self.aliases,
+                program=self.program,
+                options_manager=self.options_manager,
             )
             for arg_def in self.get_argument_definitions():
                 self.arg_parser.add_argument(*arg_def.pop("flags"), **arg_def)

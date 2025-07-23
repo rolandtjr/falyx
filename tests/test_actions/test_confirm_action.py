@@ -7,7 +7,7 @@ from falyx.action import ConfirmAction
 async def test_confirm_action_yes_no():
     action = ConfirmAction(
         name="test",
-        message="Are you sure?",
+        prompt_message="Are you sure?",
         never_prompt=True,
         confirm_type="yes_no",
     )
@@ -20,7 +20,7 @@ async def test_confirm_action_yes_no():
 async def test_confirm_action_yes_cancel():
     action = ConfirmAction(
         name="test",
-        message="Are you sure?",
+        prompt_message="Are you sure?",
         never_prompt=True,
         confirm_type="yes_cancel",
     )
@@ -33,7 +33,7 @@ async def test_confirm_action_yes_cancel():
 async def test_confirm_action_yes_no_cancel():
     action = ConfirmAction(
         name="test",
-        message="Are you sure?",
+        prompt_message="Are you sure?",
         never_prompt=True,
         confirm_type="yes_no_cancel",
     )
@@ -46,7 +46,7 @@ async def test_confirm_action_yes_no_cancel():
 async def test_confirm_action_type_word():
     action = ConfirmAction(
         name="test",
-        message="Are you sure?",
+        prompt_message="Are you sure?",
         never_prompt=True,
         confirm_type="type_word",
     )
@@ -59,7 +59,7 @@ async def test_confirm_action_type_word():
 async def test_confirm_action_type_word_cancel():
     action = ConfirmAction(
         name="test",
-        message="Are you sure?",
+        prompt_message="Are you sure?",
         never_prompt=True,
         confirm_type="type_word_cancel",
     )
@@ -72,7 +72,7 @@ async def test_confirm_action_type_word_cancel():
 async def test_confirm_action_ok_cancel():
     action = ConfirmAction(
         name="test",
-        message="Are you sure?",
+        prompt_message="Are you sure?",
         never_prompt=True,
         confirm_type="ok_cancel",
     )
@@ -85,7 +85,7 @@ async def test_confirm_action_ok_cancel():
 async def test_confirm_action_acknowledge():
     action = ConfirmAction(
         name="test",
-        message="Are you sure?",
+        prompt_message="Are you sure?",
         never_prompt=True,
         confirm_type="acknowledge",
     )

@@ -21,6 +21,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from falyx.console import console
+from falyx.prompt_utils import rich_text_to_prompt_text
 from falyx.themes import OneColors
 from falyx.utils import CaseInsensitiveDict, chunks
 from falyx.validators import MultiIndexValidator, MultiKeyValidator
@@ -293,7 +294,7 @@ async def prompt_for_index(
         console.print(table, justify="center")
 
     selection = await prompt_session.prompt_async(
-        message=prompt_message,
+        message=rich_text_to_prompt_text(prompt_message),
         validator=MultiIndexValidator(
             min_index,
             max_index,
@@ -332,7 +333,7 @@ async def prompt_for_selection(
         console.print(table, justify="center")
 
     selected = await prompt_session.prompt_async(
-        message=prompt_message,
+        message=rich_text_to_prompt_text(prompt_message),
         validator=MultiKeyValidator(
             keys, number_selections, separator, allow_duplicates, cancel_key
         ),

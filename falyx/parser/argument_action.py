@@ -41,6 +41,7 @@ class ArgumentAction(Enum):
         EXTEND: Extend a list with multiple values.
         COUNT: Count the number of occurrences.
         HELP: Display help and exit.
+        TLDR: Display brief examples and exit.
 
     Aliases:
         - "true" → "store_true"
@@ -60,6 +61,7 @@ class ArgumentAction(Enum):
     EXTEND = "extend"
     COUNT = "count"
     HELP = "help"
+    TLDR = "tldr"
 
     @classmethod
     def choices(cls) -> list[ArgumentAction]:

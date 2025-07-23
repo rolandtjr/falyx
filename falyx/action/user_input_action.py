@@ -22,7 +22,7 @@ Use Cases:
 Example:
     UserInputAction(
         name="GetUsername",
-        prompt_text="Enter your username > ",
+        prompt_message="Enter your username > ",
         validator=Validator.from_callable(lambda s: len(s) > 0),
     )
 """
@@ -34,6 +34,8 @@ from falyx.action.base_action import BaseAction
 from falyx.context import ExecutionContext
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookType
+from falyx.prompt_utils import rich_text_to_prompt_text
+from falyx.signals import CancelSignal
 from falyx.themes.colors import OneColors
 
 
@@ -47,7 +49,7 @@ class UserInputAction(BaseAction):
 
     Args:
         name (str): Name of the action (used for introspection and logging).
-        prompt_text (str): The prompt message shown to the user.
+        prompt_message (str): The prompt message shown to the user.
             Can include `{last_result}` if `inject_last_result=True`.
         default_text (str): Optional default value shown in the prompt.
         validator (Validator | None): Prompt Toolkit validator for input constraints.
@@ -59,7 +61,7 @@ class UserInputAction(BaseAction):
         self,
         name: str,
         *,
-        prompt_text: str = "Input > ",
+        prompt_message: str = "Input > ",
         default_text: str = "",
         validator: Validator | None = None,
         prompt_session: PromptSession | None = None,
@@ -69,9 +71,11 @@ class UserInputAction(BaseAction):
             name=name,
             inject_last_result=inject_last_result,
         )
-        self.prompt_text = prompt_text
+        self.prompt_message = rich_text_to_prompt_text(prompt_message)
         self.validator = validator
-        self.prompt_session = prompt_session or PromptSession()
+        self.prompt_session = prompt_session or PromptSession(
+            interrupt_exception=CancelSignal
+        )
         self.default_text = default_text
 
     def get_infer_target(self) -> tuple[None, None]:
@@ -88,12 +92,12 @@ class UserInputAction(BaseAction):
         try:
             await self.hooks.trigger(HookType.BEFORE, context)
 
-            prompt_text = self.prompt_text
+            prompt_message = self.prompt_message
             if self.inject_last_result and self.last_result:
-                prompt_text = prompt_text.format(last_result=self.last_result)
+                prompt_message = prompt_message.format(last_result=self.last_result)
 
             answer = await self.prompt_session.prompt_async(
-                prompt_text,
+                prompt_message,
                 validator=self.validator,
                 default=kwargs.get("default_text", self.default_text),
             )
@@ -114,12 +118,12 @@ class UserInputAction(BaseAction):
         label = f"[{OneColors.MAGENTA}]⌨ UserInputAction[/] '{self.name}'"
         tree = parent.add(label) if parent else Tree(label)
 
-        prompt_text = (
-            self.prompt_text.replace("{last_result}", "<last_result>")
-            if "{last_result}" in self.prompt_text
-            else self.prompt_text
+        prompt_message = (
+            self.prompt_message.replace("{last_result}", "<last_result>")
+            if "{last_result}" in self.prompt_message
+            else self.prompt_message
         )
-        tree.add(f"[dim]Prompt:[/] {prompt_text}")
+        tree.add(f"[dim]Prompt:[/] {prompt_message}")
         if self.validator:
             tree.add("[dim]Validator:[/] Yes")
         if not parent:

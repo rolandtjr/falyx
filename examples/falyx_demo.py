@@ -84,7 +84,7 @@ async def main() -> None:
 
     # --- Bottom bar info ---
     flx.bottom_bar.columns = 3
-    flx.bottom_bar.add_toggle_from_option("V", "Verbose", flx.options, "verbose")
+    flx.bottom_bar.add_toggle_from_option("B", "Verbose", flx.options, "verbose")
     flx.bottom_bar.add_toggle_from_option("U", "Debug Hooks", flx.options, "debug_hooks")
     flx.bottom_bar.add_static("Version", f"Falyx v{__version__}")
 

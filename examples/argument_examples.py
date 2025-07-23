@@ -68,9 +68,16 @@ def default_config(parser: CommandArgumentParser) -> None:
         type=int,
         help="Optional number argument.",
     )
+    parser.add_tldr_examples(
+        [
+            ("web", "Deploy 'web' to the default location (New York)"),
+            ("cache London --tag beta", "Deploy 'cache' to London with tag"),
+            ("database --region us-west-2 --verbose", "Verbose deploy to west region"),
+        ]
+    )
 
 
-flx = Falyx("Argument Examples")
+flx = Falyx("Argument Examples", program="argument_examples.py")
 
 flx.add_command(
     key="T",

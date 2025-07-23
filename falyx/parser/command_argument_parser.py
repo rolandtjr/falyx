@@ -53,10 +53,14 @@ from typing import Any, Iterable, Sequence
 
 from rich.console import Console
 from rich.markup import escape
+from rich.padding import Padding
+from rich.panel import Panel
 
 from falyx.action.base_action import BaseAction
 from falyx.console import console
 from falyx.exceptions import CommandArgumentError
+from falyx.mode import FalyxMode
+from falyx.options_manager import OptionsManager
 from falyx.parser.argument import Argument
 from falyx.parser.argument_action import ArgumentAction
 from falyx.parser.parser_types import false_none, true_none
@@ -68,6 +72,12 @@ from falyx.signals import HelpSignal
 class ArgumentState:
     arg: Argument
     consumed: bool = False
+
+
+@dataclass(frozen=True)
+class TLDRExample:
+    usage: str
+    description: str
 
 
 class CommandArgumentParser:
@@ -99,6 +109,9 @@ class CommandArgumentParser:
         help_text: str = "",
         help_epilog: str = "",
         aliases: list[str] | None = None,
+        tldr_examples: list[tuple[str, str]] | None = None,
+        program: str | None = None,
+        options_manager: OptionsManager | None = None,
     ) -> None:
         """Initialize the CommandArgumentParser."""
         self.console: Console = console
@@ -108,6 +121,7 @@ class CommandArgumentParser:
         self.help_text: str = help_text
         self.help_epilog: str = help_epilog
         self.aliases: list[str] = aliases or []
+        self.program: str | None = program
         self._arguments: list[Argument] = []
         self._positional: dict[str, Argument] = {}
         self._keyword: dict[str, Argument] = {}
@@ -117,6 +131,10 @@ class CommandArgumentParser:
         self._add_help()
         self._last_positional_states: dict[str, ArgumentState] = {}
         self._last_keyword_states: dict[str, ArgumentState] = {}
+        self._tldr_examples: list[TLDRExample] = []
+        if tldr_examples:
+            self.add_tldr_examples(tldr_examples)
+        self.options_manager: OptionsManager = options_manager or OptionsManager()
 
     def _add_help(self):
         """Add help argument to the parser."""
@@ -127,6 +145,30 @@ class CommandArgumentParser:
             help="Show this help message.",
             dest="help",
         )
+
+    def add_tldr_examples(self, examples: list[tuple[str, str]]) -> None:
+        """
+        Add TLDR examples to the parser.
+
+        Args:
+            examples (list[tuple[str, str]]): List of (usage, description) tuples.
+        """
+        if not any(
+            isinstance(example, tuple) and len(example) == 2 for example in examples
+        ):
+            raise CommandArgumentError(
+                "TLDR examples must be a list of (usage, description) tuples"
+            )
+        for usage, description in examples:
+            self._tldr_examples.append(TLDRExample(usage=usage, description=description))
+
+        if "tldr" not in self._dest_set:
+            self.add_argument(
+                "--tldr",
+                action=ArgumentAction.TLDR,
+                help="Show quick usage examples and exit.",
+                dest="tldr",
+            )
 
     def _is_positional(self, flags: tuple[str, ...]) -> bool:
         """Check if the flags are positional."""
@@ -180,6 +222,7 @@ class CommandArgumentParser:
                 ArgumentAction.STORE_FALSE,
                 ArgumentAction.STORE_BOOL_OPTIONAL,
                 ArgumentAction.HELP,
+                ArgumentAction.TLDR,
             ):
                 raise CommandArgumentError(
                     f"Argument with action {action} cannot be required"
@@ -212,6 +255,7 @@ class CommandArgumentParser:
             ArgumentAction.STORE_TRUE,
             ArgumentAction.COUNT,
             ArgumentAction.HELP,
+            ArgumentAction.TLDR,
             ArgumentAction.STORE_BOOL_OPTIONAL,
         ):
             if nargs is not None:
@@ -320,6 +364,7 @@ class CommandArgumentParser:
             ArgumentAction.STORE_BOOL_OPTIONAL,
             ArgumentAction.COUNT,
             ArgumentAction.HELP,
+            ArgumentAction.TLDR,
         ):
             if positional:
                 raise CommandArgumentError(
@@ -764,6 +809,11 @@ class CommandArgumentParser:
                     self.render_help()
                 arg_states[spec.dest].consumed = True
                 raise HelpSignal()
+            elif action == ArgumentAction.TLDR:
+                if not from_validate:
+                    self.render_tldr()
+                arg_states[spec.dest].consumed = True
+                raise HelpSignal()
             elif action == ArgumentAction.ACTION:
                 assert isinstance(
                     spec.resolver, BaseAction
@@ -943,7 +993,11 @@ class CommandArgumentParser:
 
         # Required validation
         for spec in self._arguments:
-            if spec.dest == "help":
+            if (
+                spec.dest == "help"
+                or spec.dest == "tldr"
+                and spec.action == ArgumentAction.TLDR
+            ):
                 continue
             if spec.required and not result.get(spec.dest):
                 help_text = f" help: {spec.help}" if spec.help else ""
@@ -1229,6 +1283,40 @@ class CommandArgumentParser:
         # Epilog
         if self.help_epilog:
             self.console.print("\n" + self.help_epilog, style="dim")
+
+    def render_tldr(self) -> None:
+        """
+        Print TLDR examples for this command using Rich output.
+
+        Displays brief usage examples with descriptions.
+        """
+        if not self._tldr_examples:
+            self.console.print("[bold]No TLDR examples available.[/bold]")
+            return
+        is_cli_mode = self.options_manager.get("mode") in {
+            FalyxMode.RUN,
+            FalyxMode.PREVIEW,
+            FalyxMode.RUN_ALL,
+        }
+
+        program = self.program or "falyx"
+        command = self.aliases[0] if self.aliases else self.command_key
+        if is_cli_mode:
+            command = f"{program} run {command}"
+        command = f"[{self.command_style}]{command}[/{self.command_style}]"
+
+        usage = self.get_usage()
+        self.console.print(f"[bold]usage:[/] {usage}\n")
+
+        if self.help_text:
+            self.console.print(f"{self.help_text}\n")
+
+        self.console.print("[bold]examples:[/bold]")
+        for example in self._tldr_examples:
+            usage = f"{command} {example.usage.strip()}"
+            description = example.description.strip()
+            block = f"[bold]{usage}[/bold]\n{description}"
+            self.console.print(Padding(Panel(block, expand=False), (0, 2)))
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, CommandArgumentParser):

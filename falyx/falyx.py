@@ -26,12 +26,11 @@ import shlex
 import sys
 from argparse import ArgumentParser, Namespace, _SubParsersAction
 from difflib import get_close_matches
-from enum import Enum
 from functools import cached_property
 from typing import Any, Callable
 
 from prompt_toolkit import PromptSession
-from prompt_toolkit.formatted_text import AnyFormattedText
+from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.validation import ValidationError, Validator
@@ -58,21 +57,16 @@ from falyx.exceptions import (
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import Hook, HookManager, HookType
 from falyx.logger import logger
+from falyx.mode import FalyxMode
 from falyx.options_manager import OptionsManager
 from falyx.parser import CommandArgumentParser, FalyxParsers, get_arg_parsers
+from falyx.prompt_utils import rich_text_to_prompt_text
 from falyx.protocols import ArgParserProtocol
 from falyx.retry import RetryPolicy
 from falyx.signals import BackSignal, CancelSignal, HelpSignal, QuitSignal
 from falyx.themes import OneColors
 from falyx.utils import CaseInsensitiveDict, _noop, chunks, ensure_async
 from falyx.version import __version__
-
-
-class FalyxMode(Enum):
-    MENU = "menu"
-    RUN = "run"
-    PREVIEW = "preview"
-    RUN_ALL = "run-all"
 
 
 class CommandValidator(Validator):
@@ -167,7 +161,7 @@ class Falyx:
         epilog: str | None = None,
         version: str = __version__,
         version_style: str = OneColors.BLUE_b,
-        prompt: str | AnyFormattedText = "> ",
+        prompt: str | StyleAndTextTuples = "> ",
         columns: int = 3,
         bottom_bar: BottomBar | str | Callable[[], Any] | None = None,
         welcome_message: str | Markdown | dict[str, Any] = "",
@@ -191,7 +185,7 @@ class Falyx:
         self.epilog: str | None = epilog
         self.version: str = version
         self.version_style: str = version_style
-        self.prompt: str | AnyFormattedText = prompt
+        self.prompt: str | StyleAndTextTuples = rich_text_to_prompt_text(prompt)
         self.columns: int = columns
         self.commands: dict[str, Command] = CaseInsensitiveDict()
         self.exit_command: Command = self._get_exit_command()
@@ -216,7 +210,7 @@ class Falyx:
         self._hide_menu_table: bool = hide_menu_table
         self.validate_options(cli_args, options)
         self._prompt_session: PromptSession | None = None
-        self.mode = FalyxMode.MENU
+        self.options.set("mode", FalyxMode.MENU)
 
     def validate_options(
         self,
@@ -702,6 +696,7 @@ class Falyx:
             arg_metadata=arg_metadata or {},
             simple_help_signature=simple_help_signature,
             ignore_in_history=ignore_in_history,
+            program=self.program,
         )
 
         if hooks:
@@ -821,7 +816,11 @@ class Falyx:
                 logger.info("Command '%s' selected.", run_command.key)
             if is_preview:
                 return True, run_command, args, kwargs
-            elif self.mode in {FalyxMode.RUN, FalyxMode.RUN_ALL, FalyxMode.PREVIEW}:
+            elif self.options.get("mode") in {
+                FalyxMode.RUN,
+                FalyxMode.RUN_ALL,
+                FalyxMode.PREVIEW,
+            }:
                 return False, run_command, args, kwargs
             try:
                 args, kwargs = await run_command.parse_args(input_args, from_validate)
@@ -1119,7 +1118,7 @@ class Falyx:
             sys.exit(0)
 
         if self.cli_args.command == "preview":
-            self.mode = FalyxMode.PREVIEW
+            self.options.set("mode", FalyxMode.PREVIEW)
             _, command, args, kwargs = await self.get_command(self.cli_args.name)
             if not command:
                 self.console.print(
@@ -1133,7 +1132,7 @@ class Falyx:
             sys.exit(0)
 
         if self.cli_args.command == "run":
-            self.mode = FalyxMode.RUN
+            self.options.set("mode", FalyxMode.RUN)
             is_preview, command, _, __ = await self.get_command(self.cli_args.name)
             if is_preview:
                 if command is None:
@@ -1172,7 +1171,7 @@ class Falyx:
             sys.exit(0)
 
         if self.cli_args.command == "run-all":
-            self.mode = FalyxMode.RUN_ALL
+            self.options.set("mode", FalyxMode.RUN_ALL)
             matching = [
                 cmd
                 for cmd in self.commands.values()

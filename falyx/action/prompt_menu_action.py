@@ -23,7 +23,8 @@ from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookType
 from falyx.logger import logger
 from falyx.menu import MenuOptionMap
-from falyx.signals import BackSignal, QuitSignal
+from falyx.prompt_utils import rich_text_to_prompt_text
+from falyx.signals import BackSignal, CancelSignal, QuitSignal
 from falyx.themes import OneColors
 
 
@@ -96,9 +97,11 @@ class PromptMenuAction(BaseAction):
             never_prompt=never_prompt,
         )
         self.menu_options = menu_options
-        self.prompt_message = prompt_message
+        self.prompt_message = rich_text_to_prompt_text(prompt_message)
         self.default_selection = default_selection
-        self.prompt_session = prompt_session or PromptSession()
+        self.prompt_session = prompt_session or PromptSession(
+            interrupt_exception=CancelSignal
+        )
         self.include_reserved = include_reserved
 
     def get_infer_target(self) -> tuple[None, None]:

@@ -8,4 +8,4 @@ def test_argument_action():
     assert action != "invalid_action"
     assert action.value == "append"
     assert str(action) == "append"
-    assert len(ArgumentAction.choices()) == 9
+    assert len(ArgumentAction.choices()) == 10

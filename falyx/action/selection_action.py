@@ -42,6 +42,7 @@ from falyx.context import ExecutionContext
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookType
 from falyx.logger import logger
+from falyx.prompt_utils import rich_text_to_prompt_text
 from falyx.selection import (
     SelectionOption,
     SelectionOptionMap,
@@ -148,12 +149,14 @@ class SelectionAction(BaseAction):
         self.return_type: SelectionReturnType = SelectionReturnType(return_type)
         self.title = title
         self.columns = columns
-        self.prompt_session = prompt_session or PromptSession()
+        self.prompt_session = prompt_session or PromptSession(
+            interrupt_exception=CancelSignal
+        )
         self.default_selection = default_selection
         self.number_selections = number_selections
         self.separator = separator
         self.allow_duplicates = allow_duplicates
-        self.prompt_message = prompt_message
+        self.prompt_message = rich_text_to_prompt_text(prompt_message)
         self.show_table = show_table
 
     @property

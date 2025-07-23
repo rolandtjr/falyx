@@ -51,7 +51,11 @@ from falyx.context import ExecutionContext
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookType
 from falyx.logger import logger
-from falyx.prompt_utils import confirm_async, should_prompt_user
+from falyx.prompt_utils import (
+    confirm_async,
+    rich_text_to_prompt_text,
+    should_prompt_user,
+)
 from falyx.signals import CancelSignal
 from falyx.themes import OneColors
 from falyx.validators import word_validator, words_validator
@@ -71,7 +75,7 @@ class ConfirmAction(BaseAction):
 
     Attributes:
         name (str): Name of the action. Used for logging and debugging.
-        message (str): The confirmation message to display.
+        prompt_message (str): The confirmation message to display.
         confirm_type (ConfirmType | str): The type of confirmation to use.
             Options include YES_NO, YES_CANCEL, YES_NO_CANCEL, TYPE_WORD, and OK_CANCEL.
         prompt_session (PromptSession | None): The session to use for input.
@@ -84,7 +88,7 @@ class ConfirmAction(BaseAction):
     def __init__(
         self,
         name: str,
-        message: str = "Confirm?",
+        prompt_message: str = "Confirm?",
         confirm_type: ConfirmType | str = ConfirmType.YES_NO,
         prompt_session: PromptSession | None = None,
         never_prompt: bool = False,
@@ -111,9 +115,11 @@ class ConfirmAction(BaseAction):
             inject_into=inject_into,
             never_prompt=never_prompt,
         )
-        self.message = message
+        self.prompt_message = rich_text_to_prompt_text(prompt_message)
         self.confirm_type = ConfirmType(confirm_type)
-        self.prompt_session = prompt_session or PromptSession()
+        self.prompt_session = prompt_session or PromptSession(
+            interrupt_exception=CancelSignal
+        )
         self.word = word
         self.return_last_result = return_last_result
 
@@ -122,7 +128,7 @@ class ConfirmAction(BaseAction):
         match self.confirm_type:
             case ConfirmType.YES_NO:
                 return await confirm_async(
-                    self.message,
+                    self.prompt_message,
                     prefix="❓ ",
                     suffix=" [Y/n] > ",
                     session=self.prompt_session,
@@ -130,7 +136,7 @@ class ConfirmAction(BaseAction):
             case ConfirmType.YES_NO_CANCEL:
                 error_message = "Enter 'Y', 'y' to confirm, 'N', 'n' to decline, or 'C', 'c' to abort."
                 answer = await self.prompt_session.prompt_async(
-                    f"❓ {self.message} [Y]es, [N]o, or [C]ancel to abort > ",
+                    f"❓ {self.prompt_message} [Y]es, [N]o, or [C]ancel to abort > ",
                     validator=words_validator(
                         ["Y", "N", "C"], error_message=error_message
                     ),
@@ -140,13 +146,13 @@ class ConfirmAction(BaseAction):
                 return answer.upper() == "Y"
             case ConfirmType.TYPE_WORD:
                 answer = await self.prompt_session.prompt_async(
-                    f"❓ {self.message} [{self.word}] to confirm or [N/n] > ",
+                    f"❓ {self.prompt_message} [{self.word}] to confirm or [N/n] > ",
                     validator=word_validator(self.word),
                 )
                 return answer.upper().strip() != "N"
             case ConfirmType.TYPE_WORD_CANCEL:
                 answer = await self.prompt_session.prompt_async(
-                    f"❓ {self.message} [{self.word}] to confirm or [N/n] > ",
+                    f"❓ {self.prompt_message} [{self.word}] to confirm or [N/n] > ",
                     validator=word_validator(self.word),
                 )
                 if answer.upper().strip() == "N":
@@ -154,7 +160,7 @@ class ConfirmAction(BaseAction):
                 return answer.upper().strip() == self.word.upper().strip()
             case ConfirmType.YES_CANCEL:
                 answer = await confirm_async(
-                    self.message,
+                    self.prompt_message,
                     prefix="❓ ",
                     suffix=" [Y/n] > ",
                     session=self.prompt_session,
@@ -165,7 +171,7 @@ class ConfirmAction(BaseAction):
             case ConfirmType.OK_CANCEL:
                 error_message = "Enter 'O', 'o' to confirm or 'C', 'c' to abort."
                 answer = await self.prompt_session.prompt_async(
-                    f"❓ {self.message} [O]k to confirm, [C]ancel to abort > ",
+                    f"❓ {self.prompt_message} [O]k to confirm, [C]ancel to abort > ",
                     validator=words_validator(["O", "C"], error_message=error_message),
                 )
                 if answer.upper() == "C":
@@ -173,7 +179,7 @@ class ConfirmAction(BaseAction):
                 return answer.upper() == "O"
             case ConfirmType.ACKNOWLEDGE:
                 answer = await self.prompt_session.prompt_async(
-                    f"❓ {self.message} [A]cknowledge > ",
+                    f"❓ {self.prompt_message} [A]cknowledge > ",
                     validator=word_validator("A"),
                 )
                 return answer.upper().strip() == "A"
@@ -232,7 +238,7 @@ class ConfirmAction(BaseAction):
             if not parent
             else parent.add(f"[{OneColors.CYAN_b}]ConfirmAction[/]: {self.name}")
         )
-        tree.add(f"[bold]Message:[/] {self.message}")
+        tree.add(f"[bold]Message:[/] {self.prompt_message}")
         tree.add(f"[bold]Type:[/] {self.confirm_type.value}")
         tree.add(f"[bold]Prompt Required:[/] {'No' if self.never_prompt else 'Yes'}")
         if self.confirm_type in (ConfirmType.TYPE_WORD, ConfirmType.TYPE_WORD_CANCEL):
@@ -242,6 +248,6 @@ class ConfirmAction(BaseAction):
 
     def __str__(self) -> str:
         return (
-            f"ConfirmAction(name={self.name}, message={self.message}, "
+            f"ConfirmAction(name={self.name}, message={self.prompt_message}, "
             f"confirm_type={self.confirm_type}, return_last_result={self.return_last_result})"
         )

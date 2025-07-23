@@ -56,7 +56,7 @@ class BottomBar:
             Must return True if key is available, otherwise False.
     """
 
-    RESERVED_CTRL_KEYS = {"c", "d", "z"}
+    RESERVED_CTRL_KEYS = {"c", "d", "z", "v"}
 
     def __init__(
         self,
