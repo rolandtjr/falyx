@@ -71,7 +71,7 @@ class UserInputAction(BaseAction):
             name=name,
             inject_last_result=inject_last_result,
         )
-        self.prompt_message = rich_text_to_prompt_text(prompt_message)
+        self.prompt_message = prompt_message
         self.validator = validator
         self.prompt_session = prompt_session or PromptSession(
             interrupt_exception=CancelSignal
@@ -97,7 +97,7 @@ class UserInputAction(BaseAction):
                 prompt_message = prompt_message.format(last_result=self.last_result)
 
             answer = await self.prompt_session.prompt_async(
-                prompt_message,
+                rich_text_to_prompt_text(prompt_message),
                 validator=self.validator,
                 default=kwargs.get("default_text", self.default_text),
             )

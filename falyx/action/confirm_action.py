@@ -115,7 +115,7 @@ class ConfirmAction(BaseAction):
             inject_into=inject_into,
             never_prompt=never_prompt,
         )
-        self.prompt_message = rich_text_to_prompt_text(prompt_message)
+        self.prompt_message = prompt_message
         self.confirm_type = ConfirmType(confirm_type)
         self.prompt_session = prompt_session or PromptSession(
             interrupt_exception=CancelSignal
@@ -128,15 +128,21 @@ class ConfirmAction(BaseAction):
         match self.confirm_type:
             case ConfirmType.YES_NO:
                 return await confirm_async(
-                    self.prompt_message,
-                    prefix="❓ ",
-                    suffix=" [Y/n] > ",
+                    rich_text_to_prompt_text(self.prompt_message),
+                    suffix=rich_text_to_prompt_text(
+                        f" [[{OneColors.GREEN_b}]Y[/]]es, "
+                        f"[[{OneColors.DARK_RED_b}]N[/]]o > "
+                    ),
                     session=self.prompt_session,
                 )
             case ConfirmType.YES_NO_CANCEL:
                 error_message = "Enter 'Y', 'y' to confirm, 'N', 'n' to decline, or 'C', 'c' to abort."
                 answer = await self.prompt_session.prompt_async(
-                    f"❓ {self.prompt_message} [Y]es, [N]o, or [C]ancel to abort > ",
+                    rich_text_to_prompt_text(
+                        f"❓ {self.prompt_message} [[{OneColors.GREEN_b}]Y[/]]es, "
+                        f"[[{OneColors.DARK_YELLOW_b}]N[/]]o, "
+                        f"or [[{OneColors.DARK_RED_b}]C[/]]ancel to abort > "
+                    ),
                     validator=words_validator(
                         ["Y", "N", "C"], error_message=error_message
                     ),
@@ -146,13 +152,19 @@ class ConfirmAction(BaseAction):
                 return answer.upper() == "Y"
             case ConfirmType.TYPE_WORD:
                 answer = await self.prompt_session.prompt_async(
-                    f"❓ {self.prompt_message} [{self.word}] to confirm or [N/n] > ",
+                    rich_text_to_prompt_text(
+                        f"❓ {self.prompt_message} [[{OneColors.GREEN_b}]{self.word.upper()}[/]] "
+                        f"to confirm or [[{OneColors.DARK_RED}]N[/{OneColors.DARK_RED}]] > "
+                    ),
                     validator=word_validator(self.word),
                 )
                 return answer.upper().strip() != "N"
             case ConfirmType.TYPE_WORD_CANCEL:
                 answer = await self.prompt_session.prompt_async(
-                    f"❓ {self.prompt_message} [{self.word}] to confirm or [N/n] > ",
+                    rich_text_to_prompt_text(
+                        f"❓ {self.prompt_message} [[{OneColors.GREEN_b}]{self.word.upper()}[/]] "
+                        f"to confirm or [[{OneColors.DARK_RED}]N[/{OneColors.DARK_RED}]] > "
+                    ),
                     validator=word_validator(self.word),
                 )
                 if answer.upper().strip() == "N":
@@ -160,9 +172,11 @@ class ConfirmAction(BaseAction):
                 return answer.upper().strip() == self.word.upper().strip()
             case ConfirmType.YES_CANCEL:
                 answer = await confirm_async(
-                    self.prompt_message,
-                    prefix="❓ ",
-                    suffix=" [Y/n] > ",
+                    rich_text_to_prompt_text(self.prompt_message),
+                    suffix=rich_text_to_prompt_text(
+                        f" [[{OneColors.GREEN_b}]Y[/]]es, "
+                        f"[[{OneColors.DARK_RED_b}]N[/]]o > "
+                    ),
                     session=self.prompt_session,
                 )
                 if not answer:
@@ -171,7 +185,10 @@ class ConfirmAction(BaseAction):
             case ConfirmType.OK_CANCEL:
                 error_message = "Enter 'O', 'o' to confirm or 'C', 'c' to abort."
                 answer = await self.prompt_session.prompt_async(
-                    f"❓ {self.prompt_message} [O]k to confirm, [C]ancel to abort > ",
+                    rich_text_to_prompt_text(
+                        f"❓ {self.prompt_message} [[{OneColors.GREEN_b}]O[/]]k to confirm, "
+                        f"[[{OneColors.DARK_RED}]C[/]]ancel to abort > "
+                    ),
                     validator=words_validator(["O", "C"], error_message=error_message),
                 )
                 if answer.upper() == "C":
@@ -179,7 +196,9 @@ class ConfirmAction(BaseAction):
                 return answer.upper() == "O"
             case ConfirmType.ACKNOWLEDGE:
                 answer = await self.prompt_session.prompt_async(
-                    f"❓ {self.prompt_message} [A]cknowledge > ",
+                    rich_text_to_prompt_text(
+                        f"❓ {self.prompt_message} [[{OneColors.CYAN_b}]A[/]]cknowledge > "
+                    ),
                     validator=word_validator("A"),
                 )
                 return answer.upper().strip() == "A"

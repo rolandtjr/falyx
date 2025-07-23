@@ -88,6 +88,7 @@ flx.add_command(
         name="test_args",
         action=test_args,
     ),
+    style="bold blue",
     argument_config=default_config,
 )
 

@@ -479,7 +479,10 @@ class CommandArgumentParser:
         if argument.positional:
             self._positional[argument.dest] = argument
         else:
-            self._keyword_list.append(argument)
+            if argument.action == ArgumentAction.TLDR:
+                self._keyword_list.insert(1, argument)
+            else:
+                self._keyword_list.append(argument)
 
     def add_argument(
         self,
@@ -1302,8 +1305,11 @@ class CommandArgumentParser:
         program = self.program or "falyx"
         command = self.aliases[0] if self.aliases else self.command_key
         if is_cli_mode:
-            command = f"{program} run {command}"
-        command = f"[{self.command_style}]{command}[/{self.command_style}]"
+            command = (
+                f"{program} run [{self.command_style}]{command}[/{self.command_style}]"
+            )
+        else:
+            command = f"[{self.command_style}]{command}[/{self.command_style}]"
 
         usage = self.get_usage()
         self.console.print(f"[bold]usage:[/] {usage}\n")
@@ -1315,8 +1321,9 @@ class CommandArgumentParser:
         for example in self._tldr_examples:
             usage = f"{command} {example.usage.strip()}"
             description = example.description.strip()
-            block = f"[bold]{usage}[/bold]\n{description}"
+            block = f"[bold]{usage}[/bold]"
             self.console.print(Padding(Panel(block, expand=False), (0, 2)))
+            self.console.print(f"    {description}", style="dim")
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, CommandArgumentParser):

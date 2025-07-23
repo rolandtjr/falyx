@@ -22,7 +22,7 @@ chain = ChainedAction(
         "Name",
         UserInputAction(
             name="User Input",
-            prompt_text="Enter your {last_result}: ",
+            prompt_message="Enter your {last_result}: ",
             validator=validate_alpha(),
         ),
         Action(

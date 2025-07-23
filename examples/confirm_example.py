@@ -70,7 +70,7 @@ async def build_chain(dogs: list[Dog]) -> ChainedAction:
             ),
             ConfirmAction(
                 name="test_confirm",
-                message="Do you want to process the dogs?",
+                prompt_message="Do you want to process the dogs?",
                 confirm_type="yes_no_cancel",
                 return_last_result=True,
                 inject_into="dogs",
