@@ -19,6 +19,8 @@ flx = Falyx(
     description="This example demonstrates how to select files using Falyx.",
     version="1.0.0",
     program="file_select.py",
+    hide_menu_table=True,
+    show_placeholder_menu=True,
 )
 
 flx.add_command(

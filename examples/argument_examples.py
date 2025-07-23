@@ -77,7 +77,12 @@ def default_config(parser: CommandArgumentParser) -> None:
     )
 
 
-flx = Falyx("Argument Examples", program="argument_examples.py")
+flx = Falyx(
+    "Argument Examples",
+    program="argument_examples.py",
+    hide_menu_table=True,
+    show_placeholder_menu=True,
+)
 
 flx.add_command(
     key="T",
@@ -88,7 +93,7 @@ flx.add_command(
         name="test_args",
         action=test_args,
     ),
-    style="bold blue",
+    style="bold #B3EBF2",
     argument_config=default_config,
 )
 

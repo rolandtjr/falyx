@@ -7,6 +7,7 @@ user input during prompts—especially for selection actions, confirmations, and
 argument parsing.
 
 Included Validators:
+- CommandValidator: Validates if the input matches a known command.
 - int_range_validator: Enforces numeric input within a range.
 - key_validator: Ensures the entered value matches a valid selection key.
 - yes_no_validator: Restricts input to 'Y' or 'N'.
@@ -17,9 +18,44 @@ Included Validators:
 These validators integrate directly into `PromptSession.prompt_async()` to
 enforce correctness and provide helpful error messages.
 """
-from typing import KeysView, Sequence
+from typing import TYPE_CHECKING, KeysView, Sequence
 
 from prompt_toolkit.validation import ValidationError, Validator
+
+if TYPE_CHECKING:
+    from falyx.falyx import Falyx
+
+
+class CommandValidator(Validator):
+    """Validator to check if the input is a valid command."""
+
+    def __init__(self, falyx: "Falyx", error_message: str) -> None:
+        super().__init__()
+        self.falyx = falyx
+        self.error_message = error_message
+
+    def validate(self, document) -> None:
+        if not document.text:
+            raise ValidationError(
+                message=self.error_message,
+                cursor_position=len(document.text),
+            )
+
+    async def validate_async(self, document) -> None:
+        text = document.text
+        if not text:
+            raise ValidationError(
+                message=self.error_message,
+                cursor_position=len(text),
+            )
+        is_preview, choice, _, __ = await self.falyx.get_command(text, from_validate=True)
+        if is_preview:
+            return None
+        if not choice:
+            raise ValidationError(
+                message=self.error_message,
+                cursor_position=len(text),
+            )
 
 
 def int_range_validator(minimum: int, maximum: int) -> Validator:

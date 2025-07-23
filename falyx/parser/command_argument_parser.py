@@ -101,6 +101,8 @@ class CommandArgumentParser:
     - Render Help using Rich library.
     """
 
+    RESERVED_DESTS = frozenset(("help", "tldr"))
+
     def __init__(
         self,
         command_key: str = "",
@@ -138,13 +140,13 @@ class CommandArgumentParser:
 
     def _add_help(self):
         """Add help argument to the parser."""
-        self.add_argument(
-            "-h",
-            "--help",
+        help = Argument(
+            flags=("--help", "-h"),
             action=ArgumentAction.HELP,
             help="Show this help message.",
             dest="help",
         )
+        self._register_argument(help)
 
     def add_tldr_examples(self, examples: list[tuple[str, str]]) -> None:
         """
@@ -163,12 +165,13 @@ class CommandArgumentParser:
             self._tldr_examples.append(TLDRExample(usage=usage, description=description))
 
         if "tldr" not in self._dest_set:
-            self.add_argument(
-                "--tldr",
+            tldr = Argument(
+                ("--tldr",),
                 action=ArgumentAction.TLDR,
                 help="Show quick usage examples and exit.",
                 dest="tldr",
             )
+            self._register_argument(tldr)
 
     def _is_positional(self, flags: tuple[str, ...]) -> bool:
         """Check if the flags are positional."""
@@ -528,6 +531,10 @@ class CommandArgumentParser:
                 f"Destination '{dest}' is already defined.\n"
                 "Merging multiple arguments into the same dest (e.g. positional + flagged) "
                 "is not supported. Define a unique 'dest' for each argument."
+            )
+        if dest in self.RESERVED_DESTS:
+            raise CommandArgumentError(
+                f"Destination '{dest}' is reserved and cannot be used."
             )
         action = self._validate_action(action, positional)
         resolver = self._validate_resolver(action, resolver)
@@ -1050,6 +1057,7 @@ class CommandArgumentParser:
                     )
 
         result.pop("help", None)
+        result.pop("tldr", None)
         return result
 
     async def parse_args_split(
@@ -1067,7 +1075,7 @@ class CommandArgumentParser:
         args_list = []
         kwargs_dict = {}
         for arg in self._arguments:
-            if arg.dest == "help":
+            if arg.dest in ("help", "tldr"):
                 continue
             if arg.positional:
                 args_list.append(parsed[arg.dest])

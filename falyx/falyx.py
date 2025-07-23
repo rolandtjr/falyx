@@ -33,7 +33,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.patch_stdout import patch_stdout
-from prompt_toolkit.validation import ValidationError, Validator
+from prompt_toolkit.validation import ValidationError
 from rich import box
 from rich.console import Console
 from rich.markdown import Markdown
@@ -66,39 +66,8 @@ from falyx.retry import RetryPolicy
 from falyx.signals import BackSignal, CancelSignal, HelpSignal, QuitSignal
 from falyx.themes import OneColors
 from falyx.utils import CaseInsensitiveDict, _noop, chunks, ensure_async
+from falyx.validators import CommandValidator
 from falyx.version import __version__
-
-
-class CommandValidator(Validator):
-    """Validator to check if the input is a valid command."""
-
-    def __init__(self, falyx: Falyx, error_message: str) -> None:
-        super().__init__()
-        self.falyx = falyx
-        self.error_message = error_message
-
-    def validate(self, document) -> None:
-        if not document.text:
-            raise ValidationError(
-                message=self.error_message,
-                cursor_position=len(document.text),
-            )
-
-    async def validate_async(self, document) -> None:
-        text = document.text
-        if not text:
-            raise ValidationError(
-                message=self.error_message,
-                cursor_position=len(text),
-            )
-        is_preview, choice, _, __ = await self.falyx.get_command(text, from_validate=True)
-        if is_preview:
-            return None
-        if not choice:
-            raise ValidationError(
-                message=self.error_message,
-                cursor_position=len(text),
-            )
 
 
 class Falyx:
@@ -176,6 +145,7 @@ class Falyx:
         render_menu: Callable[[Falyx], None] | None = None,
         custom_table: Callable[[Falyx], Table] | Table | None = None,
         hide_menu_table: bool = False,
+        show_placeholder_menu: bool = False,
     ) -> None:
         """Initializes the Falyx object."""
         self.title: str | Markdown = title
@@ -208,6 +178,7 @@ class Falyx:
         self.render_menu: Callable[[Falyx], None] | None = render_menu
         self.custom_table: Callable[[Falyx], Table] | Table | None = custom_table
         self._hide_menu_table: bool = hide_menu_table
+        self.show_placeholder_menu: bool = show_placeholder_menu
         self.validate_options(cli_args, options)
         self._prompt_session: PromptSession | None = None
         self.options.set("mode", FalyxMode.MENU)
@@ -492,6 +463,7 @@ class Falyx:
     def prompt_session(self) -> PromptSession:
         """Returns the prompt session for the menu."""
         if self._prompt_session is None:
+            placeholder = self.build_placeholder_menu()
             self._prompt_session = PromptSession(
                 message=self.prompt,
                 multiline=False,
@@ -502,6 +474,7 @@ class Falyx:
                 validate_while_typing=True,
                 interrupt_exception=QuitSignal,
                 eof_exception=QuitSignal,
+                placeholder=placeholder if self.show_placeholder_menu else None,
             )
         return self._prompt_session
 
@@ -724,16 +697,16 @@ class Falyx:
         if self.help_command:
             bottom_row.append(
                 f"[{self.help_command.key}] [{self.help_command.style}]"
-                f"{self.help_command.description}"
+                f"{self.help_command.description}[/]"
             )
         if self.history_command:
             bottom_row.append(
                 f"[{self.history_command.key}] [{self.history_command.style}]"
-                f"{self.history_command.description}"
+                f"{self.history_command.description}[/]"
             )
         bottom_row.append(
             f"[{self.exit_command.key}] [{self.exit_command.style}]"
-            f"{self.exit_command.description}"
+            f"{self.exit_command.description}[/]"
         )
         return bottom_row
 
@@ -753,6 +726,22 @@ class Falyx:
         for row in chunks(bottom_row, self.columns):
             table.add_row(*row)
         return table
+
+    def build_placeholder_menu(self) -> StyleAndTextTuples:
+        """
+        Builds a menu placeholder for prompt_menu mode.
+        """
+        visible_commands = [item for item in self.commands.items() if not item[1].hidden]
+        if not visible_commands:
+            return [("", "")]
+
+        placeholder: list[str] = []
+        for key, command in visible_commands:
+            placeholder.append(f"[{key}] [{command.style}]{command.description}[/]")
+        for command_str in self.get_bottom_row():
+            placeholder.append(command_str)
+
+        return rich_text_to_prompt_text(" ".join(placeholder))
 
     @property
     def table(self) -> Table:
