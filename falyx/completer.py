@@ -90,7 +90,14 @@ class FalyxCompleter(Completer):
             )
             for suggestion in suggestions:
                 if suggestion.startswith(stub):
-                    yield Completion(suggestion, start_position=-len(stub))
+                    if len(suggestion.split()) > 1:
+                        yield Completion(
+                            f'"{suggestion}"',
+                            start_position=-len(stub),
+                            display=suggestion,
+                        )
+                    else:
+                        yield Completion(suggestion, start_position=-len(stub))
         except Exception:
             return
 

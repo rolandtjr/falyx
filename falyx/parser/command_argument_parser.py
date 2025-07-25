@@ -46,9 +46,8 @@ and complex multi-level conflict handling. Instead, it favors:
 """
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from copy import deepcopy
-from dataclasses import dataclass
 from typing import Any, Iterable, Sequence
 
 from rich.console import Console
@@ -63,21 +62,9 @@ from falyx.mode import FalyxMode
 from falyx.options_manager import OptionsManager
 from falyx.parser.argument import Argument
 from falyx.parser.argument_action import ArgumentAction
-from falyx.parser.parser_types import false_none, true_none
+from falyx.parser.parser_types import ArgumentState, TLDRExample, false_none, true_none
 from falyx.parser.utils import coerce_value
 from falyx.signals import HelpSignal
-
-
-@dataclass
-class ArgumentState:
-    arg: Argument
-    consumed: bool = False
-
-
-@dataclass(frozen=True)
-class TLDRExample:
-    usage: str
-    description: str
 
 
 class CommandArgumentParser:
@@ -620,6 +607,25 @@ class CommandArgumentParser:
             )
         return defs
 
+    def _check_if_in_choices(
+        self,
+        spec: Argument,
+        result: dict[str, Any],
+        arg_states: dict[str, ArgumentState],
+    ) -> None:
+        if not spec.choices:
+            return None
+        value_check = result.get(spec.dest)
+        if isinstance(value_check, list):
+            for value in value_check:
+                if value in spec.choices:
+                    return None
+        if value_check in spec.choices:
+            return None
+        raise CommandArgumentError(
+            f"Invalid value for '{spec.dest}': must be one of {{{', '.join(spec.choices)}}}"
+        )
+
     def _raise_remaining_args_error(
         self, token: str, arg_states: dict[str, ArgumentState]
     ) -> None:
@@ -748,6 +754,7 @@ class CommandArgumentParser:
                         raise CommandArgumentError(
                             f"[{spec.dest}] Action failed: {error}"
                         ) from error
+                self._check_if_in_choices(spec, result, arg_states)
                 arg_states[spec.dest].consumed = True
             elif not typed and spec.default:
                 result[spec.dest] = spec.default
@@ -761,9 +768,11 @@ class CommandArgumentParser:
                 assert result.get(spec.dest) is not None, "dest should not be None"
                 result[spec.dest].extend(typed)
             elif spec.nargs in (None, 1, "?"):
-                arg_states[spec.dest].consumed = True
                 result[spec.dest] = typed[0] if len(typed) == 1 else typed
+                self._check_if_in_choices(spec, result, arg_states)
+                arg_states[spec.dest].consumed = True
             else:
+                self._check_if_in_choices(spec, result, arg_states)
                 arg_states[spec.dest].consumed = True
                 result[spec.dest] = typed
 
@@ -842,6 +851,7 @@ class CommandArgumentParser:
                         raise CommandArgumentError(
                             f"[{spec.dest}] Action failed: {error}"
                         ) from error
+                self._check_if_in_choices(spec, result, arg_states)
                 arg_states[spec.dest].consumed = True
                 consumed_indices.update(range(i, new_i))
                 i = new_i
@@ -927,6 +937,7 @@ class CommandArgumentParser:
                     )
                 else:
                     result[spec.dest] = typed_values
+                self._check_if_in_choices(spec, result, arg_states)
                 arg_states[spec.dest].consumed = True
                 consumed_indices.update(range(i, new_i))
                 i = new_i
@@ -1017,10 +1028,12 @@ class CommandArgumentParser:
                     and from_validate
                 ):
                     if not args:
+                        arg_states[spec.dest].consumed = False
                         raise CommandArgumentError(
                             f"Missing required argument '{spec.dest}': {spec.get_choice_text()}{help_text}"
                         )
                     continue  # Lazy resolvers are not validated here
+                arg_states[spec.dest].consumed = False
                 raise CommandArgumentError(
                     f"Missing required argument '{spec.dest}': {spec.get_choice_text()}{help_text}"
                 )
@@ -1043,15 +1056,18 @@ class CommandArgumentParser:
                 if spec.action == ArgumentAction.APPEND:
                     for group in result[spec.dest]:
                         if len(group) % spec.nargs != 0:
+                            arg_states[spec.dest].consumed = False
                             raise CommandArgumentError(
                                 f"Invalid number of values for '{spec.dest}': expected a multiple of {spec.nargs}"
                             )
                 elif spec.action == ArgumentAction.EXTEND:
                     if len(result[spec.dest]) % spec.nargs != 0:
+                        arg_states[spec.dest].consumed = False
                         raise CommandArgumentError(
                             f"Invalid number of values for '{spec.dest}': expected a multiple of {spec.nargs}"
                         )
                 elif len(result[spec.dest]) != spec.nargs:
+                    arg_states[spec.dest].consumed = False
                     raise CommandArgumentError(
                         f"Invalid number of values for '{spec.dest}': expected {spec.nargs}, got {len(result[spec.dest])}"
                     )
@@ -1105,6 +1121,7 @@ class CommandArgumentParser:
             if not state.consumed:
                 next_non_consumed_positional = state.arg
                 break
+
         if next_non_consumed_positional:
             if next_non_consumed_positional.choices:
                 return sorted(
@@ -1123,13 +1140,23 @@ class CommandArgumentParser:
             flag for flag, arg in self._keyword.items() if arg.dest not in consumed_dests
         ]
 
+        last_keyword_state_in_args = None
+        for last_arg in reversed(args):
+            if last_arg in self._keyword:
+                last_keyword_state_in_args = self._last_keyword_states.get(
+                    self._keyword[last_arg].dest
+                )
+                break
+
         last = args[-1]
         next_to_last = args[-2] if len(args) > 1 else ""
         suggestions: list[str] = []
 
         # Case 2: Mid-flag (e.g., "--ver")
         if last.startswith("-") and last not in self._keyword:
-            if (
+            if last_keyword_state_in_args and not last_keyword_state_in_args.consumed:
+                pass
+            elif (
                 len(args) > 1
                 and next_to_last in self._keyword
                 and next_to_last in remaining_flags
@@ -1150,14 +1177,31 @@ class CommandArgumentParser:
         # Case 3: Flag that expects a value (e.g., ["--tag"])
         elif last in self._keyword:
             arg = self._keyword[last]
-            if arg.choices:
+            if (
+                self._last_keyword_states.get(last.strip("-"))
+                and self._last_keyword_states[last.strip("-")].consumed
+            ):
+                pass
+            elif arg.choices:
                 suggestions.extend(arg.choices)
             elif arg.suggestions:
                 suggestions.extend(arg.suggestions)
         # Case 4: Last flag with choices mid-choice (e.g., ["--tag", "v"])
         elif next_to_last in self._keyword:
             arg = self._keyword[next_to_last]
-            if arg.choices and last not in arg.choices:
+            if (
+                self._last_keyword_states.get(next_to_last.strip("-"))
+                and self._last_keyword_states[next_to_last.strip("-")].consumed
+                and last_keyword_state_in_args
+                and Counter(args)[next_to_last]
+                > (
+                    last_keyword_state_in_args.arg.nargs
+                    if isinstance(last_keyword_state_in_args.arg.nargs, int)
+                    else 1
+                )
+            ):
+                pass
+            elif arg.choices and last not in arg.choices and not cursor_at_end_of_token:
                 suggestions.extend(arg.choices)
             elif (
                 arg.suggestions
@@ -1167,8 +1211,12 @@ class CommandArgumentParser:
                 and not cursor_at_end_of_token
             ):
                 suggestions.extend(arg.suggestions)
+            elif last_keyword_state_in_args and not last_keyword_state_in_args.consumed:
+                pass
             else:
                 suggestions.extend(remaining_flags)
+        elif last_keyword_state_in_args and not last_keyword_state_in_args.consumed:
+            pass
         # Case 5: Suggest all remaining flags
         else:
             suggestions.extend(remaining_flags)
