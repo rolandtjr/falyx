@@ -27,6 +27,7 @@ import sys
 from argparse import ArgumentParser, Namespace, _SubParsersAction
 from difflib import get_close_matches
 from functools import cached_property
+from random import choice
 from typing import Any, Callable
 
 from prompt_toolkit import PromptSession
@@ -184,6 +185,14 @@ class Falyx:
             self._get_help_command() if include_help_command else None
         )
 
+    @property
+    def is_cli_mode(self) -> bool:
+        return self.options.get("mode") in {
+            FalyxMode.RUN,
+            FalyxMode.PREVIEW,
+            FalyxMode.RUN_ALL,
+        }
+
     def validate_options(
         self,
         cli_args: Namespace | None,
@@ -322,14 +331,41 @@ class Falyx:
             program=self.program,
         )
 
-    async def _show_help(self, tag: str = "") -> None:
-        is_cli_mode = self.options.get("mode") in {
-            FalyxMode.RUN,
-            FalyxMode.PREVIEW,
-            FalyxMode.RUN_ALL,
-        }
+    def get_tip(self) -> str:
+        program = f"{self.program} run " if self.is_cli_mode else ""
+        tips = [
+            f"Tip: Use '{program}?[KEY]' to preview a command.",
+            f"Tip: Use '{program}?' alone to list all commands at any time.",
+            "Tip: Every command supports aliases—try abbreviating the name!",
+            f"Tip: Use '{program}H' to reopen this help menu anytime.",
+            f"Tip: '{program}[KEY] --help' prints a detailed help message.",
+            "Tip: Mix CLI and menu mode—commands run the same way in both.",
+            f"Tip: Use '{self.program} --never-prompt' to disable all prompts for the [bold italic]entire menu session[/].",
+            f"Tip: Use '{self.program} --verbose' to enable debug logging for a menu session.",
+            f"Tip: '{self.program} --debug-hooks' will trace every before/after hook in action.",
+            f"Tip: Run commands directly from the CLI: '{self.program} run [KEY] [OPTIONS]'.",
+        ]
+        if self.is_cli_mode:
+            tips.extend(
+                [
+                    f"Tip: Use '{self.program} --never-prompt run [KEY]' to disable all prompts for [bold italic]just this command[/].",
+                    f"Tip: Use '{self.program} run --skip-confirm [KEY]' to skip confirmations.",
+                    f"Tip: Use '{self.program} run --summary [KEY]' to print a post-run summary.",
+                    f"Tip: Use '{self.program} --verbose run [KEY]' to enable debug logging for any run.",
+                    "Tip: Use '--skip-confirm' for automation scripts where no prompts are wanted.",
+                ]
+            )
+        else:
+            tips.extend(
+                [
+                    "Tip: '[CTRL+KEY]' toggles are available in menu mode for quick switches.",
+                    "Tip: '[Y]' opens the command history viewer.",
+                    "Tip: Use '[X]' in menu mode to exit.",
+                ]
+            )
+        return choice(tips)
 
-        program = f"{self.program} run " if is_cli_mode else ""
+    async def _show_help(self, tag: str = "") -> None:
         if tag:
             tag_lower = tag.lower()
             commands = [
@@ -353,16 +389,14 @@ class Falyx:
             usage, description = self.help_command.help_signature
             self.console.print(usage)
             self.console.print(description)
-        if not is_cli_mode:
+        if not self.is_cli_mode:
             if self.history_command:
                 usage, description = self.history_command.help_signature
                 self.console.print(usage)
                 self.console.print(description)
             usage, _ = self.exit_command.help_signature
             self.console.print(usage)
-        self.console.print(
-            f"Tip: '{program}[{OneColors.LIGHT_YELLOW}]?[KEY][/]' to preview a command "
-        )
+        self.console.print(self.get_tip())
 
     def _get_help_command(self) -> Command:
         """Returns the help command for the menu."""
