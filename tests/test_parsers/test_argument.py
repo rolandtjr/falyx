@@ -88,3 +88,11 @@ def test_argument_equality():
     assert arg != "not an argument"
     assert arg is not None
     assert arg != object()
+
+
+def test_argument_required():
+    arg = Argument("--foo", dest="foo", required=True)
+    assert arg.required is True
+
+    arg2 = Argument("--bar", dest="bar", required=False)
+    assert arg2.required is False

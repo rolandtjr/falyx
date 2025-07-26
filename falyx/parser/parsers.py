@@ -59,9 +59,7 @@ def get_root_parser(
     prog: str | None = "falyx",
     usage: str | None = None,
     description: str | None = "Falyx CLI - Run structured async command workflows.",
-    epilog: (
-        str | None
-    ) = "Tip: Use 'falyx run ?[COMMAND]' to preview any command from the CLI.",
+    epilog: str | None = "Tip: Use 'falyx run ?' to show available commands.",
     parents: Sequence[ArgumentParser] | None = None,
     prefix_chars: str = "-",
     fromfile_prefix_chars: str | None = None,
@@ -242,7 +240,7 @@ def get_arg_parsers(
         - Use `falyx run ?[COMMAND]` from the CLI to preview a command.
     """
     if epilog is None:
-        epilog = f"Tip: Use '{prog} run ?[COMMAND]' to preview any command from the CLI."
+        epilog = f"Tip: Use '{prog} run ?' to show available commands."
     if root_parser is None:
         parser = get_root_parser(
             prog=prog,

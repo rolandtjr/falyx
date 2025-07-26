@@ -142,12 +142,13 @@ class CommandArgumentParser:
         Args:
             examples (list[tuple[str, str]]): List of (usage, description) tuples.
         """
-        if not any(
+        if not all(
             isinstance(example, tuple) and len(example) == 2 for example in examples
         ):
             raise CommandArgumentError(
                 "TLDR examples must be a list of (usage, description) tuples"
             )
+
         for usage, description in examples:
             self._tldr_examples.append(TLDRExample(usage=usage, description=description))
 
@@ -1362,7 +1363,7 @@ class CommandArgumentParser:
         command = self.aliases[0] if self.aliases else self.command_key
         if is_cli_mode:
             command = (
-                f"{program} run [{self.command_style}]{command}[/{self.command_style}]"
+                f"[{self.command_style}]{program} run {command}[/{self.command_style}]"
             )
         else:
             command = f"[{self.command_style}]{command}[/{self.command_style}]"

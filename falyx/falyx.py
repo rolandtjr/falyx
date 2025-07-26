@@ -125,6 +125,7 @@ class Falyx:
         title: str | Markdown = "Menu",
         *,
         program: str | None = "falyx",
+        program_style: str = OneColors.WHITE,
         usage: str | None = None,
         description: str | None = "Falyx CLI - Run structured async command workflows.",
         epilog: str | None = None,
@@ -158,13 +159,6 @@ class Falyx:
         self.prompt: str | StyleAndTextTuples = rich_text_to_prompt_text(prompt)
         self.columns: int = columns
         self.commands: dict[str, Command] = CaseInsensitiveDict()
-        self.exit_command: Command = self._get_exit_command()
-        self.history_command: Command | None = (
-            self._get_history_command() if include_history_command else None
-        )
-        self.help_command: Command | None = (
-            self._get_help_command() if include_help_command else None
-        )
         self.console: Console = console
         self.welcome_message: str | Markdown | dict[str, Any] = welcome_message
         self.exit_message: str | Markdown | dict[str, Any] = exit_message
@@ -182,6 +176,13 @@ class Falyx:
         self.validate_options(cli_args, options)
         self._prompt_session: PromptSession | None = None
         self.options.set("mode", FalyxMode.MENU)
+        self.exit_command: Command = self._get_exit_command()
+        self.history_command: Command | None = (
+            self._get_history_command() if include_history_command else None
+        )
+        self.help_command: Command | None = (
+            self._get_help_command() if include_help_command else None
+        )
 
     def validate_options(
         self,
@@ -262,6 +263,8 @@ class Falyx:
             style=OneColors.DARK_RED,
             simple_help_signature=True,
             ignore_in_history=True,
+            options_manager=self.options,
+            program=self.program,
         )
 
     def _get_history_command(self) -> Command:
@@ -271,6 +274,7 @@ class Falyx:
             command_description="History",
             command_style=OneColors.DARK_YELLOW,
             aliases=["HISTORY"],
+            program=self.program,
         )
         parser.add_argument(
             "-n",
@@ -314,17 +318,19 @@ class Falyx:
             arg_parser=parser,
             help_text="View the execution history of commands.",
             ignore_in_history=True,
+            options_manager=self.options,
+            program=self.program,
         )
 
     async def _show_help(self, tag: str = "") -> None:
+        is_cli_mode = self.options.get("mode") in {
+            FalyxMode.RUN,
+            FalyxMode.PREVIEW,
+            FalyxMode.RUN_ALL,
+        }
+
+        program = f"{self.program} run " if is_cli_mode else ""
         if tag:
-            table = Table(
-                title=tag.upper(),
-                title_justify="left",
-                show_header=False,
-                box=box.SIMPLE,
-                show_footer=False,
-            )
             tag_lower = tag.lower()
             commands = [
                 command
@@ -332,27 +338,31 @@ class Falyx:
                 if any(tag_lower == tag.lower() for tag in command.tags)
             ]
             for command in commands:
-                table.add_row(command.help_signature)
-            self.console.print(table)
+                usage, description = command.help_signature
+                self.console.print(usage)
+                if description:
+                    self.console.print(description)
             return
-        else:
-            table = Table(
-                title="Help",
-                title_justify="left",
-                title_style=OneColors.LIGHT_YELLOW_b,
-                show_header=False,
-                show_footer=False,
-                box=box.SIMPLE,
-            )
-            for command in self.commands.values():
-                table.add_row(command.help_signature)
+
+        for command in self.commands.values():
+            usage, description = command.help_signature
+            self.console.print(usage)
+            if description:
+                self.console.print(description)
         if self.help_command:
-            table.add_row(self.help_command.help_signature)
-        if self.history_command:
-            table.add_row(self.history_command.help_signature)
-        table.add_row(self.exit_command.help_signature)
-        table.add_row(f"Tip: '[{OneColors.LIGHT_YELLOW}]?[KEY][/]' to preview a command ")
-        self.console.print(table)
+            usage, description = self.help_command.help_signature
+            self.console.print(usage)
+            self.console.print(description)
+        if not is_cli_mode:
+            if self.history_command:
+                usage, description = self.history_command.help_signature
+                self.console.print(usage)
+                self.console.print(description)
+            usage, _ = self.exit_command.help_signature
+            self.console.print(usage)
+        self.console.print(
+            f"Tip: '{program}[{OneColors.LIGHT_YELLOW}]?[KEY][/]' to preview a command "
+        )
 
     def _get_help_command(self) -> Command:
         """Returns the help command for the menu."""
@@ -361,6 +371,7 @@ class Falyx:
             command_description="Help",
             command_style=OneColors.LIGHT_YELLOW,
             aliases=["?", "HELP", "LIST"],
+            program=self.program,
         )
         parser.add_argument(
             "-t",
@@ -378,6 +389,8 @@ class Falyx:
             style=OneColors.LIGHT_YELLOW,
             arg_parser=parser,
             ignore_in_history=True,
+            options_manager=self.options,
+            program=self.program,
         )
 
     def _get_completer(self) -> FalyxCompleter:
@@ -549,6 +562,8 @@ class Falyx:
             confirm=confirm,
             confirm_message=confirm_message,
             ignore_in_history=True,
+            options_manager=self.options,
+            program=self.program,
         )
 
     def add_submenu(
@@ -729,7 +744,7 @@ class Falyx:
 
     def build_placeholder_menu(self) -> StyleAndTextTuples:
         """
-        Builds a menu placeholder for prompt_menu mode.
+        Builds a menu placeholder for show_placeholder_menu.
         """
         visible_commands = [item for item in self.commands.items() if not item[1].hidden]
         if not visible_commands:

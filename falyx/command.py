@@ -22,6 +22,8 @@ from typing import Any, Awaitable, Callable
 
 from prompt_toolkit.formatted_text import FormattedText
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+from rich.padding import Padding
+from rich.panel import Panel
 from rich.tree import Tree
 
 from falyx.action.action import Action
@@ -32,6 +34,7 @@ from falyx.debug import register_debug_hooks
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
 from falyx.logger import logger
+from falyx.mode import FalyxMode
 from falyx.options_manager import OptionsManager
 from falyx.parser.command_argument_parser import CommandArgumentParser
 from falyx.parser.signature import infer_args_from_func
@@ -348,20 +351,37 @@ class Command(BaseModel):
         return f"  {command_keys_text:<20}  {options_text} "
 
     @property
-    def help_signature(self) -> str:
+    def help_signature(self) -> tuple[Panel, str]:
         """Generate a help signature for the command."""
+        is_cli_mode = self.options_manager.get("mode") in {
+            FalyxMode.RUN,
+            FalyxMode.PREVIEW,
+            FalyxMode.RUN_ALL,
+        }
+
+        program = f"{self.program} run " if is_cli_mode else ""
+
         if self.arg_parser and not self.simple_help_signature:
-            signature = [self.arg_parser.get_usage()]
-            signature.append(f"  {self.help_text or self.description}")
+            usage = Panel(
+                f"[{self.style}]{program}[/]{self.arg_parser.get_usage()}",
+                expand=False,
+            )
+            description = [f"  {self.help_text or self.description}"]
             if self.tags:
-                signature.append(f"  [dim]Tags: {', '.join(self.tags)}[/dim]")
-            return "\n".join(signature).strip()
+                description.append(f"  [dim]Tags: {', '.join(self.tags)}[/dim]")
+            return usage, "\n".join(description)
 
         command_keys = " | ".join(
             [f"[{self.style}]{self.key}[/{self.style}]"]
             + [f"[{self.style}]{alias}[/{self.style}]" for alias in self.aliases]
         )
-        return f"{command_keys}  {self.description}"
+        return (
+            Panel(
+                f"[{self.style}]{program}[/]{command_keys}  {self.description}",
+                expand=False,
+            ),
+            "",
+        )
 
     def log_summary(self) -> None:
         if self._context:
