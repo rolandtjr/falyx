@@ -366,6 +366,7 @@ class Falyx:
         return choice(tips)
 
     async def _show_help(self, tag: str = "") -> None:
+        self.console.print("[bold]help:[/bold]")
         if tag:
             tag_lower = tag.lower()
             commands = [

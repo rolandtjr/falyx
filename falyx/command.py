@@ -351,7 +351,7 @@ class Command(BaseModel):
         return f"  {command_keys_text:<20}  {options_text} "
 
     @property
-    def help_signature(self) -> tuple[Panel, str]:
+    def help_signature(self) -> tuple[Padding, str]:
         """Generate a help signature for the command."""
         is_cli_mode = self.options_manager.get("mode") in {
             FalyxMode.RUN,
@@ -362,13 +362,16 @@ class Command(BaseModel):
         program = f"{self.program} run " if is_cli_mode else ""
 
         if self.arg_parser and not self.simple_help_signature:
-            usage = Panel(
-                f"[{self.style}]{program}[/]{self.arg_parser.get_usage()}",
-                expand=False,
+            usage = Padding(
+                Panel(
+                    f"[{self.style}]{program}[/]{self.arg_parser.get_usage()}",
+                    expand=False,
+                ),
+                (0, 2),
             )
-            description = [f"  {self.help_text or self.description}"]
+            description = [f"    [dim]{self.help_text or self.description}[/dim]"]
             if self.tags:
-                description.append(f"  [dim]Tags: {', '.join(self.tags)}[/dim]")
+                description.append(f"    [dim]Tags: {', '.join(self.tags)}[/dim]")
             return usage, "\n".join(description)
 
         command_keys = " | ".join(
@@ -376,9 +379,12 @@ class Command(BaseModel):
             + [f"[{self.style}]{alias}[/{self.style}]" for alias in self.aliases]
         )
         return (
-            Panel(
-                f"[{self.style}]{program}[/]{command_keys}  {self.description}",
-                expand=False,
+            Padding(
+                Panel(
+                    f"[{self.style}]{program}[/]{command_keys}  {self.description}",
+                    expand=False,
+                ),
+                (0, 2),
             ),
             "",
         )
