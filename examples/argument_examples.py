@@ -82,6 +82,7 @@ flx = Falyx(
     program="argument_examples.py",
     hide_menu_table=True,
     show_placeholder_menu=True,
+    enable_prompt_history=True,
 )
 
 flx.add_command(

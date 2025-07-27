@@ -27,11 +27,13 @@ import sys
 from argparse import ArgumentParser, Namespace, _SubParsersAction
 from difflib import get_close_matches
 from functools import cached_property
+from pathlib import Path
 from random import choice
 from typing import Any, Callable
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import StyleAndTextTuples
+from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.validation import ValidationError
@@ -126,7 +128,6 @@ class Falyx:
         title: str | Markdown = "Menu",
         *,
         program: str | None = "falyx",
-        program_style: str = OneColors.WHITE,
         usage: str | None = None,
         description: str | None = "Falyx CLI - Run structured async command workflows.",
         epilog: str | None = None,
@@ -148,10 +149,12 @@ class Falyx:
         custom_table: Callable[[Falyx], Table] | Table | None = None,
         hide_menu_table: bool = False,
         show_placeholder_menu: bool = False,
+        prompt_history_base_dir: Path = Path.home(),
+        enable_prompt_history: bool = False,
     ) -> None:
         """Initializes the Falyx object."""
         self.title: str | Markdown = title
-        self.program: str | None = program
+        self.program: str = program or ""
         self.usage: str | None = usage
         self.description: str | None = description
         self.epilog: str | None = epilog
@@ -184,6 +187,14 @@ class Falyx:
         self.help_command: Command | None = (
             self._get_help_command() if include_help_command else None
         )
+        if enable_prompt_history:
+            program = (self.program or "falyx").split(".")[0].replace(" ", "_")
+            self.history_path: Path = (
+                Path(prompt_history_base_dir) / f".{program}_history"
+            )
+            self.history: FileHistory | None = FileHistory(self.history_path)
+        else:
+            self.history = None
 
     @property
     def is_cli_mode(self) -> bool:
@@ -334,30 +345,31 @@ class Falyx:
     def get_tip(self) -> str:
         program = f"{self.program} run " if self.is_cli_mode else ""
         tips = [
-            f"Tip: Use '{program}?[KEY]' to preview a command.",
-            f"Tip: Use '{program}?' alone to list all commands at any time.",
+            f"Tip: Use '{program}?[COMMAND]' to preview a command.",
             "Tip: Every command supports aliases—try abbreviating the name!",
             f"Tip: Use '{program}H' to reopen this help menu anytime.",
-            f"Tip: '{program}[KEY] --help' prints a detailed help message.",
-            "Tip: Mix CLI and menu mode—commands run the same way in both.",
+            f"Tip: '{program}[COMMAND] --help' prints a detailed help message.",
+            "Tip: [bold]CLI[/] and [bold]Menu[/] mode—commands run the same way in both.",
             f"Tip: Use '{self.program} --never-prompt' to disable all prompts for the [bold italic]entire menu session[/].",
             f"Tip: Use '{self.program} --verbose' to enable debug logging for a menu session.",
             f"Tip: '{self.program} --debug-hooks' will trace every before/after hook in action.",
-            f"Tip: Run commands directly from the CLI: '{self.program} run [KEY] [OPTIONS]'.",
+            f"Tip: Run commands directly from the CLI: '{self.program} run [COMMAND] [OPTIONS]'.",
         ]
         if self.is_cli_mode:
             tips.extend(
                 [
-                    f"Tip: Use '{self.program} --never-prompt run [KEY]' to disable all prompts for [bold italic]just this command[/].",
-                    f"Tip: Use '{self.program} run --skip-confirm [KEY]' to skip confirmations.",
-                    f"Tip: Use '{self.program} run --summary [KEY]' to print a post-run summary.",
-                    f"Tip: Use '{self.program} --verbose run [KEY]' to enable debug logging for any run.",
+                    f"Tip: Use '{self.program} run ?' to list all commands at any time.",
+                    f"Tip: Use '{self.program} --never-prompt run [COMMAND] [OPTIONS]' to disable all prompts for [bold italic]just this command[/].",
+                    f"Tip: Use '{self.program} run --skip-confirm [COMMAND] [OPTIONS]' to skip confirmations.",
+                    f"Tip: Use '{self.program} run --summary [COMMAND] [OPTIONS]' to print a post-run summary.",
+                    f"Tip: Use '{self.program} --verbose run [COMMAND] [OPTIONS]' to enable debug logging for any run.",
                     "Tip: Use '--skip-confirm' for automation scripts where no prompts are wanted.",
                 ]
             )
         else:
             tips.extend(
                 [
+                    "Tip: Use '[?]' alone to list all commands at any time.",
                     "Tip: '[CTRL+KEY]' toggles are available in menu mode for quick switches.",
                     "Tip: '[Y]' opens the command history viewer.",
                     "Tip: Use '[X]' in menu mode to exit.",
@@ -514,6 +526,7 @@ class Falyx:
             placeholder = self.build_placeholder_menu()
             self._prompt_session = PromptSession(
                 message=self.prompt,
+                history=self.history,
                 multiline=False,
                 completer=self._get_completer(),
                 validator=CommandValidator(self, self._get_validator_error_message()),

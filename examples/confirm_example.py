@@ -101,10 +101,16 @@ def dog_config(parser: CommandArgumentParser) -> None:
         lazy_resolver=False,
         help="List of dogs to process.",
     )
+    parser.add_tldr_examples(
+        [
+            ("max", "Process the dog named Max"),
+            ("bella buddy max", "Process the dogs named Bella, Buddy, and Max"),
+        ]
+    )
 
 
 async def main():
-    flx = Falyx("Save Dogs Example")
+    flx = Falyx("Save Dogs Example", program="confirm_example.py")
 
     flx.add_command(
         key="D",

@@ -63,6 +63,7 @@ class UserInputAction(BaseAction):
         *,
         prompt_message: str = "Input > ",
         default_text: str = "",
+        multiline: bool = False,
         validator: Validator | None = None,
         prompt_session: PromptSession | None = None,
         inject_last_result: bool = False,
@@ -72,11 +73,12 @@ class UserInputAction(BaseAction):
             inject_last_result=inject_last_result,
         )
         self.prompt_message = prompt_message
+        self.default_text = default_text
+        self.multiline = multiline
         self.validator = validator
         self.prompt_session = prompt_session or PromptSession(
             interrupt_exception=CancelSignal
         )
-        self.default_text = default_text
 
     def get_infer_target(self) -> tuple[None, None]:
         return None, None
@@ -100,6 +102,7 @@ class UserInputAction(BaseAction):
                 rich_text_to_prompt_text(prompt_message),
                 validator=self.validator,
                 default=kwargs.get("default_text", self.default_text),
+                multiline=self.multiline,
             )
             context.result = answer
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
