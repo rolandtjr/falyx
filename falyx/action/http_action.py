@@ -77,6 +77,11 @@ class HTTPAction(Action):
         inject_into: str = "last_result",
         retry: bool = False,
         retry_policy=None,
+        spinner: bool = False,
+        spinner_message: str = "Processing...",
+        spinner_type: str = "dots",
+        spinner_style: str = OneColors.CYAN,
+        spinner_speed: float = 1.0,
     ):
         self.method = method.upper()
         self.url = url
@@ -95,6 +100,11 @@ class HTTPAction(Action):
             inject_into=inject_into,
             retry=retry,
             retry_policy=retry_policy,
+            spinner=spinner,
+            spinner_message=spinner_message,
+            spinner_type=spinner_type,
+            spinner_style=spinner_style,
+            spinner_speed=spinner_speed,
         )
 
     async def _request(self, *_, **__) -> dict[str, Any]:

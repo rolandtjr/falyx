@@ -24,7 +24,6 @@ Example usage:
     reporter = ResultReporter()
     hooks.register(HookType.ON_SUCCESS, reporter.report)
 """
-
 import time
 from typing import Any, Callable
 
@@ -32,6 +31,38 @@ from falyx.context import ExecutionContext
 from falyx.exceptions import CircuitBreakerOpen
 from falyx.logger import logger
 from falyx.themes import OneColors
+
+
+async def spinner_before_hook(context: ExecutionContext):
+    """Adds a spinner before the action starts."""
+    cmd = context.action
+    if cmd.options_manager is None:
+        return
+    sm = context.action.options_manager.spinners
+    if hasattr(cmd, "name"):
+        cmd_name = cmd.name
+    else:
+        cmd_name = cmd.key
+    await sm.add(
+        cmd_name,
+        cmd.spinner_message,
+        cmd.spinner_type,
+        cmd.spinner_style,
+        cmd.spinner_speed,
+    )
+
+
+async def spinner_teardown_hook(context: ExecutionContext):
+    """Removes the spinner after the action finishes (success or failure)."""
+    cmd = context.action
+    if cmd.options_manager is None:
+        return
+    if hasattr(cmd, "name"):
+        cmd_name = cmd.name
+    else:
+        cmd_name = cmd.key
+    sm = context.action.options_manager.spinners
+    sm.remove(cmd_name)
 
 
 class ResultReporter:

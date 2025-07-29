@@ -35,6 +35,7 @@ from collections import defaultdict
 from typing import Any, Callable
 
 from falyx.logger import logger
+from falyx.spinner_manager import SpinnerManager
 
 
 class OptionsManager:
@@ -48,6 +49,7 @@ class OptionsManager:
 
     def __init__(self, namespaces: list[tuple[str, Namespace]] | None = None) -> None:
         self.options: defaultdict = defaultdict(Namespace)
+        self.spinners = SpinnerManager()
         if namespaces:
             for namespace_name, namespace in namespaces:
                 self.from_namespace(namespace, namespace_name)

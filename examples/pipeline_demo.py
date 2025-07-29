@@ -1,6 +1,8 @@
 import asyncio
+import random
+import time
 
-from falyx import ExecutionRegistry as er
+from falyx import Falyx
 from falyx.action import Action, ActionGroup, ChainedAction, ProcessAction
 from falyx.retry import RetryHandler, RetryPolicy
 
@@ -17,13 +19,12 @@ def run_static_analysis():
     total = 0
     for i in range(10_000_000):
         total += i % 3
+    time.sleep(5)
     return total
 
 
 # Step 3: Simulated flaky test with retry
 async def flaky_tests():
-    import random
-
     await asyncio.sleep(0.3)
     if random.random() < 0.3:
         raise RuntimeError("❌ Random test failure!")
@@ -34,7 +35,7 @@ async def flaky_tests():
 # Step 4: Multiple deploy targets (parallel ActionGroup)
 async def deploy_to(target: str):
     print(f"🚀 Deploying to {target}...")
-    await asyncio.sleep(0.2)
+    await asyncio.sleep(random.randint(2, 6))
     return f"{target} complete"
 
 
@@ -43,7 +44,12 @@ def build_pipeline():
 
     # Base actions
     checkout = Action("Checkout", checkout_code)
-    analysis = ProcessAction("Static Analysis", run_static_analysis)
+    analysis = ProcessAction(
+        "Static Analysis",
+        run_static_analysis,
+        spinner=True,
+        spinner_message="Analyzing code...",
+    )
     tests = Action("Run Tests", flaky_tests)
     tests.hooks.register("on_error", retry_handler.retry_on_error)
 
@@ -51,9 +57,27 @@ def build_pipeline():
     deploy_group = ActionGroup(
         "Deploy to All",
         [
-            Action("Deploy US", deploy_to, args=("us-west",)),
-            Action("Deploy EU", deploy_to, args=("eu-central",)),
-            Action("Deploy Asia", deploy_to, args=("asia-east",)),
+            Action(
+                "Deploy US",
+                deploy_to,
+                args=("us-west",),
+                spinner=True,
+                spinner_message="Deploying US...",
+            ),
+            Action(
+                "Deploy EU",
+                deploy_to,
+                args=("eu-central",),
+                spinner=True,
+                spinner_message="Deploying EU...",
+            ),
+            Action(
+                "Deploy Asia",
+                deploy_to,
+                args=("asia-east",),
+                spinner=True,
+                spinner_message="Deploying Asia...",
+            ),
         ],
     )
 
@@ -66,10 +90,18 @@ pipeline = build_pipeline()
 
 # Run the pipeline
 async def main():
-    pipeline = build_pipeline()
-    await pipeline()
-    er.summary()
-    await pipeline.preview()
+
+    flx = Falyx()
+    flx.add_command(
+        "A",
+        "Action Thing",
+        pipeline,
+        spinner=True,
+        spinner_type="line",
+        spinner_message="Running pipeline...",
+    )
+
+    await flx.run()
 
 
 if __name__ == "__main__":

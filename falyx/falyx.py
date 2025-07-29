@@ -32,6 +32,7 @@ from random import choice
 from typing import Any, Callable
 
 from prompt_toolkit import PromptSession
+from prompt_toolkit.application import get_app
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
@@ -59,6 +60,7 @@ from falyx.exceptions import (
 )
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import Hook, HookManager, HookType
+from falyx.hooks import spinner_before_hook, spinner_teardown_hook
 from falyx.logger import logger
 from falyx.mode import FalyxMode
 from falyx.options_manager import OptionsManager
@@ -666,7 +668,7 @@ class Falyx:
         spinner_message: str = "Processing...",
         spinner_type: str = "dots",
         spinner_style: str = OneColors.CYAN,
-        spinner_kwargs: dict[str, Any] | None = None,
+        spinner_speed: float = 1.0,
         hooks: HookManager | None = None,
         before_hooks: list[Callable] | None = None,
         success_hooks: list[Callable] | None = None,
@@ -716,7 +718,7 @@ class Falyx:
             spinner_message=spinner_message,
             spinner_type=spinner_type,
             spinner_style=spinner_style,
-            spinner_kwargs=spinner_kwargs or {},
+            spinner_speed=spinner_speed,
             tags=tags if tags else [],
             logging_hooks=logging_hooks,
             retry=retry,
@@ -750,6 +752,10 @@ class Falyx:
             command.hooks.register(HookType.AFTER, hook)
         for hook in teardown_hooks or []:
             command.hooks.register(HookType.ON_TEARDOWN, hook)
+
+        if spinner:
+            command.hooks.register(HookType.BEFORE, spinner_before_hook)
+            command.hooks.register(HookType.ON_TEARDOWN, spinner_teardown_hook)
 
         self.commands[key] = command
         return command
@@ -948,6 +954,9 @@ class Falyx:
 
     async def process_command(self) -> bool:
         """Processes the action of the selected command."""
+        app = get_app()
+        await asyncio.sleep(0.01)
+        app.invalidate()
         with patch_stdout(raw=True):
             choice = await self.prompt_session.prompt_async()
         is_preview, selected_command, args, kwargs = await self.get_command(choice)

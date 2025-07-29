@@ -39,8 +39,10 @@ from falyx.console import console
 from falyx.context import SharedContext
 from falyx.debug import register_debug_hooks
 from falyx.hook_manager import Hook, HookManager, HookType
+from falyx.hooks import spinner_before_hook, spinner_teardown_hook
 from falyx.logger import logger
 from falyx.options_manager import OptionsManager
+from falyx.themes import OneColors
 
 
 class BaseAction(ABC):
@@ -71,6 +73,11 @@ class BaseAction(ABC):
         never_prompt: bool | None = None,
         logging_hooks: bool = False,
         ignore_in_history: bool = False,
+        spinner: bool = False,
+        spinner_message: str = "Processing...",
+        spinner_type: str = "dots",
+        spinner_style: str = OneColors.CYAN,
+        spinner_speed: float = 1.0,
     ) -> None:
         self.name = name
         self.hooks = hooks or HookManager()
@@ -83,6 +90,14 @@ class BaseAction(ABC):
         self.console: Console = console
         self.options_manager: OptionsManager | None = None
         self.ignore_in_history: bool = ignore_in_history
+        self.spinner_message = spinner_message
+        self.spinner_type = spinner_type
+        self.spinner_style = spinner_style
+        self.spinner_speed = spinner_speed
+
+        if spinner:
+            self.hooks.register(HookType.BEFORE, spinner_before_hook)
+            self.hooks.register(HookType.ON_TEARDOWN, spinner_teardown_hook)
 
         if logging_hooks:
             register_debug_hooks(self.hooks)
@@ -132,6 +147,13 @@ class BaseAction(ABC):
         if self._never_prompt is not None:
             return self._never_prompt
         return self.get_option("never_prompt", False)
+
+    @property
+    def spinner_manager(self):
+        """Shortcut to access SpinnerManager via the OptionsManager."""
+        if not self.options_manager:
+            raise RuntimeError("SpinnerManager is not available (no OptionsManager set).")
+        return self.options_manager.spinners
 
     def prepare(
         self, shared_context: SharedContext, options_manager: OptionsManager | None = None

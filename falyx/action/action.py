@@ -83,14 +83,28 @@ class Action(BaseAction):
         hooks: HookManager | None = None,
         inject_last_result: bool = False,
         inject_into: str = "last_result",
+        never_prompt: bool | None = None,
+        logging_hooks: bool = False,
         retry: bool = False,
         retry_policy: RetryPolicy | None = None,
+        spinner: bool = False,
+        spinner_message: str = "Processing...",
+        spinner_type: str = "dots",
+        spinner_style: str = OneColors.CYAN,
+        spinner_speed: float = 1.0,
     ) -> None:
         super().__init__(
             name,
             hooks=hooks,
             inject_last_result=inject_last_result,
             inject_into=inject_into,
+            never_prompt=never_prompt,
+            logging_hooks=logging_hooks,
+            spinner=spinner,
+            spinner_message=spinner_message,
+            spinner_type=spinner_type,
+            spinner_style=spinner_style,
+            spinner_speed=spinner_speed,
         )
         self.action = action
         self.rollback = rollback

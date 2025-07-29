@@ -120,7 +120,7 @@ class RawCommand(BaseModel):
     spinner_message: str = "Processing..."
     spinner_type: str = "dots"
     spinner_style: str = OneColors.CYAN
-    spinner_kwargs: dict[str, Any] = Field(default_factory=dict)
+    spinner_speed: float = 1.0
 
     before_hooks: list[Callable] = Field(default_factory=list)
     success_hooks: list[Callable] = Field(default_factory=list)

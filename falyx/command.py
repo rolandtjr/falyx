@@ -82,7 +82,7 @@ class Command(BaseModel):
         spinner_message (str): Spinner text message.
         spinner_type (str): Spinner style (e.g., dots, line, etc.).
         spinner_style (str): Color or style of the spinner.
-        spinner_kwargs (dict): Extra spinner configuration.
+        spinner_speed (float): Speed of the spinner animation.
         hooks (HookManager): Hook manager for lifecycle events.
         retry (bool): Enable retry on failure.
         retry_all (bool): Enable retry across chained or grouped actions.
@@ -128,7 +128,7 @@ class Command(BaseModel):
     spinner_message: str = "Processing..."
     spinner_type: str = "dots"
     spinner_style: str = OneColors.CYAN
-    spinner_kwargs: dict[str, Any] = Field(default_factory=dict)
+    spinner_speed: float = 1.0
     hooks: "HookManager" = Field(default_factory=HookManager)
     retry: bool = False
     retry_all: bool = False
@@ -286,16 +286,7 @@ class Command(BaseModel):
 
         try:
             await self.hooks.trigger(HookType.BEFORE, context)
-            if self.spinner:
-                with console.status(
-                    self.spinner_message,
-                    spinner=self.spinner_type,
-                    spinner_style=self.spinner_style,
-                    **self.spinner_kwargs,
-                ):
-                    result = await self.action(*combined_args, **combined_kwargs)
-            else:
-                result = await self.action(*combined_args, **combined_kwargs)
+            result = await self.action(*combined_args, **combined_kwargs)
 
             context.result = result
             await self.hooks.trigger(HookType.ON_SUCCESS, context)
