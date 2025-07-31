@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "falyx"
-version = "0.1.77"
+version = "0.1.78"
 description = "Reliable and introspectable async CLI action framework."
 authors = ["Roland Thomas Jr <roland@rtj.dev>"]
 license = "MIT"
@@ -10,7 +10,7 @@ packages = [{ include = "falyx" }]
 [tool.poetry.dependencies]
 python = ">=3.10"
 prompt_toolkit = "^3.0"
-rich = "^13.0"
+rich = "^14.0"
 pydantic = "^2.0"
 python-json-logger = "^3.3.0"
 toml = "^0.10"

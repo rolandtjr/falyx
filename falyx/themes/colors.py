@@ -1,6 +1,5 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """
-colors.py
-
 A Python module that integrates the Nord color palette with the Rich library.
 It defines a metaclass-based NordColors class allowing dynamic attribute lookups
 (e.g., NORD12bu -> "#D08770 bold underline") and provides a comprehensive Nord-based

@@ -1,3 +1,4 @@
+# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
 """
 Centralized spinner rendering for Falyx CLI.
 
@@ -43,13 +44,13 @@ Design Notes:
 """
 
 import asyncio
-import threading
 
 from rich.console import Group
 from rich.live import Live
 from rich.spinner import Spinner
 
 from falyx.console import console
+from falyx.logger import logger
 from falyx.themes import OneColors
 
 
@@ -133,7 +134,7 @@ class SpinnerManager:
         self._task: asyncio.Task | None = None
         self._running: bool = False
 
-        self._start_lock = threading.Lock()
+        self._lock = asyncio.Lock()
 
     async def add(
         self,
@@ -150,9 +151,10 @@ class SpinnerManager:
             spinner_style=spinner_style,
             spinner_speed=spinner_speed,
         )
-        with self._start_lock:
+        async with self._lock:
             if not self._running:
-                self._start_live()
+                logger.debug("[%s] Starting spinner manager Live loop.", name)
+                await self._start_live()
 
     def update(
         self,
@@ -174,13 +176,17 @@ class SpinnerManager:
                 data.spinner_type = spinner_type
                 data.spinner = Spinner(spinner_type, text=data.text)
 
-    def remove(self, name: str):
+    async def remove(self, name: str):
         """Remove a spinner and stop the Live loop if no spinners remain."""
         self._spinners.pop(name, None)
-        if not self._spinners:
-            self._running = False
+        async with self._lock:
+            if not self._spinners:
+                logger.debug("[%s] Stopping spinner manager, no spinners left.", name)
+                if self._task:
+                    self._task.cancel()
+                self._running = False
 
-    def _start_live(self):
+    async def _start_live(self):
         """Start the Live rendering loop in the background."""
         self._running = True
         self._task = asyncio.create_task(self._live_loop())

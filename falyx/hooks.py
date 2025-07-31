@@ -3,6 +3,8 @@
 Defines reusable lifecycle hooks for Falyx Actions and Commands.
 
 This module includes:
+- `spinner_before_hook`: Automatically starts a spinner before an action runs.
+- `spinner_teardown_hook`: Stops and clears the spinner after the action completes.
 - `ResultReporter`: A success hook that displays a formatted result with duration.
 - `CircuitBreaker`: A failure-aware hook manager that prevents repeated execution
   after a configurable number of failures.
@@ -11,6 +13,7 @@ These hooks can be registered on `HookManager` instances via lifecycle stages
 (`before`, `on_error`, `after`, etc.) to enhance resiliency and observability.
 
 Intended for use with:
+- Actions that require user feedback during long-running operations.
 - Retryable or unstable actions
 - Interactive CLI feedback
 - Safety checks prior to execution
@@ -62,7 +65,7 @@ async def spinner_teardown_hook(context: ExecutionContext):
     else:
         cmd_name = cmd.key
     sm = context.action.options_manager.spinners
-    sm.remove(cmd_name)
+    await sm.remove(cmd_name)
 
 
 class ResultReporter:

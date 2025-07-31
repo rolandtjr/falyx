@@ -41,6 +41,8 @@ from prompt_toolkit.validation import ValidationError
 from rich import box
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.padding import Padding
+from rich.panel import Panel
 from rich.table import Table
 
 from falyx.action.action import Action
@@ -347,71 +349,97 @@ class Falyx:
     def get_tip(self) -> str:
         program = f"{self.program} run " if self.is_cli_mode else ""
         tips = [
-            f"Tip: Use '{program}?[COMMAND]' to preview a command.",
-            "Tip: Every command supports aliases—try abbreviating the name!",
-            f"Tip: Use '{program}H' to reopen this help menu anytime.",
-            f"Tip: '{program}[COMMAND] --help' prints a detailed help message.",
-            "Tip: [bold]CLI[/] and [bold]Menu[/] mode—commands run the same way in both.",
-            f"Tip: Use '{self.program} --never-prompt' to disable all prompts for the [bold italic]entire menu session[/].",
-            f"Tip: Use '{self.program} --verbose' to enable debug logging for a menu session.",
-            f"Tip: '{self.program} --debug-hooks' will trace every before/after hook in action.",
-            f"Tip: Run commands directly from the CLI: '{self.program} run [COMMAND] [OPTIONS]'.",
+            f"Use '{program}?[COMMAND]' to preview a command.",
+            "Every command supports aliases—try abbreviating the name!",
+            f"Use '{program}H' to reopen this help menu anytime.",
+            f"'{program}[COMMAND] --help' prints a detailed help message.",
+            "[bold]CLI[/] and [bold]Menu[/] mode—commands run the same way in both.",
+            f"'{self.program} --never-prompt' to disable all prompts for the [bold italic]entire menu session[/].",
+            f"Use '{self.program} --verbose' to enable debug logging for a menu session.",
+            f"'{self.program} --debug-hooks' will trace every before/after hook in action.",
+            f"Run commands directly from the CLI: '{self.program} run [COMMAND] [OPTIONS]'.",
         ]
         if self.is_cli_mode:
             tips.extend(
                 [
-                    f"Tip: Use '{self.program} run ?' to list all commands at any time.",
-                    f"Tip: Use '{self.program} --never-prompt run [COMMAND] [OPTIONS]' to disable all prompts for [bold italic]just this command[/].",
-                    f"Tip: Use '{self.program} run --skip-confirm [COMMAND] [OPTIONS]' to skip confirmations.",
-                    f"Tip: Use '{self.program} run --summary [COMMAND] [OPTIONS]' to print a post-run summary.",
-                    f"Tip: Use '{self.program} --verbose run [COMMAND] [OPTIONS]' to enable debug logging for any run.",
-                    "Tip: Use '--skip-confirm' for automation scripts where no prompts are wanted.",
+                    f"Use '{self.program} run ?' to list all commands at any time.",
+                    f"Use '{self.program} --never-prompt run [COMMAND] [OPTIONS]' to disable all prompts for [bold italic]just this command[/].",
+                    f"Use '{self.program} run --skip-confirm [COMMAND] [OPTIONS]' to skip confirmations.",
+                    f"Use '{self.program} run --summary [COMMAND] [OPTIONS]' to print a post-run summary.",
+                    f"Use '{self.program} --verbose run [COMMAND] [OPTIONS]' to enable debug logging for any run.",
+                    "Use '--skip-confirm' for automation scripts where no prompts are wanted.",
                 ]
             )
         else:
             tips.extend(
                 [
-                    "Tip: Use '[?]' alone to list all commands at any time.",
-                    "Tip: '[CTRL+KEY]' toggles are available in menu mode for quick switches.",
-                    "Tip: '[Y]' opens the command history viewer.",
-                    "Tip: Use '[X]' in menu mode to exit.",
+                    "Use '[?]' alone to list all commands at any time.",
+                    "'[CTRL+KEY]' toggles are available in menu mode for quick switches.",
+                    "'[Y]' opens the command history viewer.",
+                    "Use '[X]' in menu mode to exit.",
                 ]
             )
         return choice(tips)
 
-    async def _show_help(self, tag: str = "") -> None:
-        self.console.print("[bold]help:[/bold]")
+    async def _render_help(self, tag: str = "") -> None:
         if tag:
             tag_lower = tag.lower()
+            self.console.print(f"[bold]{tag_lower}:[/bold]")
             commands = [
                 command
                 for command in self.commands.values()
                 if any(tag_lower == tag.lower() for tag in command.tags)
             ]
+            if not commands:
+                self.console.print(f"'{tag}'... Nothing to show here")
+                return
             for command in commands:
-                usage, description = command.help_signature
+                usage, description, _ = command.help_signature
                 self.console.print(usage)
                 if description:
                     self.console.print(description)
             return
 
+        self.console.print("[bold]help:[/bold]")
         for command in self.commands.values():
-            usage, description = command.help_signature
-            self.console.print(usage)
-            if description:
-                self.console.print(description)
+            usage, description, tag = command.help_signature
+            self.console.print(
+                Padding(
+                    Panel(
+                        usage,
+                        expand=False,
+                        title=description,
+                        title_align="left",
+                        subtitle=tag,
+                    ),
+                    (0, 2),
+                )
+            )
         if self.help_command:
-            usage, description = self.help_command.help_signature
-            self.console.print(usage)
-            self.console.print(description)
+            usage, description, _ = self.help_command.help_signature
+            self.console.print(
+                Padding(
+                    Panel(usage, expand=False, title=description, title_align="left"),
+                    (0, 2),
+                )
+            )
         if not self.is_cli_mode:
             if self.history_command:
-                usage, description = self.history_command.help_signature
-                self.console.print(usage)
-                self.console.print(description)
-            usage, _ = self.exit_command.help_signature
-            self.console.print(usage)
-        self.console.print(self.get_tip())
+                usage, description, _ = self.history_command.help_signature
+                self.console.print(
+                    Padding(
+                        Panel(usage, expand=False, title=description, title_align="left"),
+                        (0, 2),
+                    )
+                )
+            usage, description, _ = self.exit_command.help_signature
+            self.console.print(
+                Padding(
+                    Panel(usage, expand=False, title=description, title_align="left"),
+                    (0, 2),
+                )
+            )
+        self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
 
     def _get_help_command(self) -> Command:
         """Returns the help command for the menu."""
@@ -434,7 +462,7 @@ class Falyx:
             aliases=["?", "HELP", "LIST"],
             description="Help",
             help_text="Show this help menu",
-            action=Action("Help", self._show_help),
+            action=Action("Help", self._render_help),
             style=OneColors.LIGHT_YELLOW,
             arg_parser=parser,
             ignore_in_history=True,
@@ -884,7 +912,7 @@ class Falyx:
                 args, kwargs = await run_command.parse_args(input_args, from_validate)
             except (CommandArgumentError, Exception) as error:
                 if not from_validate:
-                    run_command.show_help()
+                    run_command.render_help()
                     self.console.print(
                         f"[{OneColors.DARK_RED}]❌ [{run_command.key}]: {error}"
                     )
@@ -955,7 +983,7 @@ class Falyx:
     async def process_command(self) -> bool:
         """Processes the action of the selected command."""
         app = get_app()
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0.1)
         app.invalidate()
         with patch_stdout(raw=True):
             choice = await self.prompt_session.prompt_async()
@@ -1171,7 +1199,7 @@ class Falyx:
             self.register_all_with_debug_hooks()
 
         if self.cli_args.command == "list":
-            await self._show_help(tag=self.cli_args.tag)
+            await self._render_help(tag=self.cli_args.tag)
             sys.exit(0)
 
         if self.cli_args.command == "version" or self.cli_args.version:
@@ -1210,7 +1238,7 @@ class Falyx:
                 sys.exit(0)
             except CommandArgumentError as error:
                 self.console.print(f"[{OneColors.DARK_RED}]❌ ['{command.key}'] {error}")
-                command.show_help()
+                command.render_help()
                 sys.exit(1)
             try:
                 await self.run_key(self.cli_args.name, args=args, kwargs=kwargs)

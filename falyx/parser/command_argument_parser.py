@@ -24,6 +24,7 @@ Public Interface:
 - `parse_args(...)`: Parse CLI-style argument list into a `dict[str, Any]`.
 - `parse_args_split(...)`: Return `(*args, **kwargs)` for Action invocation.
 - `render_help()`: Render a rich-styled help panel.
+- `render_tldr()`: Render quick usage examples.
 - `suggest_next(...)`: Return suggested flags or values for completion.
 
 Example Usage:
@@ -1379,8 +1380,12 @@ class CommandArgumentParser:
             usage = f"{command} {example.usage.strip()}"
             description = example.description.strip()
             block = f"[bold]{usage}[/bold]"
-            self.console.print(Padding(Panel(block, expand=False), (0, 2)))
-            self.console.print(f"    {description}", style="dim")
+            self.console.print(
+                Padding(
+                    Panel(block, expand=False, title=description, title_align="left"),
+                    (0, 2),
+                )
+            )
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, CommandArgumentParser):
