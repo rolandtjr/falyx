@@ -1155,7 +1155,57 @@ class Falyx:
         subparsers: _SubParsersAction | None = None,
         callback: Callable[..., Any] | None = None,
     ) -> None:
-        """Run Falyx CLI with structured subcommands."""
+        """
+        Entrypoint for executing a Falyx CLI application via structured subcommands.
+
+        This method parses CLI arguments, configures the runtime environment, and dispatches
+        execution to the appropriate command mode:
+
+        • **list** - Show help output, optionally filtered by tag.
+        • **version** - Print the program version and exit.
+        • **preview** - Display a preview of the specified command without executing it.
+        • **run** - Execute a single command with parsed arguments and lifecycle hooks.
+        • **run-all** - Run all commands matching a tag concurrently (with default args).
+        • (default) - Launch the interactive Falyx menu loop.
+
+        It also applies CLI flags such as `--verbose`, `--debug-hooks`, and summary reporting,
+        and supports an optional callback for post-parse setup.
+
+        Args:
+            falyx_parsers (FalyxParsers | None):
+                Preconfigured argument parser set. If not provided, a default parser
+                is created using the registered commands and passed-in `root_parser`
+                or `subparsers`.
+            root_parser (ArgumentParser | None):
+                Optional root parser to merge into the CLI (used if `falyx_parsers`
+                is not supplied).
+            subparsers (_SubParsersAction | None):
+                Optional subparser group to extend (used if `falyx_parsers` is not supplied).
+            callback (Callable[..., Any] | None):
+                An optional function or coroutine to run after parsing CLI arguments,
+                typically for initializing logging, environment setup, or other
+                pre-execution configuration.
+
+        Raises:
+            FalyxError:
+                If invalid parser objects are supplied, or CLI arguments conflict
+                with the expected run mode.
+            SystemExit:
+                Exits with an appropriate exit code based on the selected command
+                or signal (e.g. Ctrl+C triggers exit code 130).
+
+        Notes:
+            - `run-all` executes all tagged commands **in parallel** and does not
+            supply arguments to individual commands; use `ChainedAction` or explicit
+            CLI calls for ordered or parameterized workflows.
+            - Most CLI commands exit the process via `sys.exit()` after completion.
+            - For interactive sessions, this method falls back to `menu()`.
+
+        Example:
+            >>> flx = Falyx()
+            >>> await flx.run()   # Parses CLI args and dispatches appropriately
+        """
+
         if self.cli_args:
             raise FalyxError(
                 "Run is incompatible with CLI arguments. Use 'run_key' instead."
@@ -1247,13 +1297,13 @@ class Falyx:
                 sys.exit(1)
             except QuitSignal:
                 logger.info("[QuitSignal]. <- Exiting run.")
-                sys.exit(0)
+                sys.exit(130)
             except BackSignal:
                 logger.info("[BackSignal]. <- Exiting run.")
-                sys.exit(0)
+                sys.exit(1)
             except CancelSignal:
                 logger.info("[CancelSignal]. <- Exiting run.")
-                sys.exit(0)
+                sys.exit(1)
 
             if self.cli_args.summary:
                 er.summary()
@@ -1278,22 +1328,35 @@ class Falyx:
                 f"{self.cli_args.tag}"
             )
 
-            for cmd in matching:
-                self._set_retry_policy(cmd)
-                try:
-                    await self.run_key(cmd.key)
-                except FalyxError as error:
-                    self.console.print(f"[{OneColors.DARK_RED}]❌ Error: {error}[/]")
-                    sys.exit(1)
-                except QuitSignal:
+            tasks = []
+            try:
+                for cmd in matching:
+                    self._set_retry_policy(cmd)
+                    tasks.append(self.run_key(cmd.key))
+            except Exception as error:
+                self.console.print(
+                    f"[{OneColors.DARK_RED}]❌ Unexpected error: {error}[/]"
+                )
+                sys.exit(1)
+
+            had_errors = False
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, QuitSignal):
                     logger.info("[QuitSignal]. <- Exiting run.")
-                    sys.exit(0)
-                except BackSignal:
-                    logger.info("[BackSignal]. <- Exiting run.")
-                    sys.exit(0)
-                except CancelSignal:
-                    logger.info("[CancelSignal]. <- Exiting run.")
-                    sys.exit(0)
+                    sys.exit(130)
+                elif isinstance(result, CancelSignal):
+                    logger.info("[CancelSignal]. <- Execution cancelled.")
+                    sys.exit(1)
+                elif isinstance(result, BackSignal):
+                    logger.info("[BackSignal]. <- Back signal received.")
+                    sys.exit(1)
+                elif isinstance(result, FalyxError):
+                    self.console.print(f"[{OneColors.DARK_RED}]❌ Error: {result}[/]")
+                    had_errors = True
+
+            if had_errors:
+                sys.exit(1)
 
             if self.cli_args.summary:
                 er.summary()
