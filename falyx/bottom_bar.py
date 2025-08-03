@@ -21,12 +21,14 @@ Key Features:
 - Columnar layout with automatic width scaling
 - Optional integration with `OptionsManager` for dynamic state toggling
 
-Usage Example:
+Example:
+    ```
     bar = BottomBar(columns=3)
     bar.add_static("env", "ENV: dev")
     bar.add_toggle("d", "Debug", get_debug, toggle_debug)
     bar.add_value_tracker("attempts", "Retries", get_retry_count)
     bar.render()
+    ```
 
 Used by Falyx to provide a persistent UI element showing toggles, system state,
 and runtime telemetry below the input prompt.

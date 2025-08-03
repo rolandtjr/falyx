@@ -118,6 +118,10 @@ def words_validator(
 
 def word_validator(word: str) -> Validator:
     """Validator for specific word inputs."""
+    if word.upper() == "N":
+        raise ValueError(
+            "The word 'N' is reserved for yes/no validation. Use yes_no_validator instead."
+        )
 
     def validate(text: str) -> bool:
         if text.upper().strip() == "N":

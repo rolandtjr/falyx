@@ -1,5 +1,6 @@
 import asyncio
 from enum import Enum
+from pathlib import Path
 
 from falyx import Falyx
 from falyx.action import Action
@@ -21,13 +22,14 @@ async def test_args(
     service: str,
     place: Place = Place.NEW_YORK,
     region: str = "us-east-1",
+    path: Path | None = None,
     tag: str | None = None,
     verbose: bool | None = None,
     number: int | None = None,
 ) -> str:
     if verbose:
-        print(f"Deploying {service}:{tag}:{number} to {region} at {place}...")
-    return f"{service}:{tag}:{number} deployed to {region} at {place}"
+        print(f"Deploying {service}:{tag}:{number} to {region} at {place} from {path}...")
+    return f"{service}:{tag}:{number} deployed to {region} at {place} from {path}."
 
 
 def default_config(parser: CommandArgumentParser) -> None:
@@ -51,6 +53,11 @@ def default_config(parser: CommandArgumentParser) -> None:
         default="us-east-1",
         help="Deployment region.",
         choices=["us-east-1", "us-west-2", "eu-west-1"],
+    )
+    parser.add_argument(
+        "--path",
+        type=Path,
+        help="Path to the configuration file.",
     )
     parser.add_argument(
         "--verbose",

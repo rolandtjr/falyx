@@ -49,6 +49,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from copy import deepcopy
+from pathlib import Path
 from typing import Any, Iterable, Sequence
 
 from rich.console import Console
@@ -1101,6 +1102,24 @@ class CommandArgumentParser:
                 kwargs_dict[arg.dest] = parsed[arg.dest]
         return tuple(args_list), kwargs_dict
 
+    def _suggest_paths(self, stub: str) -> list[str]:
+        """Return filesystem path suggestions based on a stub."""
+        path = Path(stub or ".").expanduser()
+        base_dir = path if path.is_dir() else path.parent
+        if not base_dir.exists():
+            return []
+        completions = []
+        for child in base_dir.iterdir():
+            name = str(child)
+            if child.is_dir():
+                name += "/"
+            completions.append(name)
+        if stub and not path.is_dir():
+            completions = [
+                completion for completion in completions if completion.startswith(stub)
+            ]
+        return completions[:100]
+
     def suggest_next(
         self, args: list[str], cursor_at_end_of_token: bool = False
     ) -> list[str]:
@@ -1117,6 +1136,7 @@ class CommandArgumentParser:
             list[str]: List of suggested completions.
         """
 
+        last = args[-1] if args else ""
         # Case 1: Next positional argument
         next_non_consumed_positional: Argument | None = None
         for state in self._last_positional_states.values():
@@ -1126,11 +1146,33 @@ class CommandArgumentParser:
 
         if next_non_consumed_positional:
             if next_non_consumed_positional.choices:
+                if (
+                    cursor_at_end_of_token
+                    and last
+                    and any(
+                        str(choice).startswith(last)
+                        for choice in next_non_consumed_positional.choices
+                    )
+                    and next_non_consumed_positional.nargs in (1, "?", None)
+                ):
+                    return []
                 return sorted(
                     (str(choice) for choice in next_non_consumed_positional.choices)
                 )
             if next_non_consumed_positional.suggestions:
+                if (
+                    cursor_at_end_of_token
+                    and last
+                    and any(
+                        str(suggestion).startswith(last)
+                        for suggestion in next_non_consumed_positional.suggestions
+                    )
+                    and next_non_consumed_positional.nargs in (1, "?", None)
+                ):
+                    return []
                 return sorted(next_non_consumed_positional.suggestions)
+            if next_non_consumed_positional.type == Path:
+                return self._suggest_paths(args[-1] if args else "")
 
         consumed_dests = [
             state.arg.dest
@@ -1163,12 +1205,13 @@ class CommandArgumentParser:
                 and next_to_last in self._keyword
                 and next_to_last in remaining_flags
             ):
-                # If the last token is a mid-flag, suggest based on the previous flag
                 arg = self._keyword[next_to_last]
                 if arg.choices:
-                    suggestions.extend(arg.choices)
+                    suggestions.extend((str(choice) for choice in arg.choices))
                 elif arg.suggestions:
-                    suggestions.extend(arg.suggestions)
+                    suggestions.extend(
+                        (str(suggestion) for suggestion in arg.suggestions)
+                    )
             else:
                 possible_flags = [
                     flag
@@ -1185,9 +1228,11 @@ class CommandArgumentParser:
             ):
                 pass
             elif arg.choices:
-                suggestions.extend(arg.choices)
+                suggestions.extend((str(choice) for choice in arg.choices))
             elif arg.suggestions:
-                suggestions.extend(arg.suggestions)
+                suggestions.extend((str(suggestion) for suggestion in arg.suggestions))
+            elif arg.type == Path:
+                suggestions.extend(self._suggest_paths("."))
         # Case 4: Last flag with choices mid-choice (e.g., ["--tag", "v"])
         elif next_to_last in self._keyword:
             arg = self._keyword[next_to_last]
@@ -1204,7 +1249,7 @@ class CommandArgumentParser:
             ):
                 pass
             elif arg.choices and last not in arg.choices and not cursor_at_end_of_token:
-                suggestions.extend(arg.choices)
+                suggestions.extend((str(choice) for choice in arg.choices))
             elif (
                 arg.suggestions
                 and last not in arg.suggestions
@@ -1212,9 +1257,11 @@ class CommandArgumentParser:
                 and any(suggestion.startswith(last) for suggestion in arg.suggestions)
                 and not cursor_at_end_of_token
             ):
-                suggestions.extend(arg.suggestions)
+                suggestions.extend((str(suggestion) for suggestion in arg.suggestions))
             elif last_keyword_state_in_args and not last_keyword_state_in_args.consumed:
                 pass
+            elif arg.type == Path and not cursor_at_end_of_token:
+                suggestions.extend(self._suggest_paths(last))
             else:
                 suggestions.extend(remaining_flags)
         elif last_keyword_state_in_args and not last_keyword_state_in_args.consumed:

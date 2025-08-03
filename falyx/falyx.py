@@ -37,6 +37,7 @@ from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.patch_stdout import patch_stdout
+from prompt_toolkit.shortcuts import CompleteStyle
 from prompt_toolkit.validation import ValidationError
 from rich import box
 from rich.console import Console
@@ -395,9 +396,12 @@ class Falyx:
                 return
             for command in commands:
                 usage, description, _ = command.help_signature
-                self.console.print(usage)
-                if description:
-                    self.console.print(description)
+                self.console.print(
+                    Padding(
+                        Panel(usage, expand=False, title=description, title_align="left"),
+                        (0, 2),
+                    )
+                )
             return
 
         self.console.print("[bold]help:[/bold]")
@@ -559,6 +563,7 @@ class Falyx:
                 history=self.history,
                 multiline=False,
                 completer=self._get_completer(),
+                complete_style=CompleteStyle.COLUMN,
                 validator=CommandValidator(self, self._get_validator_error_message()),
                 bottom_toolbar=self._get_bottom_bar_render(),
                 key_bindings=self.key_bindings,
@@ -1161,12 +1166,12 @@ class Falyx:
         This method parses CLI arguments, configures the runtime environment, and dispatches
         execution to the appropriate command mode:
 
-        • **list** - Show help output, optionally filtered by tag.
-        • **version** - Print the program version and exit.
-        • **preview** - Display a preview of the specified command without executing it.
-        • **run** - Execute a single command with parsed arguments and lifecycle hooks.
-        • **run-all** - Run all commands matching a tag concurrently (with default args).
-        • (default) - Launch the interactive Falyx menu loop.
+        - list - Show help output, optionally filtered by tag.
+        - version - Print the program version and exit.
+        - preview - Display a preview of the specified command without executing it.
+        - run - Execute a single command with parsed arguments and lifecycle hooks.
+        - run-all - Run all commands matching a tag concurrently (with default args).
+        - (default) - Launch the interactive Falyx menu loop.
 
         It also applies CLI flags such as `--verbose`, `--debug-hooks`, and summary reporting,
         and supports an optional callback for post-parse setup.
@@ -1202,8 +1207,10 @@ class Falyx:
             - For interactive sessions, this method falls back to `menu()`.
 
         Example:
+            ```
             >>> flx = Falyx()
             >>> await flx.run()   # Parses CLI args and dispatches appropriately
+            ```
         """
 
         if self.cli_args:

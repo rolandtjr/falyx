@@ -17,6 +17,7 @@ Integrated with the `Falyx.prompt_session` to enhance the interactive experience
 
 from __future__ import annotations
 
+import os
 import shlex
 from typing import TYPE_CHECKING, Iterable
 
@@ -69,7 +70,9 @@ class FalyxCompleter(Completer):
 
         if not tokens or (len(tokens) == 1 and not cursor_at_end_of_token):
             # Suggest command keys and aliases
-            yield from self._suggest_commands(tokens[0] if tokens else "")
+            stub = tokens[0] if tokens else ""
+            suggestions = [c.text for c in self._suggest_commands(stub)]
+            yield from self._yield_lcp_completions(suggestions, stub)
             return
 
         # Identify command
@@ -83,21 +86,10 @@ class FalyxCompleter(Completer):
         stub = "" if cursor_at_end_of_token else tokens[-1]
 
         try:
-            if not command.arg_parser:
-                return
             suggestions = command.arg_parser.suggest_next(
                 parsed_args + ([stub] if stub else []), cursor_at_end_of_token
             )
-            for suggestion in suggestions:
-                if suggestion.startswith(stub):
-                    if len(suggestion.split()) > 1:
-                        yield Completion(
-                            f'"{suggestion}"',
-                            start_position=-len(stub),
-                            display=suggestion,
-                        )
-                    else:
-                        yield Completion(suggestion, start_position=-len(stub))
+            yield from self._yield_lcp_completions(suggestions, stub)
         except Exception:
             return
 
@@ -126,3 +118,42 @@ class FalyxCompleter(Completer):
         for key in keys:
             if key.upper().startswith(prefix):
                 yield Completion(key, start_position=-len(prefix))
+
+    def _ensure_quote(self, text: str) -> str:
+        """
+        Ensure the text is properly quoted for shell commands.
+
+        Args:
+            text (str): The input text to quote.
+
+        Returns:
+            str: The quoted text, suitable for shell command usage.
+        """
+        if " " in text or "\t" in text:
+            return f'"{text}"'
+        return text
+
+    def _yield_lcp_completions(self, suggestions, stub):
+        matches = [s for s in suggestions if s.startswith(stub)]
+        if not matches:
+            return
+
+        lcp = os.path.commonprefix(matches)
+
+        if len(matches) == 1:
+            yield Completion(
+                self._ensure_quote(matches[0]),
+                start_position=-len(stub),
+                display=matches[0],
+            )
+        elif len(lcp) > len(stub) and not lcp.startswith("-"):
+            yield Completion(lcp, start_position=-len(stub), display=lcp)
+            for match in matches:
+                yield Completion(
+                    self._ensure_quote(match), start_position=-len(stub), display=match
+                )
+        else:
+            for match in matches:
+                yield Completion(
+                    self._ensure_quote(match), start_position=-len(stub), display=match
+                )
