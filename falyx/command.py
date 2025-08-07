@@ -346,6 +346,7 @@ class Command(BaseModel):
             FalyxMode.RUN,
             FalyxMode.PREVIEW,
             FalyxMode.RUN_ALL,
+            FalyxMode.HELP,
         }
 
         program = f"{self.program} run " if is_cli_mode else ""

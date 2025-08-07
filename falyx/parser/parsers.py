@@ -4,7 +4,7 @@ Provides the argument parser infrastructure for the Falyx CLI.
 
 This module defines the `FalyxParsers` dataclass and related utilities for building
 structured CLI interfaces with argparse. It supports top-level CLI commands like
-`run`, `run-all`, `preview`, `list`, and `version`, and integrates seamlessly with
+`run`, `run-all`, `preview`, `help`, and `version`, and integrates seamlessly with
 registered `Command` objects for dynamic help, usage generation, and argument handling.
 
 Key Components:
@@ -39,7 +39,7 @@ class FalyxParsers:
     run: ArgumentParser
     run_all: ArgumentParser
     preview: ArgumentParser
-    list: ArgumentParser
+    help: ArgumentParser
     version: ArgumentParser
 
     def parse_args(self, args: Sequence[str] | None = None) -> Namespace:
@@ -196,7 +196,7 @@ def get_arg_parsers(
 
     This function builds the root parser and all subcommand parsers used for structured
     CLI workflows in Falyx. It supports standard subcommands including `run`, `run-all`,
-    `preview`, `list`, and `version`, and integrates with registered `Command` objects
+    `preview`, `help`, and `version`, and integrates with registered `Command` objects
     to populate dynamic help and usage documentation.
 
     Args:
@@ -219,7 +219,7 @@ def get_arg_parsers(
 
     Returns:
         FalyxParsers: A structured container of all parsers, including `run`, `run-all`,
-                      `preview`, `list`, `version`, and the root parser.
+                      `preview`, `help`, `version`, and the root parser.
 
     Raises:
         TypeError: If `root_parser` is not an instance of ArgumentParser or
@@ -375,12 +375,24 @@ def get_arg_parsers(
     )
     preview_parser.add_argument("name", help="Key, alias, or description of the command")
 
-    list_parser = subparsers.add_parser(
-        "list", help="List all available commands with tags"
+    help_parser = subparsers.add_parser("help", help="List all available commands")
+
+    help_parser.add_argument(
+        "-t", "--tag", help="Filter commands by tag (case-insensitive)", default=None
     )
 
-    list_parser.add_argument(
-        "-t", "--tag", help="Filter commands by tag (case-insensitive)", default=None
+    help_parser.add_argument(
+        "-k",
+        "--key",
+        help="Show help for a specific command by its key or alias",
+        default=None,
+    )
+
+    help_parser.add_argument(
+        "-T",
+        "--tldr",
+        action="store_true",
+        help="Show a simplified TLDR examples of a command if available",
     )
 
     version_parser = subparsers.add_parser("version", help=f"Show {prog} version")
@@ -391,6 +403,6 @@ def get_arg_parsers(
         run=run_parser,
         run_all=run_all_parser,
         preview=preview_parser,
-        list=list_parser,
+        help=help_parser,
         version=version_parser,
     )

@@ -207,6 +207,7 @@ class Falyx:
             FalyxMode.RUN,
             FalyxMode.PREVIEW,
             FalyxMode.RUN_ALL,
+            FalyxMode.HELP,
         }
 
     def validate_options(
@@ -359,11 +360,12 @@ class Falyx:
             f"Use '{self.program} --verbose' to enable debug logging for a menu session.",
             f"'{self.program} --debug-hooks' will trace every before/after hook in action.",
             f"Run commands directly from the CLI: '{self.program} run [COMMAND] [OPTIONS]'.",
+            "All [COMMAND] keys and aliases are case-insensitive.",
         ]
         if self.is_cli_mode:
             tips.extend(
                 [
-                    f"Use '{self.program} run ?' to list all commands at any time.",
+                    f"Use '{self.program} help' to list all commands at any time.",
                     f"Use '{self.program} --never-prompt run [COMMAND] [OPTIONS]' to disable all prompts for [bold italic]just this command[/].",
                     f"Use '{self.program} run --skip-confirm [COMMAND] [OPTIONS]' to skip confirmations.",
                     f"Use '{self.program} run --summary [COMMAND] [OPTIONS]' to print a post-run summary.",
@@ -382,7 +384,27 @@ class Falyx:
             )
         return choice(tips)
 
-    async def _render_help(self, tag: str = "") -> None:
+    async def _render_help(
+        self, tag: str = "", key: str | None = None, tldr: bool = False
+    ) -> None:
+        if key:
+            _, command, args, kwargs = await self.get_command(key)
+            if command and tldr and command.arg_parser:
+                command.arg_parser.render_tldr()
+                return None
+            elif command and tldr and not command.arg_parser:
+                self.console.print(
+                    f"[bold]No TLDR examples available for '{command.description}'.[/bold]"
+                )
+            elif command and command.arg_parser:
+                command.arg_parser.render_help()
+                return None
+            elif command and not command.arg_parser:
+                self.console.print(
+                    f"[bold]No detailed help available for '{command.description}'.[/bold]"
+                )
+            else:
+                self.console.print(f"[bold]No command found for '{key}'.[/bold]")
         if tag:
             tag_lower = tag.lower()
             self.console.print(f"[bold]{tag_lower}:[/bold]")
@@ -451,7 +473,7 @@ class Falyx:
             command_key="H",
             command_description="Help",
             command_style=OneColors.LIGHT_YELLOW,
-            aliases=["?", "HELP", "LIST"],
+            aliases=["?", "HELP"],
             program=self.program,
         )
         parser.add_argument(
@@ -463,7 +485,7 @@ class Falyx:
         )
         return Command(
             key="H",
-            aliases=["?", "HELP", "LIST"],
+            aliases=["?", "HELP"],
             description="Help",
             help_text="Show this help menu",
             action=Action("Help", self._render_help),
@@ -907,11 +929,7 @@ class Falyx:
                 logger.info("Command '%s' selected.", run_command.key)
             if is_preview:
                 return True, run_command, args, kwargs
-            elif self.options.get("mode") in {
-                FalyxMode.RUN,
-                FalyxMode.RUN_ALL,
-                FalyxMode.PREVIEW,
-            }:
+            elif self.is_cli_mode:
                 return False, run_command, args, kwargs
             try:
                 args, kwargs = await run_command.parse_args(input_args, from_validate)
@@ -1166,7 +1184,7 @@ class Falyx:
         This method parses CLI arguments, configures the runtime environment, and dispatches
         execution to the appropriate command mode:
 
-        - list - Show help output, optionally filtered by tag.
+        - help - Show help output, optionally filtered by tag.
         - version - Print the program version and exit.
         - preview - Display a preview of the specified command without executing it.
         - run - Execute a single command with parsed arguments and lifecycle hooks.
@@ -1255,8 +1273,11 @@ class Falyx:
             logger.debug("Enabling global debug hooks for all commands")
             self.register_all_with_debug_hooks()
 
-        if self.cli_args.command == "list":
-            await self._render_help(tag=self.cli_args.tag)
+        if self.cli_args.command == "help":
+            self.options.set("mode", FalyxMode.HELP)
+            await self._render_help(
+                tag=self.cli_args.tag, key=self.cli_args.key, tldr=self.cli_args.tldr
+            )
             sys.exit(0)
 
         if self.cli_args.command == "version" or self.cli_args.version:

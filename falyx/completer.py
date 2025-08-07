@@ -8,9 +8,13 @@ This completer supports:
 - Argument flag completion for registered commands (e.g. `--tag`, `--name`)
 - Context-aware suggestions based on cursor position and argument structure
 - Interactive value completions (e.g. choices and suggestions defined per argument)
+- File/path-friendly behavior, quoting completions with spaces automatically
 
-Completions are sourced from `CommandArgumentParser.suggest_next`, which analyzes
-parsed tokens to determine appropriate next arguments, flags, or values.
+
+Completions are generated from:
+- Registered commands in `Falyx`
+- Argument metadata and `suggest_next()` from `CommandArgumentParser`
+
 
 Integrated with the `Falyx.prompt_session` to enhance the interactive experience.
 """
@@ -42,9 +46,12 @@ class FalyxCompleter(Completer):
         - Remaining required or optional flags
         - Flag value suggestions (choices or custom completions)
         - Next positional argument hints
+        - Inserts longest common prefix (LCP) completions when applicable
+        - Handles special cases like quoted strings and spaces
+        - Supports dynamic argument suggestions (e.g. flags, file paths, etc.)
 
     Args:
-        falyx (Falyx): The Falyx menu instance containing all command mappings and parsers.
+        falyx (Falyx): The active Falyx instance providing command and parser context.
     """
 
     def __init__(self, falyx: "Falyx"):
@@ -52,14 +59,21 @@ class FalyxCompleter(Completer):
 
     def get_completions(self, document: Document, complete_event) -> Iterable[Completion]:
         """
-        Yield completions based on the current document input.
+        Compute completions for the current user input.
+
+        Analyzes the input buffer, determines whether the user is typing:
+        • A command key/alias
+        • A flag/option
+        • An argument value
+
+        and yields appropriate completions.
 
         Args:
-            document (Document): The prompt_toolkit document containing the input buffer.
-            complete_event: The completion trigger event (unused).
+            document (Document): The current Prompt Toolkit document (input buffer & cursor).
+            complete_event: The triggering event (TAB key, menu display, etc.) — not used here.
 
         Yields:
-            Completion objects matching command keys or argument suggestions.
+            Completion: One or more completions matching the current stub text.
         """
         text = document.text_before_cursor
         try:
@@ -97,8 +111,11 @@ class FalyxCompleter(Completer):
         """
         Suggest top-level command keys and aliases based on the given prefix.
 
+        Filters all known commands (and `exit`, `help`, `history` built-ins)
+        to only those starting with the given prefix.
+
         Args:
-            prefix (str): The user input to match against available commands.
+            prefix (str): The current typed prefix.
 
         Yields:
             Completion: Matching keys or aliases from all registered commands.
@@ -121,7 +138,10 @@ class FalyxCompleter(Completer):
 
     def _ensure_quote(self, text: str) -> str:
         """
-        Ensure the text is properly quoted for shell commands.
+        Ensure that a suggestion is shell-safe by quoting if needed.
+
+        Adds quotes around completions containing whitespace so they can
+        be inserted into the CLI without breaking tokenization.
 
         Args:
             text (str): The input text to quote.
@@ -134,6 +154,22 @@ class FalyxCompleter(Completer):
         return text
 
     def _yield_lcp_completions(self, suggestions, stub):
+        """
+        Yield completions for the current stub using longest-common-prefix logic.
+
+        Behavior:
+        - If only one match → yield it fully.
+        - If multiple matches share a longer prefix → insert the prefix, but also
+            display all matches in the menu.
+        - If no shared prefix → list all matches individually.
+
+        Args:
+            suggestions (list[str]): The raw suggestions to consider.
+            stub (str): The currently typed prefix (used to offset insertion).
+
+        Yields:
+            Completion: Completion objects for the Prompt Toolkit menu.
+        """
         matches = [s for s in suggestions if s.startswith(stub)]
         if not matches:
             return

@@ -10,3 +10,4 @@ class FalyxMode(Enum):
     RUN = "run"
     PREVIEW = "preview"
     RUN_ALL = "run-all"
+    HELP = "help"

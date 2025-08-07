@@ -1192,7 +1192,6 @@ class CommandArgumentParser:
                 )
                 break
 
-        last = args[-1]
         next_to_last = args[-2] if len(args) > 1 else ""
         suggestions: list[str] = []
 
@@ -1399,12 +1398,15 @@ class CommandArgumentParser:
         Displays brief usage examples with descriptions.
         """
         if not self._tldr_examples:
-            self.console.print("[bold]No TLDR examples available.[/bold]")
+            self.console.print(
+                f"[bold]No TLDR examples available for {self.command_key}.[/bold]"
+            )
             return
         is_cli_mode = self.options_manager.get("mode") in {
             FalyxMode.RUN,
             FalyxMode.PREVIEW,
             FalyxMode.RUN_ALL,
+            FalyxMode.HELP,
         }
 
         program = self.program or "falyx"
