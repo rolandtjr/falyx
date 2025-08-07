@@ -366,7 +366,7 @@ class Command(BaseModel):
         )
         return (
             f"[{self.style}]{program}[/]{command_keys}",
-            f"[dim]{self.description}[/dim]",
+            f"[dim]{self.help_text or self.description}[/dim]",
             "",
         )
 

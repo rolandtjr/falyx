@@ -156,9 +156,9 @@ class CommandArgumentParser:
 
         if "tldr" not in self._dest_set:
             tldr = Argument(
-                ("--tldr",),
+                ("--tldr", "-T"),
                 action=ArgumentAction.TLDR,
-                help="Show quick usage examples and exit.",
+                help="Show quick usage examples.",
                 dest="tldr",
             )
             self._register_argument(tldr)
@@ -1408,10 +1408,13 @@ class CommandArgumentParser:
             FalyxMode.RUN_ALL,
             FalyxMode.HELP,
         }
+        is_help_command = self.aliases[0] == "HELP" and self.command_key == "H"
 
         program = self.program or "falyx"
         command = self.aliases[0] if self.aliases else self.command_key
-        if is_cli_mode:
+        if is_help_command and is_cli_mode:
+            command = f"[{self.command_style}]{program} help[/{self.command_style}]"
+        elif is_cli_mode:
             command = (
                 f"[{self.command_style}]{program} run {command}[/{self.command_style}]"
             )

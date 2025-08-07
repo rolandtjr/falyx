@@ -59,7 +59,7 @@ def get_root_parser(
     prog: str | None = "falyx",
     usage: str | None = None,
     description: str | None = "Falyx CLI - Run structured async command workflows.",
-    epilog: str | None = "Tip: Use 'falyx run ?' to show available commands.",
+    epilog: str | None = "Tip: Use 'falyx help' to show available commands.",
     parents: Sequence[ArgumentParser] | None = None,
     prefix_chars: str = "-",
     fromfile_prefix_chars: str | None = None,
@@ -178,7 +178,7 @@ def get_arg_parsers(
     description: str | None = "Falyx CLI - Run structured async command workflows.",
     epilog: (
         str | None
-    ) = "Tip: Use 'falyx run ?[COMMAND]' to preview any command from the CLI.",
+    ) = "Tip: Use 'falyx preview [COMMAND]' to preview any command from the CLI.",
     parents: Sequence[ArgumentParser] | None = None,
     prefix_chars: str = "-",
     fromfile_prefix_chars: str | None = None,
@@ -240,7 +240,7 @@ def get_arg_parsers(
         - Use `falyx run ?[COMMAND]` from the CLI to preview a command.
     """
     if epilog is None:
-        epilog = f"Tip: Use '{prog} run ?' to show available commands."
+        epilog = f"Tip: Use '{prog} help' to show available commands."
     if root_parser is None:
         parser = get_root_parser(
             prog=prog,
@@ -281,7 +281,7 @@ def get_arg_parsers(
             command_description = command.help_text or command.description
             run_description.append(f"{' '*24}{command_description}")
     run_epilog = (
-        f"Tip: Use '{prog} run ?[COMMAND]' to preview commands by their key or alias."
+        f"Tip: Use '{prog} preview [COMMAND]' to preview commands by their key or alias."
     )
     run_parser = subparsers.add_parser(
         "run",
@@ -378,10 +378,6 @@ def get_arg_parsers(
     help_parser = subparsers.add_parser("help", help="List all available commands")
 
     help_parser.add_argument(
-        "-t", "--tag", help="Filter commands by tag (case-insensitive)", default=None
-    )
-
-    help_parser.add_argument(
         "-k",
         "--key",
         help="Show help for a specific command by its key or alias",
@@ -393,6 +389,10 @@ def get_arg_parsers(
         "--tldr",
         action="store_true",
         help="Show a simplified TLDR examples of a command if available",
+    )
+
+    help_parser.add_argument(
+        "-t", "--tag", help="Filter commands by tag (case-insensitive)", default=None
     )
 
     version_parser = subparsers.add_parser("version", help=f"Show {prog} version")

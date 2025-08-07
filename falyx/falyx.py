@@ -291,6 +291,7 @@ class Falyx:
             ignore_in_history=True,
             options_manager=self.options,
             program=self.program,
+            help_text="Exit the program.",
         )
 
     def _get_history_command(self) -> Command:
@@ -301,6 +302,7 @@ class Falyx:
             command_style=OneColors.DARK_YELLOW,
             aliases=["HISTORY"],
             program=self.program,
+            options_manager=self.options,
         )
         parser.add_argument(
             "-n",
@@ -387,10 +389,16 @@ class Falyx:
     async def _render_help(
         self, tag: str = "", key: str | None = None, tldr: bool = False
     ) -> None:
+        if tldr and not key:
+            if self.help_command and self.help_command.arg_parser:
+                self.help_command.arg_parser.render_tldr()
+                self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
+                return None
         if key:
             _, command, args, kwargs = await self.get_command(key)
             if command and tldr and command.arg_parser:
                 command.arg_parser.render_tldr()
+                self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
                 return None
             elif command and tldr and not command.arg_parser:
                 self.console.print(
@@ -398,6 +406,7 @@ class Falyx:
                 )
             elif command and command.arg_parser:
                 command.arg_parser.render_help()
+                self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
                 return None
             elif command and not command.arg_parser:
                 self.console.print(
@@ -415,7 +424,7 @@ class Falyx:
             ]
             if not commands:
                 self.console.print(f"'{tag}'... Nothing to show here")
-                return
+                return None
             for command in commands:
                 usage, description, _ = command.help_signature
                 self.console.print(
@@ -424,7 +433,8 @@ class Falyx:
                         (0, 2),
                     )
                 )
-            return
+            self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
+            return None
 
         self.console.print("[bold]help:[/bold]")
         for command in self.commands.values():
@@ -473,8 +483,9 @@ class Falyx:
             command_key="H",
             command_description="Help",
             command_style=OneColors.LIGHT_YELLOW,
-            aliases=["?", "HELP"],
+            aliases=["HELP", "?"],
             program=self.program,
+            options_manager=self.options,
         )
         parser.add_argument(
             "-t",
@@ -483,11 +494,27 @@ class Falyx:
             default="",
             help="Optional tag to filter commands by.",
         )
+        parser.add_argument(
+            "-k",
+            "--key",
+            nargs="?",
+            default=None,
+            help="Optional command key or alias to get detailed help for.",
+        )
+        parser.add_tldr_examples(
+            [
+                ("", "Show all commands."),
+                ("-k [COMMAND]", "Show detailed help for a specific command."),
+                ("-Tk [COMMAND]", "Show quick usage examples for a specific command."),
+                ("--tldr", "Show these quick usage examples."),
+                ("--tag [TAG]", "Show commands with the specified tag."),
+            ]
+        )
         return Command(
             key="H",
-            aliases=["?", "HELP"],
+            aliases=["HELP", "?"],
             description="Help",
-            help_text="Show this help menu",
+            help_text="Show this help menu.",
             action=Action("Help", self._render_help),
             style=OneColors.LIGHT_YELLOW,
             arg_parser=parser,
@@ -652,6 +679,7 @@ class Falyx:
         style: str = OneColors.DARK_RED,
         confirm: bool = False,
         confirm_message: str = "Are you sure?",
+        help_text: str = "Exit the program.",
     ) -> None:
         """Updates the back command of the menu."""
         self._validate_command_key(key)
@@ -669,6 +697,7 @@ class Falyx:
             ignore_in_history=True,
             options_manager=self.options,
             program=self.program,
+            help_text=help_text,
         )
 
     def add_submenu(
@@ -682,7 +711,12 @@ class Falyx:
             key, description, submenu.menu, style=style, simple_help_signature=True
         )
         if submenu.exit_command.key == "X":
-            submenu.update_exit_command(key="B", description="Back", aliases=["BACK"])
+            submenu.update_exit_command(
+                key="B",
+                description="Back",
+                aliases=["BACK"],
+                help_text="Go back to the previous menu.",
+            )
 
     def add_commands(self, commands: list[Command] | list[dict]) -> None:
         """Adds a list of Command instances or config dicts."""

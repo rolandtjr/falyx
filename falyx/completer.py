@@ -120,7 +120,6 @@ class FalyxCompleter(Completer):
         Yields:
             Completion: Matching keys or aliases from all registered commands.
         """
-        prefix = prefix.upper()
         keys = [self.falyx.exit_command.key]
         keys.extend(self.falyx.exit_command.aliases)
         if self.falyx.history_command:
@@ -134,7 +133,9 @@ class FalyxCompleter(Completer):
             keys.extend(cmd.aliases)
         for key in keys:
             if key.upper().startswith(prefix):
-                yield Completion(key, start_position=-len(prefix))
+                yield Completion(key.upper(), start_position=-len(prefix))
+            elif key.lower().startswith(prefix):
+                yield Completion(key.lower(), start_position=-len(prefix))
 
     def _ensure_quote(self, text: str) -> str:
         """

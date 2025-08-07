@@ -6,6 +6,8 @@ from falyx import Falyx
 @pytest.mark.asyncio
 async def test_help_command(capsys):
     flx = Falyx()
+    assert flx.help_command.arg_parser.aliases[0] == "HELP"
+    assert flx.help_command.arg_parser.command_key == "H"
     await flx.run_key("H")
 
     captured = capsys.readouterr()
