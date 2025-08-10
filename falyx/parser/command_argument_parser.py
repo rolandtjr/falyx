@@ -103,6 +103,7 @@ class CommandArgumentParser:
         tldr_examples: list[tuple[str, str]] | None = None,
         program: str | None = None,
         options_manager: OptionsManager | None = None,
+        _is_help_command: bool = False,
     ) -> None:
         """Initialize the CommandArgumentParser."""
         self.console: Console = console
@@ -123,6 +124,7 @@ class CommandArgumentParser:
         self._last_positional_states: dict[str, ArgumentState] = {}
         self._last_keyword_states: dict[str, ArgumentState] = {}
         self._tldr_examples: list[TLDRExample] = []
+        self._is_help_command: bool = _is_help_command
         if tldr_examples:
             self.add_tldr_examples(tldr_examples)
         self.options_manager: OptionsManager = options_manager or OptionsManager()
@@ -396,6 +398,32 @@ class CommandArgumentParser:
             raise CommandArgumentError(
                 f"Default value cannot be set for action {action}. It is a boolean flag."
             )
+        elif action == ArgumentAction.HELP:
+            raise CommandArgumentError(
+                "Default value cannot be set for action HELP. It is a help flag."
+            )
+        elif action == ArgumentAction.TLDR:
+            raise CommandArgumentError(
+                "Default value cannot be set for action TLDR. It is a tldr flag."
+            )
+        elif action == ArgumentAction.COUNT:
+            raise CommandArgumentError(
+                "Default value cannot be set for action COUNT. It is a count flag."
+            )
+        if action in (ArgumentAction.APPEND, ArgumentAction.EXTEND) and not isinstance(
+            default, list
+        ):
+            raise CommandArgumentError(
+                f"Default value for action {action} must be a list, got {type(default).__name__}"
+            )
+        if isinstance(nargs, int) and nargs == 1:
+            if not isinstance(default, list):
+                default = [default]
+        if isinstance(nargs, int) or nargs in ("*", "+"):
+            if not isinstance(default, list):
+                raise CommandArgumentError(
+                    f"Default value for action {action} with nargs {nargs} must be a list, got {type(default).__name__}"
+                )
         return default
 
     def _validate_flags(self, flags: tuple[str, ...]) -> None:
@@ -540,10 +568,17 @@ class CommandArgumentParser:
             else:
                 self._validate_default_type(default, expected_type, dest)
         choices = self._normalize_choices(choices, expected_type, action)
-        if default is not None and choices and default not in choices:
-            raise CommandArgumentError(
-                f"Default value '{default}' not in allowed choices: {choices}"
-            )
+        if default is not None and choices:
+            if isinstance(default, list):
+                if not all(choice in choices for choice in default):
+                    raise CommandArgumentError(
+                        f"Default list value {default!r} for '{dest}' must be a subset of choices: {choices}"
+                    )
+            elif default not in choices:
+                # If default is not in choices, raise an error
+                raise CommandArgumentError(
+                    f"Default value '{default}' not in allowed choices: {choices}"
+                )
         required = self._determine_required(required, positional, nargs, action)
         if not isinstance(suggestions, Sequence) and suggestions is not None:
             raise CommandArgumentError(
@@ -583,7 +618,9 @@ class CommandArgumentParser:
         Returns:
             Argument or None: Matching Argument instance, if defined.
         """
-        return next((a for a in self._arguments if a.dest == dest), None)
+        return next(
+            (argument for argument in self._arguments if argument.dest == dest), None
+        )
 
     def to_definition_list(self) -> list[dict[str, Any]]:
         """
@@ -620,11 +657,12 @@ class CommandArgumentParser:
             return None
         value_check = result.get(spec.dest)
         if isinstance(value_check, list):
-            for value in value_check:
-                if value in spec.choices:
-                    return None
+            if all(value in spec.choices for value in value_check):
+                return None
         if value_check in spec.choices:
             return None
+        arg_states[spec.dest].reset()
+        arg_states[spec.dest].has_invalid_choice = True
         raise CommandArgumentError(
             f"Invalid value for '{spec.dest}': must be one of {{{', '.join(spec.choices)}}}"
         )
@@ -651,7 +689,7 @@ class CommandArgumentParser:
             )
 
     def _consume_nargs(
-        self, args: list[str], start: int, spec: Argument
+        self, args: list[str], index: int, spec: Argument
     ) -> tuple[list[str], int]:
         assert (
             spec.nargs is None
@@ -660,33 +698,32 @@ class CommandArgumentParser:
             and spec.nargs in ("+", "*", "?")
         ), f"Invalid nargs value: {spec.nargs}"
         values = []
-        i = start
         if isinstance(spec.nargs, int):
-            values = args[i : i + spec.nargs]
-            return values, i + spec.nargs
+            values = args[index : index + spec.nargs]
+            return values, index + spec.nargs
         elif spec.nargs == "+":
-            if i >= len(args):
+            if index >= len(args):
                 raise CommandArgumentError(
                     f"Expected at least one value for '{spec.dest}'"
                 )
-            while i < len(args) and args[i] not in self._keyword:
-                values.append(args[i])
-                i += 1
+            while index < len(args) and args[index] not in self._keyword:
+                values.append(args[index])
+                index += 1
             assert values, "Expected at least one value for '+' nargs: shouldn't happen"
-            return values, i
+            return values, index
         elif spec.nargs == "*":
-            while i < len(args) and args[i] not in self._keyword:
-                values.append(args[i])
-                i += 1
-            return values, i
+            while index < len(args) and args[index] not in self._keyword:
+                values.append(args[index])
+                index += 1
+            return values, index
         elif spec.nargs == "?":
-            if i < len(args) and args[i] not in self._keyword:
-                return [args[i]], i + 1
-            return [], i
+            if index < len(args) and args[index] not in self._keyword:
+                return [args[index]], index + 1
+            return [], index
         elif spec.nargs is None:
-            if i < len(args) and args[i] not in self._keyword:
-                return [args[i]], i + 1
-            return [], i
+            if index < len(args) and args[index] not in self._keyword:
+                return [args[index]], index + 1
+            return [], index
         assert False, "Invalid nargs value: shouldn't happen"
 
     async def _consume_all_positional_args(
@@ -697,20 +734,21 @@ class CommandArgumentParser:
         consumed_positional_indicies: set[int],
         arg_states: dict[str, ArgumentState],
         from_validate: bool = False,
+        base_index: int = 0,
     ) -> int:
         remaining_positional_args = [
-            (j, spec)
-            for j, spec in enumerate(positional_args)
-            if j not in consumed_positional_indicies
+            (spec_index, spec)
+            for spec_index, spec in enumerate(positional_args)
+            if spec_index not in consumed_positional_indicies
         ]
-        i = 0
+        index = 0
 
-        for j, spec in remaining_positional_args:
+        for spec_index, spec in remaining_positional_args:
             # estimate how many args the remaining specs might need
-            is_last = j == len(positional_args) - 1
-            remaining = len(args) - i
+            is_last = spec_index == len(positional_args) - 1
+            remaining = len(args) - index
             min_required = 0
-            for next_spec in positional_args[j + 1 :]:
+            for next_spec in positional_args[spec_index + 1 :]:
                 assert (
                     next_spec.nargs is None
                     or isinstance(next_spec.nargs, int)
@@ -732,17 +770,25 @@ class CommandArgumentParser:
                 elif next_spec.nargs == "*":
                     continue
 
-            slice_args = args[i:] if is_last else args[i : i + (remaining - min_required)]
-            values, new_i = self._consume_nargs(slice_args, 0, spec)
-            i += new_i
+            slice_args = (
+                args[index:]
+                if is_last
+                else args[index : index + (remaining - min_required)]
+            )
+            values, new_index = self._consume_nargs(slice_args, 0, spec)
+            index += new_index
 
             try:
                 typed = [coerce_value(value, spec.type) for value in values]
             except Exception as error:
-                if len(args[i - new_i :]) == 1 and args[i - new_i].startswith("-"):
-                    token = args[i - new_i]
+                if len(args[index - new_index :]) == 1 and args[
+                    index - new_index
+                ].startswith("-"):
+                    token = args[index - new_index]
                     self._raise_remaining_args_error(token, arg_states)
                 else:
+                    arg_states[spec.dest].reset()
+                    arg_states[spec.dest].has_invalid_choice = True
                     raise CommandArgumentError(
                         f"Invalid value for '{spec.dest}': {error}"
                     ) from error
@@ -758,7 +804,7 @@ class CommandArgumentParser:
                             f"[{spec.dest}] Action failed: {error}"
                         ) from error
                 self._check_if_in_choices(spec, result, arg_states)
-                arg_states[spec.dest].consumed = True
+                arg_states[spec.dest].set_consumed(base_index + index)
             elif not typed and spec.default:
                 result[spec.dest] = spec.default
             elif spec.action == ArgumentAction.APPEND:
@@ -773,31 +819,53 @@ class CommandArgumentParser:
             elif spec.nargs in (None, 1, "?"):
                 result[spec.dest] = typed[0] if len(typed) == 1 else typed
                 self._check_if_in_choices(spec, result, arg_states)
-                arg_states[spec.dest].consumed = True
+                arg_states[spec.dest].set_consumed(base_index + index)
             else:
                 self._check_if_in_choices(spec, result, arg_states)
-                arg_states[spec.dest].consumed = True
+                arg_states[spec.dest].set_consumed(base_index + index)
                 result[spec.dest] = typed
 
             if spec.nargs not in ("*", "+"):
-                consumed_positional_indicies.add(j)
+                consumed_positional_indicies.add(spec_index)
 
-        if i < len(args):
-            if len(args[i:]) == 1 and args[i].startswith("-"):
-                token = args[i]
+        if index < len(args):
+            if len(args[index:]) == 1 and args[index].startswith("-"):
+                token = args[index]
                 self._raise_remaining_args_error(token, arg_states)
             else:
-                plural = "s" if len(args[i:]) > 1 else ""
+                plural = "s" if len(args[index:]) > 1 else ""
                 raise CommandArgumentError(
-                    f"Unexpected positional argument{plural}: {', '.join(args[i:])}"
+                    f"Unexpected positional argument{plural}: {', '.join(args[index:])}"
                 )
 
-        return i
+        return index
 
-    def _expand_posix_bundling(self, token: str) -> list[str] | str:
+    def _expand_posix_bundling(
+        self, token: str, last_flag_argument: Argument | None
+    ) -> list[str] | str:
         """Expand POSIX-style bundled arguments into separate arguments."""
         expanded = []
-        if token.startswith("-") and not token.startswith("--") and len(token) > 2:
+        if last_flag_argument:
+            if last_flag_argument.type is not str and last_flag_argument.action not in (
+                ArgumentAction.STORE_TRUE,
+                ArgumentAction.STORE_FALSE,
+                ArgumentAction.STORE_BOOL_OPTIONAL,
+                ArgumentAction.COUNT,
+                ArgumentAction.HELP,
+                ArgumentAction.TLDR,
+            ):
+                try:
+                    last_flag_argument.type(token)
+                    return token
+                except (ValueError, TypeError):
+                    pass
+
+        if (
+            token.startswith("-")
+            and not token.startswith("--")
+            and len(token) > 2
+            and not self._is_valid_dash_token_positional_value(token)
+        ):
             # POSIX bundle
             # e.g. -abc -> -a -b -c
             for char in token[1:]:
@@ -810,11 +878,24 @@ class CommandArgumentParser:
             return token
         return expanded
 
+    def _is_valid_dash_token_positional_value(self, token: str) -> bool:
+        """Checks if any remaining positional arguments take valid dash-prefixed values."""
+        valid = False
+        try:
+            for arg in self._positional.values():
+                if arg.type is not str:
+                    arg.type(token)
+                    valid = True
+                    break
+        except (ValueError, TypeError):
+            valid = False
+        return valid
+
     async def _handle_token(
         self,
         token: str,
         args: list[str],
-        i: int,
+        index: int,
         result: dict[str, Any],
         positional_args: list[Argument],
         consumed_positional_indices: set[int],
@@ -829,21 +910,23 @@ class CommandArgumentParser:
             if action == ArgumentAction.HELP:
                 if not from_validate:
                     self.render_help()
-                arg_states[spec.dest].consumed = True
+                arg_states[spec.dest].set_consumed()
                 raise HelpSignal()
             elif action == ArgumentAction.TLDR:
                 if not from_validate:
                     self.render_tldr()
-                arg_states[spec.dest].consumed = True
+                arg_states[spec.dest].set_consumed()
                 raise HelpSignal()
             elif action == ArgumentAction.ACTION:
                 assert isinstance(
                     spec.resolver, BaseAction
                 ), "resolver should be an instance of BaseAction"
-                values, new_i = self._consume_nargs(args, i + 1, spec)
+                values, new_index = self._consume_nargs(args, index + 1, spec)
                 try:
                     typed_values = [coerce_value(value, spec.type) for value in values]
                 except ValueError as error:
+                    arg_states[spec.dest].reset()
+                    arg_states[spec.dest].has_invalid_choice = True
                     raise CommandArgumentError(
                         f"Invalid value for '{spec.dest}': {error}"
                     ) from error
@@ -855,34 +938,36 @@ class CommandArgumentParser:
                             f"[{spec.dest}] Action failed: {error}"
                         ) from error
                 self._check_if_in_choices(spec, result, arg_states)
-                arg_states[spec.dest].consumed = True
-                consumed_indices.update(range(i, new_i))
-                i = new_i
+                arg_states[spec.dest].set_consumed(new_index)
+                consumed_indices.update(range(index, new_index))
+                index = new_index
             elif action == ArgumentAction.STORE_TRUE:
                 result[spec.dest] = True
-                arg_states[spec.dest].consumed = True
-                consumed_indices.add(i)
-                i += 1
+                arg_states[spec.dest].set_consumed(index)
+                consumed_indices.add(index)
+                index += 1
             elif action == ArgumentAction.STORE_FALSE:
                 result[spec.dest] = False
-                arg_states[spec.dest].consumed = True
-                consumed_indices.add(i)
-                i += 1
+                arg_states[spec.dest].set_consumed(index)
+                consumed_indices.add(index)
+                index += 1
             elif action == ArgumentAction.STORE_BOOL_OPTIONAL:
                 result[spec.dest] = spec.type(True)
-                arg_states[spec.dest].consumed = True
-                consumed_indices.add(i)
-                i += 1
+                arg_states[spec.dest].set_consumed(index)
+                consumed_indices.add(index)
+                index += 1
             elif action == ArgumentAction.COUNT:
                 result[spec.dest] = result.get(spec.dest, 0) + 1
-                consumed_indices.add(i)
-                i += 1
+                consumed_indices.add(index)
+                index += 1
             elif action == ArgumentAction.APPEND:
                 assert result.get(spec.dest) is not None, "dest should not be None"
-                values, new_i = self._consume_nargs(args, i + 1, spec)
+                values, new_index = self._consume_nargs(args, index + 1, spec)
                 try:
                     typed_values = [coerce_value(value, spec.type) for value in values]
                 except ValueError as error:
+                    arg_states[spec.dest].reset()
+                    arg_states[spec.dest].has_invalid_choice = True
                     raise CommandArgumentError(
                         f"Invalid value for '{spec.dest}': {error}"
                     ) from error
@@ -890,25 +975,29 @@ class CommandArgumentParser:
                     result[spec.dest].append(spec.type(values[0]))
                 else:
                     result[spec.dest].append(typed_values)
-                consumed_indices.update(range(i, new_i))
-                i = new_i
+                consumed_indices.update(range(index, new_index))
+                index = new_index
             elif action == ArgumentAction.EXTEND:
                 assert result.get(spec.dest) is not None, "dest should not be None"
-                values, new_i = self._consume_nargs(args, i + 1, spec)
+                values, new_index = self._consume_nargs(args, index + 1, spec)
                 try:
                     typed_values = [coerce_value(value, spec.type) for value in values]
                 except ValueError as error:
+                    arg_states[spec.dest].reset()
+                    arg_states[spec.dest].has_invalid_choice = True
                     raise CommandArgumentError(
                         f"Invalid value for '{spec.dest}': {error}"
                     ) from error
                 result[spec.dest].extend(typed_values)
-                consumed_indices.update(range(i, new_i))
-                i = new_i
+                consumed_indices.update(range(index, new_index))
+                index = new_index
             else:
-                values, new_i = self._consume_nargs(args, i + 1, spec)
+                values, new_index = self._consume_nargs(args, index + 1, spec)
                 try:
                     typed_values = [coerce_value(value, spec.type) for value in values]
                 except ValueError as error:
+                    arg_states[spec.dest].reset()
+                    arg_states[spec.dest].has_invalid_choice = True
                     raise CommandArgumentError(
                         f"Invalid value for '{spec.dest}': {error}"
                     ) from error
@@ -934,37 +1023,61 @@ class CommandArgumentParser:
                         raise CommandArgumentError(
                             f"Argument '{spec.dest}' requires a value. Expected {spec.nargs} values."
                         )
-                if spec.nargs in (None, 1, "?") and spec.action != ArgumentAction.APPEND:
+                if spec.nargs in (None, 1, "?"):
                     result[spec.dest] = (
                         typed_values[0] if len(typed_values) == 1 else typed_values
                     )
                 else:
                     result[spec.dest] = typed_values
                 self._check_if_in_choices(spec, result, arg_states)
-                arg_states[spec.dest].consumed = True
-                consumed_indices.update(range(i, new_i))
-                i = new_i
-        elif token.startswith("-"):
+                arg_states[spec.dest].set_consumed(new_index)
+                consumed_indices.update(range(index, new_index))
+                index = new_index
+        elif token.startswith("-") and not self._is_valid_dash_token_positional_value(
+            token
+        ):
             self._raise_remaining_args_error(token, arg_states)
         else:
             # Get the next flagged argument index if it exists
             next_flagged_index = -1
-            for index, arg in enumerate(args[i:], start=i):
+            for scan_index, arg in enumerate(args[index:], start=index):
                 if arg in self._keyword:
-                    next_flagged_index = index
+                    next_flagged_index = scan_index
                     break
             if next_flagged_index == -1:
                 next_flagged_index = len(args)
             args_consumed = await self._consume_all_positional_args(
-                args[i:next_flagged_index],
+                args[index:next_flagged_index],
                 result,
                 positional_args,
                 consumed_positional_indices,
                 arg_states=arg_states,
                 from_validate=from_validate,
+                base_index=index,
             )
-            i += args_consumed
-        return i
+            index += args_consumed
+        return index
+
+    def _find_last_flag_argument(self, args: list[str]) -> Argument | None:
+        last_flag_argument = None
+        for arg in reversed(args):
+            if arg in self._keyword:
+                last_flag_argument = self._keyword[arg]
+                break
+        return last_flag_argument
+
+    def _resolve_posix_bundling(self, args: list[str]) -> None:
+        """Expand POSIX-style bundled arguments into separate arguments."""
+        last_flag_argument: Argument | None = None
+        expand_index = 0
+        while expand_index < len(args):
+            last_flag_argument = self._find_last_flag_argument(args[:expand_index])
+            expand_token = self._expand_posix_bundling(
+                args[expand_index], last_flag_argument
+            )
+            if isinstance(expand_token, list):
+                args[expand_index : expand_index + 1] = expand_token
+            expand_index += len(expand_token) if isinstance(expand_token, list) else 1
 
     async def parse_args(
         self, args: list[str] | None = None, from_validate: bool = False
@@ -997,16 +1110,15 @@ class CommandArgumentParser:
         consumed_positional_indices: set[int] = set()
         consumed_indices: set[int] = set()
 
-        i = 0
-        while i < len(args):
-            token = self._expand_posix_bundling(args[i])
-            if isinstance(token, list):
-                args[i : i + 1] = token
-                token = args[i]
-            i = await self._handle_token(
+        self._resolve_posix_bundling(args)
+
+        index = 0
+        while index < len(args):
+            token = args[index]
+            index = await self._handle_token(
                 token,
                 args,
-                i,
+                index,
                 result,
                 positional_args,
                 consumed_positional_indices,
@@ -1031,21 +1143,17 @@ class CommandArgumentParser:
                     and from_validate
                 ):
                     if not args:
-                        arg_states[spec.dest].consumed = False
+                        arg_states[spec.dest].reset()
                         raise CommandArgumentError(
                             f"Missing required argument '{spec.dest}': {spec.get_choice_text()}{help_text}"
                         )
                     continue  # Lazy resolvers are not validated here
-                arg_states[spec.dest].consumed = False
+                arg_states[spec.dest].reset()
                 raise CommandArgumentError(
                     f"Missing required argument '{spec.dest}': {spec.get_choice_text()}{help_text}"
                 )
 
-            if spec.choices and result.get(spec.dest) not in spec.choices:
-                arg_states[spec.dest].consumed = False
-                raise CommandArgumentError(
-                    f"Invalid value for '{spec.dest}': must be one of {{{', '.join(spec.choices)}}}"
-                )
+            self._check_if_in_choices(spec, result, arg_states)
 
             if spec.action == ArgumentAction.ACTION:
                 continue
@@ -1059,18 +1167,18 @@ class CommandArgumentParser:
                 if spec.action == ArgumentAction.APPEND:
                     for group in result[spec.dest]:
                         if len(group) % spec.nargs != 0:
-                            arg_states[spec.dest].consumed = False
+                            arg_states[spec.dest].reset()
                             raise CommandArgumentError(
                                 f"Invalid number of values for '{spec.dest}': expected a multiple of {spec.nargs}"
                             )
                 elif spec.action == ArgumentAction.EXTEND:
                     if len(result[spec.dest]) % spec.nargs != 0:
-                        arg_states[spec.dest].consumed = False
+                        arg_states[spec.dest].reset()
                         raise CommandArgumentError(
                             f"Invalid number of values for '{spec.dest}': expected a multiple of {spec.nargs}"
                         )
                 elif len(result[spec.dest]) != spec.nargs:
-                    arg_states[spec.dest].consumed = False
+                    arg_states[spec.dest].reset()
                     raise CommandArgumentError(
                         f"Invalid number of values for '{spec.dest}': expected {spec.nargs}, got {len(result[spec.dest])}"
                     )
@@ -1120,6 +1228,72 @@ class CommandArgumentParser:
             ]
         return completions[:100]
 
+    def _is_mid_value(
+        self, state: ArgumentState | None, args: list[str], cursor_at_end_of_token: bool
+    ) -> bool:
+        if state is None:
+            return False
+        if cursor_at_end_of_token:
+            return False
+        if not state.consumed:
+            return False
+        return state.consumed_position == len(args)
+
+    def _is_invalid_choices_state(
+        self,
+        state: ArgumentState,
+        cursor_at_end_of_token: bool,
+        num_args_since_last_keyword: int,
+    ) -> bool:
+        if isinstance(state.arg.nargs, int):
+            return (
+                state.has_invalid_choice
+                and not state.consumed
+                and (
+                    num_args_since_last_keyword > state.arg.nargs
+                    or (num_args_since_last_keyword >= 1 and cursor_at_end_of_token)
+                )
+            )
+        if state.arg.nargs in ("?", None):
+            return (
+                state.has_invalid_choice
+                and not state.consumed
+                and (
+                    num_args_since_last_keyword > 1
+                    or (num_args_since_last_keyword == 1 and cursor_at_end_of_token)
+                )
+            )
+        return False
+
+    def _value_suggestions_for_arg(
+        self,
+        state: ArgumentState,
+        prefix: str,
+        cursor_at_end_of_token: bool,
+        num_args_since_last_keyword: int,
+    ) -> list[str]:
+        if self._is_invalid_choices_state(
+            state, cursor_at_end_of_token, num_args_since_last_keyword
+        ):
+            return []
+        arg = state.arg
+        suggestion_filter = (
+            (lambda _: True)
+            if cursor_at_end_of_token
+            else (lambda suggestion: (not prefix) or str(suggestion).startswith(prefix))
+        )
+        if arg.choices:
+            return [str(choice) for choice in arg.choices if suggestion_filter(choice)]
+        if arg.suggestions:
+            return [
+                str(suggestion)
+                for suggestion in arg.suggestions
+                if suggestion_filter(suggestion)
+            ]
+        if arg.type is Path:
+            return self._suggest_paths(prefix if not cursor_at_end_of_token else ".")
+        return []
+
     def suggest_next(
         self, args: list[str], cursor_at_end_of_token: bool = False
     ) -> list[str]:
@@ -1135,44 +1309,67 @@ class CommandArgumentParser:
         Returns:
             list[str]: List of suggested completions.
         """
-
+        self._resolve_posix_bundling(args)
         last = args[-1] if args else ""
         # Case 1: Next positional argument
-        next_non_consumed_positional: Argument | None = None
+        last_consumed_positional_index = -1
+        num_args_since_last_positional = 0
+        next_non_consumed_positional_arg: Argument | None = None
+        next_non_consumed_positional_state: ArgumentState | None = None
         for state in self._last_positional_states.values():
-            if not state.consumed:
-                next_non_consumed_positional = state.arg
+            if not state.consumed or self._is_mid_value(
+                state, args, cursor_at_end_of_token
+            ):
+                next_non_consumed_positional_arg = state.arg
+                next_non_consumed_positional_state = state
                 break
+            elif state.consumed_position is not None:
+                last_consumed_positional_index = max(
+                    last_consumed_positional_index, state.consumed_position
+                )
 
-        if next_non_consumed_positional:
-            if next_non_consumed_positional.choices:
+        if last_consumed_positional_index != -1:
+            num_args_since_last_positional = len(args) - last_consumed_positional_index
+        else:
+            num_args_since_last_positional = len(args)
+        if next_non_consumed_positional_arg and next_non_consumed_positional_state:
+            if next_non_consumed_positional_arg.choices:
                 if (
                     cursor_at_end_of_token
                     and last
                     and any(
                         str(choice).startswith(last)
-                        for choice in next_non_consumed_positional.choices
+                        for choice in next_non_consumed_positional_arg.choices
                     )
-                    and next_non_consumed_positional.nargs in (1, "?", None)
+                    and next_non_consumed_positional_arg.nargs in (1, "?", None)
+                ):
+                    return []
+                if self._is_invalid_choices_state(
+                    next_non_consumed_positional_state,
+                    cursor_at_end_of_token,
+                    num_args_since_last_positional,
                 ):
                     return []
                 return sorted(
-                    (str(choice) for choice in next_non_consumed_positional.choices)
+                    (str(choice) for choice in next_non_consumed_positional_arg.choices)
                 )
-            if next_non_consumed_positional.suggestions:
+            if next_non_consumed_positional_arg.suggestions:
                 if (
                     cursor_at_end_of_token
                     and last
                     and any(
                         str(suggestion).startswith(last)
-                        for suggestion in next_non_consumed_positional.suggestions
+                        for suggestion in next_non_consumed_positional_arg.suggestions
                     )
-                    and next_non_consumed_positional.nargs in (1, "?", None)
+                    and next_non_consumed_positional_arg.nargs in (1, "?", None)
                 ):
                     return []
-                return sorted(next_non_consumed_positional.suggestions)
-            if next_non_consumed_positional.type == Path:
-                return self._suggest_paths(args[-1] if args else "")
+                return sorted(next_non_consumed_positional_arg.suggestions)
+            if next_non_consumed_positional_arg.type == Path:
+                if cursor_at_end_of_token:
+                    return self._suggest_paths(".")
+                else:
+                    return self._suggest_paths(args[-1] if args else ".")
 
         consumed_dests = [
             state.arg.dest
@@ -1185,59 +1382,95 @@ class CommandArgumentParser:
         ]
 
         last_keyword_state_in_args = None
+        last_keyword = None
         for last_arg in reversed(args):
             if last_arg in self._keyword:
                 last_keyword_state_in_args = self._last_keyword_states.get(
                     self._keyword[last_arg].dest
                 )
+                last_keyword = last_arg
                 break
+        num_args_since_last_keyword = (
+            len(args) - 1 - args.index(last_keyword) if last_keyword else 0
+        )
 
         next_to_last = args[-2] if len(args) > 1 else ""
         suggestions: list[str] = []
-
         # Case 2: Mid-flag (e.g., "--ver")
         if last.startswith("-") and last not in self._keyword:
-            if last_keyword_state_in_args and not last_keyword_state_in_args.consumed:
+            if last_keyword_state_in_args and (
+                not last_keyword_state_in_args.consumed
+                or self._is_mid_value(
+                    last_keyword_state_in_args, args, cursor_at_end_of_token
+                )
+            ):
+                # Previous keyword still needs values (or we're mid-value) → suggest values for it.
+                suggestions.extend(
+                    self._value_suggestions_for_arg(
+                        last_keyword_state_in_args,
+                        last,
+                        cursor_at_end_of_token,
+                        num_args_since_last_keyword,
+                    )
+                )
+            elif not cursor_at_end_of_token:
+                # Suggest all flags that start with the last token
+                suggestions.extend(
+                    flag for flag in remaining_flags if flag.startswith(last)
+                )
+            else:
+                # If space at end of token, suggest all remaining flags
+                suggestions.extend(flag for flag in remaining_flags)
+
+            if (
+                last_keyword_state_in_args
+                and last_keyword_state_in_args.consumed
+                and last_keyword_state_in_args.arg.nargs in ("*", "?")
+            ):
+                suggestions.extend(
+                    flag for flag in remaining_flags if flag.startswith(last)
+                )
+        # Case 3: Flag that expects a value (e.g., ["--tag"])
+        elif last in self._keyword and last_keyword_state_in_args:
+            arg = last_keyword_state_in_args.arg
+            if last_keyword_state_in_args.consumed and not cursor_at_end_of_token:
+                # If last flag is already consumed, (e.g., ["--verbose"])
+                # and space not at end of token, suggest nothing.
                 pass
             elif (
-                len(args) > 1
-                and next_to_last in self._keyword
-                and next_to_last in remaining_flags
+                last_keyword_state_in_args.consumed
+                and cursor_at_end_of_token
+                and last_keyword_state_in_args.arg.nargs not in ("*", "?")
             ):
-                arg = self._keyword[next_to_last]
-                if arg.choices:
-                    suggestions.extend((str(choice) for choice in arg.choices))
-                elif arg.suggestions:
-                    suggestions.extend(
-                        (str(suggestion) for suggestion in arg.suggestions)
-                    )
+                # space at end of token, suggest remaining flags
+                suggestions.extend(flag for flag in remaining_flags)
             else:
-                possible_flags = [
-                    flag
-                    for flag, arg in self._keyword.items()
-                    if flag.startswith(last) and arg.dest not in consumed_dests
-                ]
-                suggestions.extend(possible_flags)
-        # Case 3: Flag that expects a value (e.g., ["--tag"])
-        elif last in self._keyword:
-            arg = self._keyword[last]
-            if (
-                self._last_keyword_states.get(last.strip("-"))
-                and self._last_keyword_states[last.strip("-")].consumed
-            ):
-                pass
-            elif arg.choices:
-                suggestions.extend((str(choice) for choice in arg.choices))
-            elif arg.suggestions:
-                suggestions.extend((str(suggestion) for suggestion in arg.suggestions))
-            elif arg.type == Path:
-                suggestions.extend(self._suggest_paths("."))
+                suggestions.extend(
+                    self._value_suggestions_for_arg(
+                        last_keyword_state_in_args,
+                        last,
+                        cursor_at_end_of_token,
+                        num_args_since_last_keyword,
+                    )
+                )
         # Case 4: Last flag with choices mid-choice (e.g., ["--tag", "v"])
-        elif next_to_last in self._keyword:
-            arg = self._keyword[next_to_last]
-            if (
-                self._last_keyword_states.get(next_to_last.strip("-"))
-                and self._last_keyword_states[next_to_last.strip("-")].consumed
+        elif next_to_last in self._keyword and last_keyword_state_in_args:
+            arg = last_keyword_state_in_args.arg
+            if self._is_mid_value(
+                last_keyword_state_in_args,
+                args,
+                cursor_at_end_of_token,
+            ):
+                suggestions.extend(
+                    self._value_suggestions_for_arg(
+                        last_keyword_state_in_args,
+                        last,
+                        cursor_at_end_of_token,
+                        num_args_since_last_keyword,
+                    )
+                )
+            elif (
+                last_keyword_state_in_args.consumed
                 and last_keyword_state_in_args
                 and Counter(args)[next_to_last]
                 > (
@@ -1248,7 +1481,9 @@ class CommandArgumentParser:
             ):
                 pass
             elif arg.choices and last not in arg.choices and not cursor_at_end_of_token:
-                suggestions.extend((str(choice) for choice in arg.choices))
+                suggestions.extend(
+                    (str(choice) for choice in arg.choices if choice.startswith(last))
+                )
             elif (
                 arg.suggestions
                 and last not in arg.suggestions
@@ -1256,18 +1491,67 @@ class CommandArgumentParser:
                 and any(suggestion.startswith(last) for suggestion in arg.suggestions)
                 and not cursor_at_end_of_token
             ):
-                suggestions.extend((str(suggestion) for suggestion in arg.suggestions))
-            elif last_keyword_state_in_args and not last_keyword_state_in_args.consumed:
-                pass
+                suggestions.extend(
+                    (
+                        str(suggestion)
+                        for suggestion in arg.suggestions
+                        if suggestion.startswith(last)
+                    )
+                )
             elif arg.type == Path and not cursor_at_end_of_token:
                 suggestions.extend(self._suggest_paths(last))
+            elif last_keyword_state_in_args and not last_keyword_state_in_args.consumed:
+                suggestions.extend(
+                    self._value_suggestions_for_arg(
+                        last_keyword_state_in_args,
+                        last,
+                        cursor_at_end_of_token,
+                        num_args_since_last_keyword,
+                    )
+                )
             else:
                 suggestions.extend(remaining_flags)
+        # Case 5: Last flag is incomplete and expects a value (e.g., ["--tag", "value1", "va"])
         elif last_keyword_state_in_args and not last_keyword_state_in_args.consumed:
-            pass
-        # Case 5: Suggest all remaining flags
+            suggestions.extend(
+                self._value_suggestions_for_arg(
+                    last_keyword_state_in_args,
+                    last,
+                    cursor_at_end_of_token,
+                    num_args_since_last_keyword,
+                )
+            )
+        # Case 6: Last keyword state is mid-value (e.g., ["--tag", "value1", "va"]) but consumed
+        elif self._is_mid_value(last_keyword_state_in_args, args, cursor_at_end_of_token):
+            if not last_keyword_state_in_args:
+                pass
+            else:
+                suggestions.extend(
+                    self._value_suggestions_for_arg(
+                        last_keyword_state_in_args,
+                        last,
+                        cursor_at_end_of_token,
+                        num_args_since_last_keyword,
+                    )
+                )
+        # Case 7: Suggest all remaining flags
         else:
             suggestions.extend(remaining_flags)
+
+        # Case 8: Last keyword state is a multi-value argument
+        #         (e.g., ["--tags", "value1", "value2", "va"])
+        #         and it accepts multiple values
+        #         (e.g., nargs='*', nargs='+')
+        if last_keyword_state_in_args:
+            if last_keyword_state_in_args.arg.nargs in ("*", "+"):
+                suggestions.extend(
+                    self._value_suggestions_for_arg(
+                        last_keyword_state_in_args,
+                        last,
+                        cursor_at_end_of_token,
+                        num_args_since_last_keyword,
+                    )
+                )
 
         return sorted(set(suggestions))
 
@@ -1408,11 +1692,9 @@ class CommandArgumentParser:
             FalyxMode.RUN_ALL,
             FalyxMode.HELP,
         }
-        is_help_command = self.aliases[0] == "HELP" and self.command_key == "H"
-
         program = self.program or "falyx"
         command = self.aliases[0] if self.aliases else self.command_key
-        if is_help_command and is_cli_mode:
+        if self._is_help_command and is_cli_mode:
             command = f"[{self.command_style}]{program} help[/{self.command_style}]"
         elif is_cli_mode:
             command = (

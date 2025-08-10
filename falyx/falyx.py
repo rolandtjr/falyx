@@ -281,7 +281,7 @@ class Falyx:
 
     def _get_exit_command(self) -> Command:
         """Returns the back command for the menu."""
-        return Command(
+        exit_command = Command(
             key="X",
             description="Exit",
             action=Action("Exit", action=_noop),
@@ -293,6 +293,9 @@ class Falyx:
             program=self.program,
             help_text="Exit the program.",
         )
+        if exit_command.arg_parser:
+            exit_command.arg_parser.add_tldr_examples([("", "Exit the program.")])
+        return exit_command
 
     def _get_history_command(self) -> Command:
         """Returns the history command for the menu."""
@@ -337,6 +340,19 @@ class Falyx:
         parser.add_argument(
             "-l", "--last-result", action="store_true", help="Get the last result"
         )
+        parser.add_tldr_examples(
+            [
+                ("", "Show the full execution history."),
+                ("-n build", "Show history entries for the 'build' command."),
+                ("-s success", "Show only successful executions."),
+                ("-s error", "Show only failed executions."),
+                ("-i 3", "Show the history entry at index 3."),
+                ("-r 0", "Show the result or traceback for entry index 0."),
+                ("-l", "Show the last execution result."),
+                ("-c", "Clear the execution history."),
+            ]
+        )
+
         return Command(
             key="Y",
             description="History",
@@ -486,6 +502,7 @@ class Falyx:
             aliases=["HELP", "?"],
             program=self.program,
             options_manager=self.options,
+            _is_help_command=True,
         )
         parser.add_argument(
             "-t",
@@ -506,8 +523,8 @@ class Falyx:
                 ("", "Show all commands."),
                 ("-k [COMMAND]", "Show detailed help for a specific command."),
                 ("-Tk [COMMAND]", "Show quick usage examples for a specific command."),
-                ("--tldr", "Show these quick usage examples."),
-                ("--tag [TAG]", "Show commands with the specified tag."),
+                ("-T", "Show these quick usage examples."),
+                ("-t [TAG]", "Show commands with the specified tag."),
             ]
         )
         return Command(
@@ -699,6 +716,8 @@ class Falyx:
             program=self.program,
             help_text=help_text,
         )
+        if self.exit_command.arg_parser:
+            self.exit_command.arg_parser.add_tldr_examples([("", help_text)])
 
     def add_submenu(
         self, key: str, description: str, submenu: Falyx, *, style: str = OneColors.CYAN

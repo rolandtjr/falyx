@@ -28,6 +28,18 @@ class ArgumentState:
 
     arg: Argument
     consumed: bool = False
+    consumed_position: int | None = None
+    has_invalid_choice: bool = False
+
+    def set_consumed(self, position: int | None = None) -> None:
+        """Mark this argument as consumed, optionally setting the position."""
+        self.consumed = True
+        self.consumed_position = position
+
+    def reset(self) -> None:
+        """Reset the consumed state."""
+        self.consumed = False
+        self.consumed_position = None
 
 
 @dataclass(frozen=True)
