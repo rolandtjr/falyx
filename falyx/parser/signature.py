@@ -26,6 +26,18 @@ def infer_args_from_func(
     This utility inspects the parameters of a function and returns a list of dictionaries,
     each of which can be passed to `CommandArgumentParser.add_argument()`.
 
+    It supports:
+    - Positional and keyword arguments
+    - Type hints for argument types
+    - Default values
+    - Required vs optional arguments
+    - Custom help text, choices, and suggestions via metadata
+
+    Note:
+        - Only parameters with kind `POSITIONAL_ONLY`, `POSITIONAL_OR_KEYWORD`, or
+          `KEYWORD_ONLY` are considered.
+        - Parameters with kind `VAR_POSITIONAL` or `VAR_KEYWORD` are ignored.
+
     Args:
         func (Callable | None): The function to inspect.
         arg_metadata (dict | None): Optional metadata overrides for help text, type hints,

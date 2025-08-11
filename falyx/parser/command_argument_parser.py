@@ -913,10 +913,18 @@ class CommandArgumentParser:
                 arg_states[spec.dest].set_consumed()
                 raise HelpSignal()
             elif action == ArgumentAction.TLDR:
-                if not from_validate:
+                if self._is_help_command:
+                    result[spec.dest] = True
+                    arg_states[spec.dest].set_consumed()
+                    consumed_indices.add(index)
+                    index += 1
+                elif not from_validate:
                     self.render_tldr()
-                arg_states[spec.dest].set_consumed()
-                raise HelpSignal()
+                    arg_states[spec.dest].set_consumed()
+                    raise HelpSignal()
+                else:
+                    arg_states[spec.dest].set_consumed()
+                    raise HelpSignal()
             elif action == ArgumentAction.ACTION:
                 assert isinstance(
                     spec.resolver, BaseAction
@@ -1129,11 +1137,7 @@ class CommandArgumentParser:
 
         # Required validation
         for spec in self._arguments:
-            if (
-                spec.dest == "help"
-                or spec.dest == "tldr"
-                and spec.action == ArgumentAction.TLDR
-            ):
+            if spec.dest == "help" or spec.dest == "tldr":
                 continue
             if spec.required and not result.get(spec.dest):
                 help_text = f" help: {spec.help}" if spec.help else ""
@@ -1184,7 +1188,8 @@ class CommandArgumentParser:
                     )
 
         result.pop("help", None)
-        result.pop("tldr", None)
+        if not self._is_help_command:
+            result.pop("tldr", None)
         return result
 
     async def parse_args_split(
@@ -1202,7 +1207,9 @@ class CommandArgumentParser:
         args_list = []
         kwargs_dict = {}
         for arg in self._arguments:
-            if arg.dest in ("help", "tldr"):
+            if arg.dest == "help":
+                continue
+            if arg.dest == "tldr" and not self._is_help_command:
                 continue
             if arg.positional:
                 args_list.append(parsed[arg.dest])

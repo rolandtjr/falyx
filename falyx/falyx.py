@@ -411,7 +411,7 @@ class Falyx:
                 self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
                 return None
         if key:
-            _, command, args, kwargs = await self.get_command(key)
+            _, command, args, kwargs = await self.get_command(key, from_help=True)
             if command and tldr and command.arg_parser:
                 command.arg_parser.render_tldr()
                 self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
@@ -941,7 +941,7 @@ class Falyx:
         return False, input_str.strip()
 
     async def get_command(
-        self, raw_choices: str, from_validate=False
+        self, raw_choices: str, from_validate=False, from_help=False
     ) -> tuple[bool, Command | None, tuple, dict[str, Any]]:
         """
         Returns the selected command based on user input.
@@ -982,7 +982,7 @@ class Falyx:
                 logger.info("Command '%s' selected.", run_command.key)
             if is_preview:
                 return True, run_command, args, kwargs
-            elif self.is_cli_mode:
+            elif self.is_cli_mode or from_help:
                 return False, run_command, args, kwargs
             try:
                 args, kwargs = await run_command.parse_args(input_args, from_validate)
