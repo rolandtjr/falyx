@@ -203,6 +203,7 @@ class Falyx:
 
     @property
     def is_cli_mode(self) -> bool:
+        """Checks if the current mode is a CLI mode."""
         return self.options.get("mode") in {
             FalyxMode.RUN,
             FalyxMode.PREVIEW,
@@ -367,6 +368,7 @@ class Falyx:
         )
 
     def get_tip(self) -> str:
+        """Returns a random tip for the user about using Falyx."""
         program = f"{self.program} run " if self.is_cli_mode else ""
         tips = [
             f"Use '{program}?[COMMAND]' to preview a command.",
@@ -405,6 +407,7 @@ class Falyx:
     async def _render_help(
         self, tag: str = "", key: str | None = None, tldr: bool = False
     ) -> None:
+        """Renders the help menu with command details, usage examples, and tips."""
         if tldr and not key:
             if self.help_command and self.help_command.arg_parser:
                 self.help_command.arg_parser.render_tldr()
