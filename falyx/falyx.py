@@ -174,7 +174,7 @@ class Falyx:
         self.hooks: HookManager = HookManager()
         self.last_run_command: Command | None = None
         self.key_bindings: KeyBindings = key_bindings or KeyBindings()
-        self.bottom_bar: BottomBar | str | Callable[[], None] = bottom_bar
+        self.bottom_bar: BottomBar | str | Callable[[], None] | None = bottom_bar
         self._never_prompt: bool = never_prompt
         self._force_confirm: bool = force_confirm
         self.cli_args: Namespace | None = cli_args
@@ -606,7 +606,7 @@ class Falyx:
             self._bottom_bar = bottom_bar
         else:
             raise FalyxError(
-                "Bottom bar must be a string, callable, or BottomBar instance."
+                "Bottom bar must be a string, callable, None, or BottomBar instance."
             )
         self._invalidate_prompt_session_cache()
 
@@ -618,8 +618,6 @@ class Falyx:
             return self.bottom_bar
         elif isinstance(self.bottom_bar, str):
             return self.bottom_bar
-        elif self.bottom_bar is None:
-            return None
         return None
 
     @cached_property
@@ -1197,6 +1195,7 @@ class Falyx:
     async def menu(self) -> None:
         """Runs the menu and handles user input."""
         logger.info("Starting menu: %s", self.get_title())
+        self.options.set("mode", FalyxMode.MENU)
         self.debug_hooks()
         if self.welcome_message:
             self.print_message(self.welcome_message)
@@ -1208,8 +1207,7 @@ class Falyx:
                     else:
                         self.console.print(self.table, justify="center")
                 try:
-                    task = asyncio.create_task(self.process_command())
-                    should_continue = await task
+                    should_continue = await self.process_command()
                     if not should_continue:
                         break
                 except (EOFError, KeyboardInterrupt):
@@ -1233,6 +1231,7 @@ class Falyx:
         root_parser: ArgumentParser | None = None,
         subparsers: _SubParsersAction | None = None,
         callback: Callable[..., Any] | None = None,
+        always_start_menu: bool = False,
     ) -> None:
         """
         Entrypoint for executing a Falyx CLI application via structured subcommands.
@@ -1391,7 +1390,8 @@ class Falyx:
 
             if self.cli_args.summary:
                 er.summary()
-            sys.exit(0)
+            if not always_start_menu:
+                sys.exit(0)
 
         if self.cli_args.command == "run-all":
             self.options.set("mode", FalyxMode.RUN_ALL)
@@ -1444,7 +1444,7 @@ class Falyx:
 
             if self.cli_args.summary:
                 er.summary()
-
-            sys.exit(0)
+            if not always_start_menu:
+                sys.exit(0)
 
         await self.menu()
