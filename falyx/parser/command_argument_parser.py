@@ -1155,7 +1155,7 @@ class CommandArgumentParser:
         for spec in self._arguments:
             if spec.dest == "help" or spec.dest == "tldr":
                 continue
-            if spec.required and not result.get(spec.dest):
+            if spec.required and result.get(spec.dest) is None:
                 help_text = f" help: {spec.help}" if spec.help else ""
                 if (
                     spec.action == ArgumentAction.ACTION
@@ -1316,7 +1316,7 @@ class CommandArgumentParser:
                 for suggestion in arg.suggestions
                 if suggestion_filter(suggestion)
             ]
-        if arg.type is Path:
+        if issubclass(arg.type, Path):
             return self._suggest_paths(prefix if not cursor_at_end_of_token else ".")
         return []
 
@@ -1391,7 +1391,7 @@ class CommandArgumentParser:
                 ):
                     return []
                 return sorted(next_non_consumed_positional_arg.suggestions)
-            if next_non_consumed_positional_arg.type == Path:
+            if issubclass(next_non_consumed_positional_arg.type, Path):
                 if cursor_at_end_of_token:
                     return self._suggest_paths(".")
                 else:
@@ -1536,7 +1536,7 @@ class CommandArgumentParser:
                         if suggestion.startswith(last)
                     )
                 )
-            elif arg.type == Path and not cursor_at_end_of_token:
+            elif issubclass(arg.type, Path) and not cursor_at_end_of_token:
                 suggestions.extend(self._suggest_paths(last))
             elif last_keyword_state_in_args and not last_keyword_state_in_args.consumed:
                 suggestions.extend(

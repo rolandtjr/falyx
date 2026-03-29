@@ -344,7 +344,7 @@ class SelectionAction(BaseAction):
                 selection = [
                     key
                     for key, sel in self.selections.items()
-                    if sel.value == maybe_result
+                    if sel.value == maybe_result and maybe_result is not None
                 ]
                 if selection:
                     effective_default = selection[0]
