@@ -10,7 +10,7 @@ from falyx.validators import CommandValidator
 @pytest.mark.asyncio
 async def test_command_validator_validates_command():
     fake_falyx = AsyncMock()
-    fake_falyx.get_command.return_value = (False, object(), (), {})
+    fake_falyx.get_command.return_value = (False, object(), (), {}, {})
     validator = CommandValidator(fake_falyx, "Invalid!")
 
     await validator.validate_async(Document("valid"))
@@ -20,7 +20,7 @@ async def test_command_validator_validates_command():
 @pytest.mark.asyncio
 async def test_command_validator_rejects_invalid_command():
     fake_falyx = AsyncMock()
-    fake_falyx.get_command.return_value = (False, None, (), {})
+    fake_falyx.get_command.return_value = (False, None, (), {}, {})
     validator = CommandValidator(fake_falyx, "Invalid!")
 
     with pytest.raises(ValidationError):
@@ -33,7 +33,7 @@ async def test_command_validator_rejects_invalid_command():
 @pytest.mark.asyncio
 async def test_command_validator_is_preview():
     fake_falyx = AsyncMock()
-    fake_falyx.get_command.return_value = (True, None, (), {})
+    fake_falyx.get_command.return_value = (True, None, (), {}, {})
     validator = CommandValidator(fake_falyx, "Invalid!")
 
     await validator.validate_async(Document("?preview_command"))

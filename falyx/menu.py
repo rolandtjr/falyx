@@ -101,12 +101,16 @@ class MenuOptionMap(CaseInsensitiveDict):
         self,
         options: dict[str, MenuOption] | None = None,
         allow_reserved: bool = False,
+        disable_reserved: bool = False,
     ):
         super().__init__()
         self.allow_reserved = allow_reserved
         if options:
             self.update(options)
-        self._inject_reserved_defaults()
+        if not disable_reserved:
+            self._inject_reserved_defaults()
+        else:
+            self.allow_reserved = True
 
     def _inject_reserved_defaults(self):
         from falyx.action import SignalAction

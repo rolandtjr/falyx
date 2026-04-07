@@ -48,7 +48,9 @@ class CommandValidator(Validator):
                 message=self.error_message,
                 cursor_position=len(text),
             )
-        is_preview, choice, _, __ = await self.falyx.get_command(text, from_validate=True)
+        is_preview, choice, _, __, ___ = await self.falyx.get_command(
+            text, from_validate=True
+        )
         if is_preview:
             return None
         if not choice:

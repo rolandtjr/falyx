@@ -71,7 +71,13 @@ async def test_action_with_nargs_positional():
         return int(a) * int(b)
 
     action = Action("multiply", multiply)
-    parser.add_argument("mul", action=ArgumentAction.ACTION, resolver=action, nargs=2)
+    parser.add_argument(
+        "mul",
+        action=ArgumentAction.ACTION,
+        resolver=action,
+        nargs=2,
+        type=int,
+    )
     args = await parser.parse_args(["3", "4"])
     assert args["mul"] == 12
 
@@ -79,13 +85,13 @@ async def test_action_with_nargs_positional():
         await parser.parse_args(["3"])
 
     with pytest.raises(CommandArgumentError):
-        await parser.parse_args([])
-
-    with pytest.raises(CommandArgumentError):
         await parser.parse_args(["3", "4", "5"])
 
     with pytest.raises(CommandArgumentError):
         await parser.parse_args(["--mul", "3", "4"])
+
+    with pytest.raises(CommandArgumentError):
+        await parser.parse_args([])
 
 
 @pytest.mark.asyncio
@@ -101,6 +107,9 @@ async def test_action_with_nargs_positional_int():
     )
     args = await parser.parse_args(["3", "4"])
     assert args["mul"] == 12
+
+    with pytest.raises(CommandArgumentError):
+        await parser.parse_args([])
 
     with pytest.raises(CommandArgumentError):
         await parser.parse_args(["3"])
@@ -209,11 +218,19 @@ async def test_action_with_default_and_value_not():
 @pytest.mark.asyncio
 async def test_action_with_default_and_value_positional():
     parser = CommandArgumentParser()
-    action = Action("default", lambda: "default_value")
-    parser.add_argument("default", action=ArgumentAction.ACTION, resolver=action)
+    action = Action("action", lambda x: x)
+    parser.add_argument(
+        "default",
+        action=ArgumentAction.ACTION,
+        resolver=action,
+        default="default_value",
+    )
+
+    args = await parser.parse_args([])
+    assert args["default"] == "default_value"
+
+    args = await parser.parse_args(["be"])
+    assert args["default"] == "be"
 
     with pytest.raises(CommandArgumentError):
-        await parser.parse_args([])
-
-    with pytest.raises(CommandArgumentError):
-        await parser.parse_args(["be"])
+        await parser.parse_args(["one", "new_value"])

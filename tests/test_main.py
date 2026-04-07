@@ -1,19 +1,11 @@
 import shutil
 import sys
 import tempfile
-from argparse import ArgumentParser, Namespace, _SubParsersAction
 from pathlib import Path
 
 import pytest
 
-from falyx.__main__ import (
-    bootstrap,
-    find_falyx_config,
-    get_parsers,
-    init_callback,
-    init_config,
-    main,
-)
+from falyx.__main__ import bootstrap, find_falyx_config, init_config, main
 from falyx.parser import CommandArgumentParser
 
 
@@ -94,38 +86,10 @@ async def test_init_config():
     assert args["name"] == "."
 
 
-def test_init_callback(tmp_path):
-    """Test if the init_callback function works correctly."""
-    # Test project initialization
-    args = Namespace(command="init", name=str(tmp_path))
-    init_callback(args)
-    assert (tmp_path / "falyx.yaml").exists()
-
-
-def test_init_global_callback():
-    # Test global initialization
-    args = Namespace(command="init_global")
-    init_callback(args)
-    assert (Path.home() / ".config" / "falyx" / "tasks.py").exists()
-    assert (Path.home() / ".config" / "falyx" / "falyx.yaml").exists()
-
-
-def test_get_parsers():
-    """Test if the get_parsers function returns the correct parsers."""
-    root_parser, subparsers = get_parsers()
-    assert isinstance(root_parser, ArgumentParser)
-    assert isinstance(subparsers, _SubParsersAction)
-
-    # Check if the 'init' command is available
-    init_parser = subparsers.choices.get("init")
-    assert init_parser is not None
-    assert "name" == init_parser._get_positional_actions()[0].dest
-
-
 def test_main():
     """Test if the main function runs with the correct arguments."""
 
-    sys.argv = ["falyx", "run", "?"]
+    sys.argv = ["falyx", "?"]
 
     with pytest.raises(SystemExit) as exc_info:
         main()

@@ -1,22 +1,30 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Main class for constructing and running Falyx CLI menus.
+"""Falyx CLI framework core module.
 
-Falyx provides a structured, customizable interactive menu system
-for running commands, actions, and workflows. It supports:
+This module defines the `Falyx` class, the primary orchestration layer for
+building and running structured CLI applications. It integrates command
+registration, interactive menu handling, CLI parsing, execution lifecycle
+management, and option scoping into a unified runtime.
 
-- Hook lifecycle management (before/on_success/on_error/after/on_teardown)
-- Dynamic command addition and alias resolution
-- Rich-based menu display with multi-column layouts
-- Interactive input validation and auto-completion
-- History tracking and help menu generation
-- Confirmation prompts and spinners
-- Run key for automated script execution
-- CLI argument parsing with argparse integration
-- Retry policy configuration for actions
+Core responsibilities:
+- Manage command registration, alias resolution, and dispatch
+- Coordinate interactive menu and non-interactive CLI execution modes
+- Integrate with `FalyxParser` for root-level argument parsing and routing
+- Apply execution-scoped overrides via `OptionsManager`
+- Drive lifecycle hooks (`before`, `on_success`, `on_error`, `after`, `on_teardown`)
+- Provide Rich-based rendering and Prompt Toolkit interaction
+- Maintain execution history via `ExecutionRegistry`
 
-Falyx enables building flexible, robust, and user-friendly
-terminal applications with minimal boilerplate.
+Execution Flow:
+1. CLI arguments are parsed via `FalyxParser`
+2. A `ParseResult` determines the execution mode (menu, command, help, etc.)
+3. Execution options are applied through scoped namespaces
+4. Commands are resolved and executed via `Command` and `Action` abstractions
+5. Lifecycle hooks and context tracking are applied throughout execution
+
+This module serves as the entrypoint for most Falyx-based applications and
+coordinates all major subsystems including parsing, execution, rendering,
+and state management.
 """
 from __future__ import annotations
 
@@ -24,7 +32,6 @@ import asyncio
 import logging
 import shlex
 import sys
-from argparse import ArgumentParser, Namespace, _SubParsersAction
 from difflib import get_close_matches
 from functools import cached_property
 from pathlib import Path
@@ -42,17 +49,19 @@ from prompt_toolkit.validation import ValidationError
 from rich import box
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.markup import escape
 from rich.padding import Padding
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 from falyx.action.action import Action
 from falyx.action.base_action import BaseAction
 from falyx.bottom_bar import BottomBar
 from falyx.command import Command
+from falyx.command_executor import CommandExecutor
 from falyx.completer import FalyxCompleter
 from falyx.console import console
-from falyx.context import ExecutionContext
 from falyx.debug import log_after, log_before, log_error, log_success
 from falyx.exceptions import (
     CommandAlreadyExistsError,
@@ -61,13 +70,13 @@ from falyx.exceptions import (
     InvalidActionError,
     NotAFalyxError,
 )
+from falyx.execution_option import ExecutionOption
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import Hook, HookManager, HookType
-from falyx.hooks import spinner_before_hook, spinner_teardown_hook
 from falyx.logger import logger
 from falyx.mode import FalyxMode
 from falyx.options_manager import OptionsManager
-from falyx.parser import CommandArgumentParser, FalyxParsers, get_arg_parsers
+from falyx.parser import CommandArgumentParser, FalyxParser, ParseResult
 from falyx.prompt_utils import rich_text_to_prompt_text
 from falyx.protocols import ArgParserProtocol
 from falyx.retry import RetryPolicy
@@ -79,53 +88,77 @@ from falyx.version import __version__
 
 
 class Falyx:
-    """
-    Main menu controller for Falyx CLI applications.
+    """Primary controller for Falyx CLI applications.
 
-    Falyx orchestrates the full lifecycle of an interactive menu system,
-    handling user input, command execution, error recovery, and structured
-    CLI workflows.
+    `Falyx` coordinates command registration, input parsing, execution dispatch,
+    and lifecycle management across both interactive (menu) and non-interactive
+    (CLI) modes.
 
-    Key Features:
-    - Interactive menu with Rich rendering and Prompt Toolkit input handling
-    - Dynamic command management with alias and abbreviation matching
-    - Full lifecycle hooks (before, success, error, after, teardown) at both menu and
-      command levels
-    - Built-in retry support, spinner visuals, and confirmation prompts
-    - Submenu nesting and action chaining
-    - History tracking, help generation, and run key execution modes
-    - Seamless CLI argument parsing and integration via argparse
-    - Declarative option management with OptionsManager
-    - Command level argument parsing and validation
-    - Extensible with user-defined hooks, bottom bars, and custom layouts
+    It acts as the central integration point between:
+    - Command definitions (`Command`)
+    - Execution units (`Action`, `ChainedAction`, `ActionGroup`)
+    - CLI parsing (`FalyxParser`, `CommandArgumentParser`)
+    - Runtime configuration (`OptionsManager`)
+    - Lifecycle hooks (`HookManager`)
+    - UI layers (Rich + Prompt Toolkit)
+
+    Key Responsibilities:
+    - Maintain a registry of commands, aliases, and builtins
+    - Resolve user input to commands via exact match, prefix match, or fuzzy match
+    - Dispatch execution with full lifecycle hook support
+    - Apply execution-scoped option overrides (e.g. confirm, retries)
+    - Support both CLI-driven execution and interactive menu loops
+    - Provide structured help, preview, and history functionality
+
+    Execution Modes:
+    - MENU: Interactive prompt loop using Prompt Toolkit
+    - COMMAND: Direct CLI command execution
+    - HELP: Render help output
+    - ERROR: Render error and exit
+
+    State Management:
+    - Uses `OptionsManager` with namespaced overrides (e.g. "execution")
+    - Tracks last executed command and execution context
+    - Integrates with `ExecutionRegistry` for history and summaries
+
+    Design Notes:
+    - Commands are first-class and may encapsulate complex workflows
+    - Execution options are parsed separately from command arguments
+    - All execution passes through a unified hook lifecycle
+    - CLI and menu modes share the same execution semantics
 
     Args:
         title (str | Markdown): Title displayed for the menu.
-        prompt (AnyFormattedText): Prompt displayed when requesting user input.
-        columns (int): Number of columns to use when rendering menu commands.
-        bottom_bar (BottomBar | str | Callable | None): Bottom toolbar content or logic.
-        welcome_message (str | Markdown | dict): Welcome message shown at startup.
-        exit_message (str | Markdown | dict): Exit message shown on shutdown.
+        program (str | None): CLI program name used in help output.
+        usage (str | None): Optional usage string override.
+        description (str | None): Program description for CLI help.
+        epilog (str | None): Additional help text.
+        version (str): Program version string.
+        program_style (str): Rich style for program name in help.
+        usage_style (str): Rich style for usage string in help.
+        description_style (str): Rich style for description in help.
+        epilog_style (str): Rich style for epilog in help.
+        version_style (str): Rich style for version in help.
+        prompt (str | StyleAndTextTuples): Input prompt.
+        columns (int): Number of columns in menu display.
+        bottom_bar (BottomBar | str | Callable | None): Bottom bar renderer.
+        welcome_message (str | Markdown | dict): Message shown on startup.
+        exit_message (str | Markdown | dict): Message shown on exit.
         key_bindings (KeyBindings | None): Custom Prompt Toolkit key bindings.
-        include_history_command (bool): Whether to add a built-in history viewer command.
-        include_help_command (bool): Whether to add a built-in help viewer command.
-        never_prompt (bool): Seed default for `OptionsManager["never_prompt"]`
-        force_confirm (bool): Seed default for `OptionsManager["force_confirm"]`
-        cli_args (Namespace | None): Parsed CLI arguments, usually from argparse.
-        options (OptionsManager | None): Declarative option mappings for global state.
-        custom_table (Callable[[Falyx], Table] | Table | None): Custom menu table
-                                                                generator.
+        include_history_command (bool): Whether to include history command.
+        never_prompt (bool): Default prompt suppression setting.
+        force_confirm (bool): Default confirmation behavior.
+        options (OptionsManager | None): Initial options manager.
+        render_menu (Callable | None): Custom menu renderer.
+        custom_table (Callable | Table | None): Custom table builder.
+        hide_menu_table (bool): Whether to hide menu table.
+        show_placeholder_menu (bool): Show placeholder suggestions.
+        prompt_history_base_dir (Path): Directory for prompt history.
+        enable_prompt_history (bool): Enable persistent history.
+        enable_help_tips (bool): Show random tips in help output.
 
-    Methods:
-        run(): Main entry point for CLI argument-based workflows. Suggested for
-               most use cases.
-        menu(): Run the interactive menu loop.
-        run_key(command_key, return_context): Run a command directly without the menu.
-        add_command(): Add a single command to the menu.
-        add_commands(): Add multiple commands at once.
-        register_all_hooks(): Register hooks across all commands and submenus.
-        debug_hooks(): Log hook registration for debugging.
-        build_default_table(): Construct the standard Rich table layout.
+    Raises:
+        FalyxError: If invalid configuration or command registration occurs.
     """
 
     def __init__(
@@ -137,6 +170,10 @@ class Falyx:
         description: str | None = "Falyx CLI - Run structured async command workflows.",
         epilog: str | None = None,
         version: str = __version__,
+        program_style: str = OneColors.BLUE_b,
+        usage_style: str = "white",
+        description_style: str = OneColors.BLUE,
+        epilog_style: str = "white",
         version_style: str = OneColors.BLUE_b,
         prompt: str | StyleAndTextTuples = "> ",
         columns: int = 3,
@@ -145,10 +182,8 @@ class Falyx:
         exit_message: str | Markdown | dict[str, Any] = "",
         key_bindings: KeyBindings | None = None,
         include_history_command: bool = True,
-        include_help_command: bool = True,
         never_prompt: bool = False,
         force_confirm: bool = False,
-        cli_args: Namespace | None = None,
         options: OptionsManager | None = None,
         render_menu: Callable[[Falyx], None] | None = None,
         custom_table: Callable[[Falyx], Table] | Table | None = None,
@@ -156,6 +191,7 @@ class Falyx:
         show_placeholder_menu: bool = False,
         prompt_history_base_dir: Path = Path.home(),
         enable_prompt_history: bool = False,
+        enable_help_tips: bool = True,
     ) -> None:
         """Initializes the Falyx object."""
         self.title: str | Markdown = title
@@ -164,10 +200,15 @@ class Falyx:
         self.description: str | None = description
         self.epilog: str | None = epilog
         self.version: str = version
+        self.program_style: str = program_style
+        self.usage_style: str = usage_style
+        self.description_style: str = description_style
+        self.epilog_style: str = epilog_style
         self.version_style: str = version_style
         self.prompt: str | StyleAndTextTuples = rich_text_to_prompt_text(prompt)
         self.columns: int = columns
         self.commands: dict[str, Command] = CaseInsensitiveDict()
+        self.builtins: dict[str, Command] = CaseInsensitiveDict()
         self.console: Console = console
         self.welcome_message: str | Markdown | dict[str, Any] = welcome_message
         self.exit_message: str | Markdown | dict[str, Any] = exit_message
@@ -177,21 +218,18 @@ class Falyx:
         self.bottom_bar: BottomBar | str | Callable[[], None] | None = bottom_bar
         self._never_prompt: bool = never_prompt
         self._force_confirm: bool = force_confirm
-        self.cli_args: Namespace | None = cli_args
         self.render_menu: Callable[[Falyx], None] | None = render_menu
         self.custom_table: Callable[[Falyx], Table] | Table | None = custom_table
         self._hide_menu_table: bool = hide_menu_table
         self.show_placeholder_menu: bool = show_placeholder_menu
-        self.validate_options(cli_args, options)
+        self._validate_options(options)
         self._prompt_session: PromptSession | None = None
         self.options.set("mode", FalyxMode.MENU)
         self.exit_command: Command = self._get_exit_command()
         self.history_command: Command | None = (
             self._get_history_command() if include_history_command else None
         )
-        self.help_command: Command | None = (
-            self._get_help_command() if include_help_command else None
-        )
+        self.help_command: Command = self._get_help_command()
         if enable_prompt_history:
             program = (self.program or "falyx").split(".")[0].replace(" ", "_")
             self.history_path: Path = (
@@ -200,76 +238,88 @@ class Falyx:
             self.history: FileHistory | None = FileHistory(self.history_path)
         else:
             self.history = None
+        self.enable_help_tips = enable_help_tips
+        self._register_default_builtins()
+        self._register_options()
+        self._executor = CommandExecutor(
+            options=self.options,
+            hooks=self.hooks,
+            console=self.console,
+        )
 
     @property
     def is_cli_mode(self) -> bool:
         """Checks if the current mode is a CLI mode."""
-        return self.options.get("mode") in {
-            FalyxMode.RUN,
-            FalyxMode.PREVIEW,
-            FalyxMode.RUN_ALL,
-            FalyxMode.HELP,
-        }
+        return self.options.get("mode") != FalyxMode.MENU
 
-    def validate_options(
+    def _validate_options(
         self,
-        cli_args: Namespace | None,
         options: OptionsManager | None = None,
     ) -> None:
         """Checks if the options are set correctly."""
         self.options: OptionsManager = options or OptionsManager()
-        if not cli_args and not options:
-            return None
-
-        if options and not cli_args:
-            raise FalyxError("Options are set, but CLI arguments are not.")
-
-        assert isinstance(
-            cli_args, Namespace
-        ), "CLI arguments must be a Namespace object."
-
         if not isinstance(self.options, OptionsManager):
             raise FalyxError("Options must be an instance of OptionsManager.")
 
-        if not isinstance(self.cli_args, Namespace):
-            raise FalyxError("CLI arguments must be a Namespace object.")
+    def _register_options(self) -> None:
+        """Registers default options if they are not already set."""
+        self.options.from_mapping(values={}, namespace_name="execution")
+
+        if not self.options.get("never_prompt"):
+            self.options.set("never_prompt", self._never_prompt)
+
+        if not self.options.get("force_confirm"):
+            self.options.set("force_confirm", self._force_confirm)
+
+        if not self.options.get("hide_menu_table"):
+            self.options.set("hide_menu_table", self._hide_menu_table)
+
+        if not self.options.get("program"):
+            self.options.set("program", self.program)
+
+        if not self.options.get("program_style"):
+            self.options.set("program_style", self.program_style)
 
     @property
     def _name_map(self) -> dict[str, Command]:
-        """
-        Builds a mapping of all valid input names (keys, aliases, normalized names) to
-        Command objects. If a collision occurs, logs a warning and keeps the first
+        """Builds a mapping of all valid input names to Command objects.
+
+        If a collision occurs, logs a warning and keeps the first
         registered command.
         """
         mapping: dict[str, Command] = {}
 
-        def register(name: str, cmd: Command):
+        def register(name: str, command: Command):
             norm = name.upper().strip()
             if norm in mapping:
                 existing = mapping[norm]
-                if existing is not cmd:
-                    logger.warning(
-                        "[alias conflict] '%s' already assigned to '%s'. "
-                        "Skipping for '%s'.",
-                        name,
-                        existing.description,
-                        cmd.description,
+                if existing is not command:
+                    raise CommandAlreadyExistsError(
+                        f"Identifier '{norm}' is already registered.\n"
+                        f"Existing command: {mapping[norm].key}\n"
+                        f"New command: {command.key}"
                     )
             else:
-                mapping[norm] = cmd
+                mapping[norm] = command
 
-        for special in [self.exit_command, self.history_command, self.help_command]:
+        for special in [self.exit_command, self.history_command]:
             if special:
                 register(special.key, special)
                 for alias in special.aliases:
                     register(alias, special)
                 register(special.description, special)
 
-        for cmd in self.commands.values():
-            register(cmd.key, cmd)
-            for alias in cmd.aliases:
-                register(alias, cmd)
-            register(cmd.description, cmd)
+        for command in self.builtins.values():
+            register(command.key, command)
+            for alias in command.aliases:
+                register(alias, command)
+            register(command.description, command)
+
+        for command in self.commands.values():
+            register(command.key, command)
+            for alias in command.aliases:
+                register(alias, command)
+            register(command.description, command)
         return mapping
 
     def get_title(self) -> str:
@@ -369,7 +419,7 @@ class Falyx:
 
     def get_tip(self) -> str:
         """Returns a random tip for the user about using Falyx."""
-        program = f"{self.program} run " if self.is_cli_mode else ""
+        program = f"{self.program} " if self.is_cli_mode else ""
         tips = [
             f"Use '{program}?[COMMAND]' to preview a command.",
             "Every command supports aliases—try abbreviating the name!",
@@ -379,17 +429,17 @@ class Falyx:
             f"'{self.program} --never-prompt' to disable all prompts for the [bold italic]entire menu session[/].",
             f"Use '{self.program} --verbose' to enable debug logging for a menu session.",
             f"'{self.program} --debug-hooks' will trace every before/after hook in action.",
-            f"Run commands directly from the CLI: '{self.program} run [COMMAND] [OPTIONS]'.",
+            f"Run commands directly from the CLI: '{self.program} [COMMAND] [OPTIONS]'.",
             "All [COMMAND] keys and aliases are case-insensitive.",
         ]
         if self.is_cli_mode:
             tips.extend(
                 [
                     f"Use '{self.program} help' to list all commands at any time.",
-                    f"Use '{self.program} --never-prompt run [COMMAND] [OPTIONS]' to disable all prompts for [bold italic]just this command[/].",
-                    f"Use '{self.program} run --skip-confirm [COMMAND] [OPTIONS]' to skip confirmations.",
-                    f"Use '{self.program} run --summary [COMMAND] [OPTIONS]' to print a post-run summary.",
-                    f"Use '{self.program} --verbose run [COMMAND] [OPTIONS]' to enable debug logging for any run.",
+                    f"Use '{self.program} --never-prompt [COMMAND] [OPTIONS]' to disable all prompts for [bold italic]just this command[/].",
+                    f"Use '{self.program} --skip-confirm [COMMAND] [OPTIONS]' to skip confirmations.",
+                    f"Use '{self.program} --summary [COMMAND] [OPTIONS]' to print a post-run summary.",
+                    f"Use '{self.program} --verbose [COMMAND] [OPTIONS]' to enable debug logging for any run.",
                     "Use '--skip-confirm' for automation scripts where no prompts are wanted.",
                 ]
             )
@@ -404,57 +454,68 @@ class Falyx:
             )
         return choice(tips)
 
-    async def _render_help(
-        self, tag: str = "", key: str | None = None, tldr: bool = False
-    ) -> None:
-        """Renders the help menu with command details, usage examples, and tips."""
-        if tldr and not key:
-            if self.help_command and self.help_command.arg_parser:
-                self.help_command.arg_parser.render_tldr()
-                self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
-                return None
-        if key:
-            _, command, args, kwargs = await self.get_command(key, from_help=True)
-            if command and tldr and command.arg_parser:
-                command.arg_parser.render_tldr()
-                self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
-                return None
-            elif command and tldr and not command.arg_parser:
-                self.console.print(
-                    f"[bold]No TLDR examples available for '{command.description}'.[/bold]"
-                )
-            elif command and command.arg_parser:
-                command.arg_parser.render_help()
-                self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
-                return None
-            elif command and not command.arg_parser:
-                self.console.print(
-                    f"[bold]No detailed help available for '{command.description}'.[/bold]"
-                )
-            else:
-                self.console.print(f"[bold]No command found for '{key}'.[/bold]")
-        if tag:
-            tag_lower = tag.lower()
-            self.console.print(f"[bold]{tag_lower}:[/bold]")
-            commands = [
-                command
-                for command in self.commands.values()
-                if any(tag_lower == tag.lower() for tag in command.tags)
-            ]
-            if not commands:
-                self.console.print(f"'{tag}'... Nothing to show here")
-                return None
-            for command in commands:
-                usage, description, _ = command.help_signature
-                self.console.print(
-                    Padding(
-                        Panel(usage, expand=False, title=description, title_align="left"),
-                        (0, 2),
-                    )
-                )
-            self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
+    async def _render_command_tldr(self, key: str | None = None) -> None:
+        """Renders the TLDR examples for a command, if available."""
+        if not key and self.help_command:
+            key = "H"
+        if not key:
+            self.console.print("[bold]No command specified for TLDR examples.[/bold]")
             return None
+        _, command, args, kwargs, execution_args = await self.get_command(
+            key, from_help=True
+        )
+        if command and command.arg_parser:
+            command.arg_parser.render_tldr()
+            if self.enable_help_tips:
+                self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
+        elif command and not command.arg_parser:
+            self.console.print(
+                f"[bold]No TLDR examples available for '{command.description}'.[/bold]"
+            )
+        else:
+            self.console.print(f"[bold]No command found for '{key}'.[/bold]")
 
+    async def _render_command_help(self, key: str) -> None:
+        """Renders the detailed help for a command, if available."""
+        _, command, args, kwargs, execution_args = await self.get_command(
+            key, from_help=True
+        )
+        if command and command.arg_parser:
+            command.arg_parser.render_help()
+            if self.enable_help_tips:
+                self.console.print(f"\n[bold]tip:[/bold] {self.get_tip()}")
+        elif command and not command.arg_parser:
+            self.console.print(
+                f"[bold]No detailed help available for '{command.description}'.[/bold]"
+            )
+        else:
+            self.console.print(f"[bold]No command found for '{key}'.[/bold]")
+
+    async def _render_tag_help(self, tag: str) -> None:
+        """Renders a list of commands matching a specific tag."""
+        tag_lower = tag.lower()
+        self.console.print(f"[bold]{tag_lower}:[/bold]")
+        commands = [
+            command
+            for command in self.commands.values()
+            if any(tag_lower == tag.lower() for tag in command.tags)
+        ]
+        if not commands:
+            self.console.print(f"'{tag}'... Nothing to show here")
+            return None
+        for command in commands:
+            usage, description, _ = command.help_signature
+            self.console.print(
+                Padding(
+                    Panel(usage, expand=False, title=description, title_align="left"),
+                    (0, 2),
+                )
+            )
+        if self.enable_help_tips:
+            self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
+
+    async def _render_menu_help(self) -> None:
+        """Renders the main menu help menu with all commands and menu builtins."""
         self.console.print("[bold]help:[/bold]")
         for command in self.commands.values():
             usage, description, tag = command.help_signature
@@ -478,23 +539,94 @@ class Falyx:
                     (0, 2),
                 )
             )
-        if not self.is_cli_mode:
-            if self.history_command:
-                usage, description, _ = self.history_command.help_signature
-                self.console.print(
-                    Padding(
-                        Panel(usage, expand=False, title=description, title_align="left"),
-                        (0, 2),
-                    )
-                )
-            usage, description, _ = self.exit_command.help_signature
+        if self.history_command:
+            usage, description, _ = self.history_command.help_signature
             self.console.print(
                 Padding(
                     Panel(usage, expand=False, title=description, title_align="left"),
                     (0, 2),
                 )
             )
-        self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
+        usage, description, _ = self.exit_command.help_signature
+        self.console.print(
+            Padding(
+                Panel(usage, expand=False, title=description, title_align="left"),
+                (0, 2),
+            )
+        )
+        if self.enable_help_tips:
+            self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
+
+    async def _render_cli_help(self) -> None:
+        """Renders the CLI help menu with all available commands and options."""
+        usage = self.usage or "[GLOBAL OPTIONS] [COMMAND] [OPTIONS]"
+        self.console.print(
+            f"[bold]usage:[/bold] [{self.program_style}]{self.program}[/{self.program_style}] [{self.usage_style}]{usage}[/{self.usage_style}]"
+        )
+        if self.description:
+            self.console.print(
+                f"\n[{self.description_style}]{self.description}[/{self.description_style}]"
+            )
+        self.console.print("\n[bold]global options:[/bold]")
+        self.console.print(f"  {'-h, --help':<22}{'Show this help message and exit.'}")
+        self.console.print(
+            f"  {'-v, --verbose':<22}{'Enable verbose debug logging for the session.'}"
+        )
+        self.console.print(
+            f"  {'--debug-hooks':<22}{'Log detailed information about hook execution for debugging.'}"
+        )
+        self.console.print(
+            f"  {'--never-prompt':<22}{'Disable all confirmation prompts for the entire session.'}"
+        )
+        self.console.print("\n[bold]builtin commands:[/bold]")
+        for command in self.builtins.values():
+            if command == self.help_command:
+                builtin_alias = Text("help", style=command.style)
+            else:
+                builtin_alias = Text(command.key, style=command.style)
+
+            line = Text("  ")
+            line.append(builtin_alias)
+            line.pad_right(24 - len(line.plain))
+            line.append(command.help_text)
+
+            self.console.print(line)
+        if self.commands:
+            self.console.print("\n[bold]commands:[/bold]")
+            for command in self.commands.values():
+                line = Text("  ")
+                line.append(command.key, style=command.style)
+                for alias in command.aliases:
+                    line.append(" | ", style="dim")
+                    line.append(alias, style=command.style)
+                line.pad_right(24 - len(line.plain))
+                line.append(command.help_text or command.description)
+                self.console.print(line)
+        if self.epilog:
+            self.console.print(f"\n{self.epilog}", style=self.epilog_style)
+        if self.enable_help_tips:
+            self.console.print(f"\n[bold]tip:[/bold] {self.get_tip()}")
+
+    async def _render_help(
+        self,
+        tag: str = "",
+        key: str | None = None,
+        tldr: bool = False,
+    ) -> None:
+        """Renders the help menu with command details, usage examples, and tips."""
+        if tldr:
+            await self._render_command_tldr(key)
+            return None
+        if key:
+            await self._render_command_help(key)
+            return None
+        if tag:
+            await self._render_tag_help(tag)
+            return None
+        if self.options.get("mode") == FalyxMode.MENU:
+            await self._render_menu_help()
+            return None
+        await self._render_cli_help()
 
     def _get_help_command(self) -> Command:
         """Returns the help command for the menu."""
@@ -543,6 +675,86 @@ class Falyx:
             program=self.program,
         )
 
+    async def _preview(self, command_key: str) -> None:
+        """Previews the execution of a command without actually running it."""
+        _, command, args, kwargs, execution_args = await self.get_command(
+            command_key, from_help=True
+        )
+        if not command:
+            self.console.print(
+                f"[{OneColors.DARK_RED}]❌ Command '{command_key}' not found."
+            )
+            return None
+        self.console.print(f"Preview of command '{command.key}': {command.description}")
+        await command.preview()
+
+    def _get_preview_command(self) -> Command:
+        """Returns the preview command for Falyx."""
+        preview_parser = CommandArgumentParser(
+            command_key="preview",
+            command_description="Preview",
+            command_style=OneColors.GREEN,
+            program=self.program,
+            options_manager=self.options,
+            help_text="Preview the execution of a command without running it.",
+        )
+        preview_parser.add_argument(
+            "command_key",
+            help="The key or alias of the command to preview.",
+        )
+        preview_parser.add_tldr_examples(
+            [
+                ("[COMMAND]", "Preview the execution of a specific command."),
+            ]
+        )
+        preview_command = Command(
+            key="preview",
+            description="Preview",
+            action=Action("Preview", self._preview),
+            style=OneColors.GREEN,
+            simple_help_signature=True,
+            options_manager=self.options,
+            program=self.program,
+            help_text="Preview the execution of a command without running it.",
+            arg_parser=preview_parser,
+        )
+        return preview_command
+
+    async def _render_version(self) -> None:
+        """Renders the program version."""
+        self.console.print(f"[{self.version_style}]{self.program} v{self.version}[/]")
+
+    def _get_version_command(self) -> Command:
+        """Returns the version command for Falyx."""
+        version_command = Command(
+            key="version",
+            description="Version",
+            action=Action("Version", self._render_version),
+            style=self.version_style,
+            simple_help_signature=True,
+            ignore_in_history=True,
+            options_manager=self.options,
+            program=self.program,
+            help_text=f"Show the {self.program} version.",
+        )
+        if version_command.arg_parser:
+            version_command.arg_parser.add_tldr_examples(
+                [("", f"Show the {self.program} version.")]
+            )
+        return version_command
+
+    def _add_builtin(self, command: Command) -> None:
+        """Adds a built-in command to Falyx."""
+        self._validate_command_aliases(command.key, command.aliases)
+        self.builtins[command.key.upper()] = command
+        _ = self._name_map
+
+    def _register_default_builtins(self) -> None:
+        """Registers the default built-in commands for Falyx."""
+        self._add_builtin(self.help_command)
+        self._add_builtin(self._get_preview_command())
+        self._add_builtin(self._get_version_command())
+
     def _get_completer(self) -> FalyxCompleter:
         """Completer to provide auto-completion for the menu commands."""
         return FalyxCompleter(self)
@@ -554,13 +766,14 @@ class Falyx:
         if self.history_command:
             keys.add(self.history_command.key.upper())
             keys.update({alias.upper() for alias in self.history_command.aliases})
-        if self.help_command:
-            keys.add(self.help_command.key.upper())
-            keys.update({alias.upper() for alias in self.help_command.aliases})
 
-        for cmd in self.commands.values():
-            keys.add(cmd.key.upper())
-            keys.update({alias.upper() for alias in cmd.aliases})
+        for command in self.builtins.values():
+            keys.add(command.key.upper())
+            keys.update({alias.upper() for alias in command.aliases})
+
+        for command in self.commands.values():
+            keys.add(command.key.upper())
+            keys.update({alias.upper() for alias in command.aliases})
 
         commands_str = ", ".join(sorted(keys))
 
@@ -576,16 +789,6 @@ class Falyx:
         if hasattr(self, "prompt_session"):
             del self.prompt_session
         self._prompt_session = None
-
-    def add_help_command(self):
-        """Adds a help command to the menu if it doesn't already exist."""
-        if not self.help_command:
-            self.help_command = self._get_help_command()
-
-    def add_history_command(self):
-        """Adds a history command to the menu if it doesn't already exist."""
-        if not self.history_command:
-            self.history_command = self._get_history_command()
 
     @property
     def bottom_bar(self) -> BottomBar | str | Callable[[], Any] | None:
@@ -661,31 +864,43 @@ class Falyx:
         self.register_all_hooks(HookType.ON_SUCCESS, log_success)
         self.register_all_hooks(HookType.ON_ERROR, log_error)
         self.register_all_hooks(HookType.AFTER, log_after)
+        self.register_all_hooks(HookType.ON_TEARDOWN, log_after)
 
-    def debug_hooks(self) -> None:
-        """Logs the names of all hooks registered for the menu and its commands."""
-        logger.debug("Menu-level hooks:\n%s", str(self.hooks))
-
-        for key, command in self.commands.items():
-            logger.debug("[Command '%s'] hooks:\n%s", key, str(command.hooks))
-
-    def _validate_command_key(self, key: str) -> None:
-        """Validates the command key to ensure it is unique."""
+    def _validate_command_aliases(self, key: str, aliases: list[str] | None) -> None:
+        """Validates the command aliases to ensure they are unique."""
         key = key.upper()
-        collisions = []
+        aliases = [alias.upper() for alias in (aliases or [])]
 
-        if key in self.commands:
-            collisions.append("command")
-        if key == self.exit_command.key.upper():
-            collisions.append("back command")
-        if self.history_command and key == self.history_command.key.upper():
-            collisions.append("history command")
-        if self.help_command and key == self.help_command.key.upper():
-            collisions.append("help command")
+        if len(set(aliases)) != len(aliases):
+            raise CommandAlreadyExistsError("Duplicate aliases provided.")
+
+        if key in aliases:
+            raise CommandAlreadyExistsError("Command key cannot also be an alias.")
+
+        existing_names = set()
+
+        def collect_names(command: Command):
+            existing_names.add(command.key.upper())
+            existing_names.update(alias.upper() for alias in command.aliases)
+
+        for command in self.commands.values():
+            collect_names(command)
+
+        for command in self.builtins.values():
+            collect_names(command)
+
+        collect_names(self.exit_command)
+
+        if self.history_command:
+            collect_names(self.history_command)
+
+        new_names = {key, *aliases}
+
+        collisions = new_names.intersection(existing_names)
 
         if collisions:
             raise CommandAlreadyExistsError(
-                f"Command key '{key}' conflicts with existing {', '.join(collisions)}."
+                f"Command identifiers {sorted(collisions)} already exist."
             )
 
     def update_exit_command(
@@ -700,7 +915,7 @@ class Falyx:
         help_text: str = "Exit the program.",
     ) -> None:
         """Updates the back command of the menu."""
-        self._validate_command_key(key)
+        self._validate_command_aliases(key, aliases)
         action = action or Action(description, action=_noop)
         if not callable(action):
             raise InvalidActionError("Action must be a callable.")
@@ -726,7 +941,7 @@ class Falyx:
         """Adds a submenu to the menu."""
         if not isinstance(submenu, Falyx):
             raise NotAFalyxError("submenu must be an instance of Falyx.")
-        self._validate_command_key(key)
+        self._validate_command_aliases(key, [])
         self.add_command(
             key, description, submenu.menu, style=style, simple_help_signature=True
         )
@@ -754,8 +969,9 @@ class Falyx:
         """Adds a command to the menu from an existing Command object."""
         if not isinstance(command, Command):
             raise FalyxError("command must be an instance of Command.")
-        self._validate_command_key(command.key)
+        self._validate_command_aliases(command.key, command.aliases)
         self.commands[command.key] = command
+        _ = self._name_map
 
     def add_command(
         self,
@@ -792,6 +1008,7 @@ class Falyx:
         arg_parser: CommandArgumentParser | None = None,
         arguments: list[dict[str, Any]] | None = None,
         argument_config: Callable[[CommandArgumentParser], None] | None = None,
+        execution_options: list[ExecutionOption | str] | None = None,
         custom_parser: ArgParserProtocol | None = None,
         custom_help: Callable[[], str | None] | None = None,
         auto_args: bool = True,
@@ -800,23 +1017,16 @@ class Falyx:
         ignore_in_history: bool = False,
     ) -> Command:
         """Adds an command to the menu, preventing duplicates."""
-        self._validate_command_key(key)
+        self._validate_command_aliases(key, aliases)
 
-        if arg_parser:
-            if not isinstance(arg_parser, CommandArgumentParser):
-                raise NotAFalyxError(
-                    "arg_parser must be an instance of CommandArgumentParser."
-                )
-            arg_parser = arg_parser
-
-        command = Command(
+        command = Command.build(
             key=key,
             description=description,
             action=action,
             args=args,
-            kwargs=kwargs if kwargs else {},
+            kwargs=kwargs,
             hidden=hidden,
-            aliases=aliases if aliases else [],
+            aliases=aliases,
             help_text=help_text,
             help_epilog=help_epilog,
             style=style,
@@ -828,45 +1038,33 @@ class Falyx:
             spinner_type=spinner_type,
             spinner_style=spinner_style,
             spinner_speed=spinner_speed,
-            tags=tags if tags else [],
+            hooks=hooks,
+            before_hooks=before_hooks,
+            success_hooks=success_hooks,
+            error_hooks=error_hooks,
+            after_hooks=after_hooks,
+            teardown_hooks=teardown_hooks,
+            tags=tags,
             logging_hooks=logging_hooks,
             retry=retry,
             retry_all=retry_all,
-            retry_policy=retry_policy or RetryPolicy(),
-            options_manager=self.options,
+            retry_policy=retry_policy,
             arg_parser=arg_parser,
-            arguments=arguments or [],
+            arguments=arguments,
             argument_config=argument_config,
             custom_parser=custom_parser,
             custom_help=custom_help,
+            execution_options=execution_options,
             auto_args=auto_args,
-            arg_metadata=arg_metadata or {},
+            arg_metadata=arg_metadata,
             simple_help_signature=simple_help_signature,
+            options_manager=self.options,
             ignore_in_history=ignore_in_history,
             program=self.program,
         )
 
-        if hooks:
-            if not isinstance(hooks, HookManager):
-                raise NotAFalyxError("hooks must be an instance of HookManager.")
-            command.hooks = hooks
-
-        for hook in before_hooks or []:
-            command.hooks.register(HookType.BEFORE, hook)
-        for hook in success_hooks or []:
-            command.hooks.register(HookType.ON_SUCCESS, hook)
-        for hook in error_hooks or []:
-            command.hooks.register(HookType.ON_ERROR, hook)
-        for hook in after_hooks or []:
-            command.hooks.register(HookType.AFTER, hook)
-        for hook in teardown_hooks or []:
-            command.hooks.register(HookType.ON_TEARDOWN, hook)
-
-        if spinner:
-            command.hooks.register(HookType.BEFORE, spinner_before_hook)
-            command.hooks.register(HookType.ON_TEARDOWN, spinner_teardown_hook)
-
         self.commands[key] = command
+        _ = self._name_map
         return command
 
     def get_bottom_row(self) -> list[str]:
@@ -889,16 +1087,17 @@ class Falyx:
         return bottom_row
 
     def build_default_table(self) -> Table:
-        """
-        Build the standard table layout. Developers can subclass or call this
-        in custom tables.
+        """Build the standard table layout.
+
+        Developers can subclass or call this in custom tables.
         """
         table = Table(title=self.title, show_header=False, box=box.SIMPLE)  # type: ignore[arg-type]
         visible_commands = [item for item in self.commands.items() if not item[1].hidden]
         for chunk in chunks(visible_commands, self.columns):
             row = []
             for key, command in chunk:
-                row.append(f"[{key}] [{command.style}]{command.description}")
+                escaped_key = escape(f"[{key}]")
+                row.append(f"{escaped_key} [{command.style}]{command.description}")
             table.add_row(*row)
         bottom_row = self.get_bottom_row()
         for row in chunks(bottom_row, self.columns):
@@ -906,9 +1105,7 @@ class Falyx:
         return table
 
     def build_placeholder_menu(self) -> StyleAndTextTuples:
-        """
-        Builds a menu placeholder for show_placeholder_menu.
-        """
+        """Builds a menu placeholder for show_placeholder_menu."""
         visible_commands = [item for item in self.commands.items() if not item[1].hidden]
         if not visible_commands:
             return [("", "")]
@@ -937,23 +1134,25 @@ class Falyx:
             return self.build_default_table()
 
     def parse_preview_command(self, input_str: str) -> tuple[bool, str]:
+        """Checks if the input is a preview command and returns the command key if so."""
         if input_str.startswith("?"):
             return True, input_str[1:].strip()
         return False, input_str.strip()
 
     async def get_command(
         self, raw_choices: str, from_validate=False, from_help=False
-    ) -> tuple[bool, Command | None, tuple, dict[str, Any]]:
-        """
-        Returns the selected command based on user input.
+    ) -> tuple[bool, Command | None, tuple, dict[str, Any], dict[str, Any]]:
+        """Returns the selected command based on user input.
+
         Supports keys, aliases, and abbreviations.
         """
         args = ()
         kwargs: dict[str, Any] = {}
+        execution_args: dict[str, Any] = {}
         try:
             choice, *input_args = shlex.split(raw_choices)
         except ValueError:
-            return False, None, args, kwargs
+            return False, None, args, kwargs, execution_args
         is_preview, choice = self.parse_preview_command(choice)
         if is_preview and not choice and self.help_command:
             is_preview = False
@@ -964,7 +1163,7 @@ class Falyx:
                 self.console.print(
                     f"[{OneColors.DARK_RED}]❌ You must enter a command for preview mode."
                 )
-            return is_preview, None, args, kwargs
+            return is_preview, None, args, kwargs, execution_args
 
         choice = choice.upper()
         name_map = self._name_map
@@ -973,7 +1172,7 @@ class Falyx:
             run_command = name_map[choice]
         else:
             prefix_matches = [
-                cmd for key, cmd in name_map.items() if key.startswith(choice)
+                command for key, command in name_map.items() if key.startswith(choice)
             ]
             if len(prefix_matches) == 1:
                 run_command = prefix_matches[0]
@@ -982,11 +1181,13 @@ class Falyx:
             if not from_validate:
                 logger.info("Command '%s' selected.", run_command.key)
             if is_preview:
-                return True, run_command, args, kwargs
+                return True, run_command, args, kwargs, execution_args
             elif self.is_cli_mode or from_help:
-                return False, run_command, args, kwargs
+                return False, run_command, args, kwargs, execution_args
             try:
-                args, kwargs = await run_command.parse_args(input_args, from_validate)
+                args, kwargs, execution_args = await run_command.resolve_args(
+                    input_args, from_validate
+                )
             except (CommandArgumentError, Exception) as error:
                 if not from_validate:
                     run_command.render_help()
@@ -997,10 +1198,10 @@ class Falyx:
                     raise ValidationError(
                         message=str(error), cursor_position=len(raw_choices)
                     )
-                return is_preview, None, args, kwargs
+                return is_preview, None, args, kwargs, execution_args
             except HelpSignal:
-                return True, None, args, kwargs
-            return is_preview, run_command, args, kwargs
+                return True, None, args, kwargs, execution_args
+            return is_preview, run_command, args, kwargs, execution_args
 
         fuzzy_matches = get_close_matches(choice, list(name_map.keys()), n=3, cutoff=0.7)
         if fuzzy_matches:
@@ -1010,8 +1211,8 @@ class Falyx:
                     "Did you mean:"
                 )
                 for match in fuzzy_matches:
-                    cmd = name_map[match]
-                    self.console.print(f"  • [bold]{match}[/] → {cmd.description}")
+                    command = name_map[match]
+                    self.console.print(f"  • [bold]{match}[/] → {command.description}")
             else:
                 raise ValidationError(
                     message=f"Unknown command '{choice}'. Did you mean: "
@@ -1028,155 +1229,118 @@ class Falyx:
                     message=f"Unknown command '{choice}'.",
                     cursor_position=len(raw_choices),
                 )
-        return is_preview, None, args, kwargs
+        return is_preview, None, args, kwargs, execution_args
 
-    def _create_context(
-        self, selected_command: Command, args: tuple, kwargs: dict[str, Any]
-    ) -> ExecutionContext:
-        """Creates an ExecutionContext object for the selected command."""
-        return ExecutionContext(
-            name=selected_command.description,
-            args=args,
-            kwargs=kwargs,
-            action=selected_command,
-        )
+    async def execute_command(
+        self,
+        raw_arguments: str,
+        *,
+        raise_on_error: bool = False,
+        wrap_errors: bool = True,
+        summary_last_result: bool = False,
+    ) -> Any | None:
+        """Execute a command from a raw CLI-style input string.
 
-    async def _handle_action_error(
-        self, selected_command: Command, error: Exception
-    ) -> None:
-        """Handles errors that occur during the action of the selected command."""
+        This method resolves the requested command from `raw_arguments`, parses any
+        command-specific arguments, handles preview and exit behavior, and delegates
+        actual execution to the shared `CommandExecutor`.
+
+        Behavior:
+            - Resolves the command and its parsed `args`, `kwargs`, and
+            `execution_args` via `get_command()`.
+            - Returns `None` when help output is triggered, argument parsing fails,
+            the command cannot be found, or preview mode is requested.
+            - Updates `last_run_command` when a valid command is resolved.
+            - Raises `QuitSignal` if the resolved command is the configured exit
+            command.
+            - For normal execution, forwards the resolved command and execution
+            options to `_executor.execute()`.
+
+        Args:
+            raw_arguments (str): Raw command input string, including the command name
+                and any CLI-style arguments (for example, ``"deploy --region us-east"``).
+            raise_on_error (bool): Whether execution errors raised by the underlying
+                executor should be re-raised to the caller.
+            wrap_errors (bool): Whether execution errors should be wrapped in a
+                `FalyxError` by the underlying executor before being raised.
+            summary_last_result (bool): Whether summary output should include the last
+                result when execution summary reporting is requested.
+
+        Returns:
+            Any | None: The command result returned by the underlying executor, or
+            `None` if execution does not occur because help was shown, preview mode
+            was used, parsing failed, or the command was not found.
+
+        Raises:
+            QuitSignal: If the resolved command is the configured exit command.
+
+        Notes:
+            - `HelpSignal` and `CommandArgumentError` are handled internally and do
+            not propagate to the caller.
+            - This method is the primary programmatic entrypoint for executing a
+            command from a raw input string outside the interactive menu loop.
+        """
+        try:
+            is_preview, command, args, kwargs, execution_args = await self.get_command(
+                raw_arguments
+            )
+        except HelpSignal:
+            return None
+        except CommandArgumentError as error:
+            logger.error(
+                "Argument parsing error for input '%s': %s", raw_arguments, error
+            )
+            self.console.print(f"[{OneColors.DARK_RED}]❌ ['{raw_arguments}'] {error}[/]")
+            return None
+
+        if not command:
+            logger.error("Command not found for input '%s'", raw_arguments)
+            self.console.print(
+                f"[{OneColors.DARK_RED}]❌ ['{raw_arguments}'] Command not found.[/]"
+            )
+            return None
+
+        self.last_run_command = command
+
+        if is_preview:
+            logger.info("Preview command '%s' selected.", command.key)
+            await command.preview()
+            return None
+
+        if command == self.exit_command:
+            logger.info("Back selected: exiting %s", self.get_title())
+            raise QuitSignal()
+
         logger.debug(
-            "[%s] '%s' failed with error: %s",
-            selected_command.key,
-            selected_command.description,
-            error,
-            exc_info=True,
+            "Executing command '%s' with args=%s, kwargs=%s, execution_args=%s",
+            command.description,
+            args,
+            kwargs,
+            execution_args,
         )
-        self.console.print(
-            f"[{OneColors.DARK_RED}]An error occurred while executing "
-            f"{selected_command.description}:[/] {error}"
+        return await self._executor.execute(
+            command=command,
+            args=args,
+            kwargs=kwargs or {},
+            execution_args=execution_args or {},
+            raise_on_error=raise_on_error,
+            wrap_errors=wrap_errors,
+            summary_last_result=summary_last_result,
         )
 
-    async def process_command(self) -> bool:
+    async def process_command(self) -> None:
         """Processes the action of the selected command."""
         app = get_app()
         await asyncio.sleep(0.1)
         app.invalidate()
         with patch_stdout(raw=True):
-            choice = await self.prompt_session.prompt_async()
-        is_preview, selected_command, args, kwargs = await self.get_command(choice)
-        if not selected_command:
-            logger.info("Invalid command '%s'.", choice)
-            return True
-
-        if is_preview:
-            logger.info("Preview command '%s' selected.", selected_command.key)
-            await selected_command.preview()
-            return True
-
-        self.last_run_command = selected_command
-
-        if selected_command == self.exit_command:
-            logger.info("Back selected: exiting %s", self.get_title())
-            return False
-
-        context = self._create_context(selected_command, args, kwargs)
-        context.start_timer()
-        try:
-            await self.hooks.trigger(HookType.BEFORE, context)
-            result = await selected_command(*args, **kwargs)
-            context.result = result
-            await self.hooks.trigger(HookType.ON_SUCCESS, context)
-        except Exception as error:
-            context.exception = error
-            await self.hooks.trigger(HookType.ON_ERROR, context)
-            await self._handle_action_error(selected_command, error)
-        finally:
-            context.stop_timer()
-            await self.hooks.trigger(HookType.AFTER, context)
-            await self.hooks.trigger(HookType.ON_TEARDOWN, context)
-        return True
-
-    async def run_key(
-        self,
-        command_key: str,
-        return_context: bool = False,
-        args: tuple = (),
-        kwargs: dict[str, Any] | None = None,
-    ) -> Any:
-        """Run a command by key without displaying the menu (non-interactive mode)."""
-        self.debug_hooks()
-        is_preview, selected_command, _, __ = await self.get_command(command_key)
-        kwargs = kwargs or {}
-
-        self.last_run_command = selected_command
-
-        if not selected_command:
-            return None
-
-        if is_preview:
-            logger.info("Preview command '%s' selected.", selected_command.key)
-            await selected_command.preview()
-            return None
-
-        logger.info(
-            "[run_key] Executing: %s — %s",
-            selected_command.key,
-            selected_command.description,
+            raw_arguments = await self.prompt_session.prompt_async()
+        await self.execute_command(
+            raw_arguments,
+            raise_on_error=False,
+            wrap_errors=False,
+            summary_last_result=True,
         )
-
-        context = self._create_context(selected_command, args, kwargs)
-        context.start_timer()
-        try:
-            await self.hooks.trigger(HookType.BEFORE, context)
-            result = await selected_command(*args, **kwargs)
-            context.result = result
-
-            await self.hooks.trigger(HookType.ON_SUCCESS, context)
-            logger.info("[run_key] '%s' complete.", selected_command.description)
-        except (KeyboardInterrupt, EOFError) as error:
-            logger.warning(
-                "[run_key] Interrupted by user: %s", selected_command.description
-            )
-            raise FalyxError(
-                f"[run_key] ⚠️ '{selected_command.description}' interrupted by user."
-            ) from error
-        except Exception as error:
-            context.exception = error
-            await self.hooks.trigger(HookType.ON_ERROR, context)
-            await self._handle_action_error(selected_command, error)
-            raise FalyxError(
-                f"[run_key] ❌ '{selected_command.description}' failed."
-            ) from error
-        finally:
-            context.stop_timer()
-            await self.hooks.trigger(HookType.AFTER, context)
-            await self.hooks.trigger(HookType.ON_TEARDOWN, context)
-
-        return context if return_context else context.result
-
-    def _set_retry_policy(self, selected_command: Command) -> None:
-        """Sets the retry policy for the command based on CLI arguments."""
-        assert isinstance(self.cli_args, Namespace), "CLI arguments must be provided."
-        if (
-            self.cli_args.retries
-            or self.cli_args.retry_delay
-            or self.cli_args.retry_backoff
-        ):
-            selected_command.retry_policy.enabled = True
-            if self.cli_args.retries:
-                selected_command.retry_policy.max_retries = self.cli_args.retries
-            if self.cli_args.retry_delay:
-                selected_command.retry_policy.delay = self.cli_args.retry_delay
-            if self.cli_args.retry_backoff:
-                selected_command.retry_policy.backoff = self.cli_args.retry_backoff
-            if isinstance(selected_command.action, Action):
-                selected_command.action.set_retry_policy(selected_command.retry_policy)
-            else:
-                logger.warning(
-                    "[Command:%s] Retry requested, but action is not an Action instance.",
-                    selected_command.key,
-                )
 
     def print_message(self, message: str | Markdown | dict[str, Any]) -> None:
         """Prints a message to the console."""
@@ -1196,7 +1360,6 @@ class Falyx:
         """Runs the menu and handles user input."""
         logger.info("Starting menu: %s", self.get_title())
         self.options.set("mode", FalyxMode.MENU)
-        self.debug_hooks()
         if self.welcome_message:
             self.print_message(self.welcome_message)
         try:
@@ -1207,9 +1370,7 @@ class Falyx:
                     else:
                         self.console.print(self.table, justify="center")
                 try:
-                    should_continue = await self.process_command()
-                    if not should_continue:
-                        break
+                    await self.process_command()
                 except (EOFError, KeyboardInterrupt):
                     logger.info("EOF or KeyboardInterrupt. Exiting menu.")
                     break
@@ -1220,143 +1381,121 @@ class Falyx:
                     logger.info("[BackSignal]. <- Returning to the menu.")
                 except CancelSignal:
                     logger.info("[CancelSignal]. <- Returning to the menu.")
+                except asyncio.CancelledError:
+                    logger.info("[asyncio.CancelledError]. <- Returning to the menu.")
         finally:
             logger.info("Exiting menu: %s", self.get_title())
             if self.exit_message:
                 self.print_message(self.exit_message)
 
+    def _apply_parse_result(self, result: ParseResult) -> None:
+        """Applies the parsed CLI arguments to the menu options."""
+        self.options.set("mode", result.mode)
+
+        if result.verbose:
+            logging.getLogger("falyx").setLevel(logging.DEBUG)
+            self.options.set("verbose", True)
+        else:
+            self.options.set("verbose", False)
+
+        if result.debug_hooks:
+            self.options.set("debug_hooks", True)
+            self.register_all_with_debug_hooks()
+            logger.debug("Enabling global debug hooks for all commands")
+        else:
+            self.options.set("debug_hooks", False)
+
+        if result.never_prompt:
+            self.options.set("never_prompt", True)
+
     async def run(
         self,
-        falyx_parsers: FalyxParsers | None = None,
-        root_parser: ArgumentParser | None = None,
-        subparsers: _SubParsersAction | None = None,
         callback: Callable[..., Any] | None = None,
         always_start_menu: bool = False,
     ) -> None:
-        """
-        Entrypoint for executing a Falyx CLI application via structured subcommands.
+        """Execute the Falyx application using CLI-driven dispatch.
 
-        This method parses CLI arguments, configures the runtime environment, and dispatches
-        execution to the appropriate command mode:
+        This method is the primary entrypoint for Falyx applications. It parses
+        CLI arguments, configures runtime state, and dispatches execution based
+        on the resolved mode.
 
-        - help - Show help output, optionally filtered by tag.
-        - version - Print the program version and exit.
-        - preview - Display a preview of the specified command without executing it.
-        - run - Execute a single command with parsed arguments and lifecycle hooks.
-        - run-all - Run all commands matching a tag concurrently (with default args).
-        - (default) - Launch the interactive Falyx menu loop.
+        Execution Pipeline:
+        1. Parse CLI input via `FalyxParser` into a `ParseResult`
+        2. Optionally invoke a user-provided callback with the parse result
+        3. Apply root-level options (e.g. verbose, debug hooks, prompt behavior)
+        4. Dispatch based on `ParseResult.mode`:
+        - HELP: Render help output and exit
+        - COMMAND: Execute a resolved command
+        - MENU: Launch interactive menu loop
+        - ERROR: Render error and exit
 
-        It also applies CLI flags such as `--verbose`, `--debug-hooks`, and summary reporting,
-        and supports an optional callback for post-parse setup.
+        Command Execution:
+        - Arguments are parsed via `CommandArgumentParser`
+        - Execution options (e.g. retries, confirmation flags) are separated
+        - Execution-scoped overrides are applied using `OptionsManager`
+        - Commands are executed via `CommandExecutor.execute()` with full lifecycle hooks
+
+        Callback Behavior:
+        - If provided, `callback` is executed after parsing but before dispatch
+        - Supports both sync and async callables
+        - Useful for logging setup, environment initialization, etc.
 
         Args:
-            falyx_parsers (FalyxParsers | None):
-                Preconfigured argument parser set. If not provided, a default parser
-                is created using the registered commands and passed-in `root_parser`
-                or `subparsers`.
-            root_parser (ArgumentParser | None):
-                Optional root parser to merge into the CLI (used if `falyx_parsers`
-                is not supplied).
-            subparsers (_SubParsersAction | None):
-                Optional subparser group to extend (used if `falyx_parsers` is not supplied).
             callback (Callable[..., Any] | None):
-                An optional function or coroutine to run after parsing CLI arguments,
-                typically for initializing logging, environment setup, or other
-                pre-execution configuration.
+                Optional function invoked after CLI parsing with the `ParseResult`.
+            always_start_menu (bool):
+                If True, launches the interactive menu after command execution
+                instead of exiting.
 
         Raises:
             FalyxError:
-                If invalid parser objects are supplied, or CLI arguments conflict
-                with the expected run mode.
+                If callback is invalid or command execution fails.
             SystemExit:
-                Exits with an appropriate exit code based on the selected command
-                or signal (e.g. Ctrl+C triggers exit code 130).
+                Terminates the process with an appropriate exit code based on mode.
 
         Notes:
-            - `run-all` executes all tagged commands **in parallel** and does not
-            supply arguments to individual commands; use `ChainedAction` or explicit
-            CLI calls for ordered or parameterized workflows.
-            - Most CLI commands exit the process via `sys.exit()` after completion.
-            - For interactive sessions, this method falls back to `menu()`.
+            - Most CLI execution paths terminate via `sys.exit()`
+            - Interactive mode continues via `menu()`
+            - Execution options are applied in a scoped "execution" namespace
+            - Preview mode (`?command`) bypasses execution and renders a preview
 
         Example:
             ```
+            >>> import asyncio
             >>> flx = Falyx()
-            >>> await flx.run()   # Parses CLI args and dispatches appropriately
+            >>> asyncio.run(flx.run())
             ```
         """
 
-        if self.cli_args:
-            raise FalyxError(
-                "Run is incompatible with CLI arguments. Use 'run_key' instead."
-            )
-        if falyx_parsers:
-            if not isinstance(falyx_parsers, FalyxParsers):
-                raise FalyxError("falyx_parsers must be an instance of FalyxParsers.")
-        else:
-            falyx_parsers = get_arg_parsers(
-                self.program,
-                self.usage,
-                self.description,
-                self.epilog,
-                commands=self.commands,
-                root_parser=root_parser,
-                subparsers=subparsers,
-            )
-        self.cli_args = falyx_parsers.parse_args()
-        self.options.from_namespace(self.cli_args, "cli_args")
+        falyx_parser = FalyxParser(self)
+        parse_result = falyx_parser.parse(sys.argv[1:])
 
         if callback:
             if not callable(callback):
                 raise FalyxError("Callback must be a callable function.")
             async_callback = ensure_async(callback)
-            await async_callback(self.cli_args)
+            await async_callback(parse_result)
 
-        if not self.options.get("never_prompt"):
-            self.options.set("never_prompt", self._never_prompt)
+        self._apply_parse_result(parse_result)
 
-        if not self.options.get("force_confirm"):
-            self.options.set("force_confirm", self._force_confirm)
+        if parse_result.mode == FalyxMode.ERROR:
+            await self._render_help()
+            self.console.print(f"[{OneColors.DARK_RED}]Error: {parse_result.error}[/]")
+            sys.exit(1)
 
-        if not self.options.get("hide_menu_table"):
-            self.options.set("hide_menu_table", self._hide_menu_table)
-
-        if self.cli_args.verbose:
-            logging.getLogger("falyx").setLevel(logging.DEBUG)
-
-        if self.cli_args.debug_hooks:
-            logger.debug("Enabling global debug hooks for all commands")
-            self.register_all_with_debug_hooks()
-
-        if self.cli_args.command == "help":
-            self.options.set("mode", FalyxMode.HELP)
-            await self._render_help(
-                tag=self.cli_args.tag, key=self.cli_args.key, tldr=self.cli_args.tldr
-            )
+        if parse_result.mode == FalyxMode.HELP:
+            await self._render_help()
             sys.exit(0)
 
-        if self.cli_args.command == "version" or self.cli_args.version:
-            self.console.print(f"[{self.version_style}]{self.program} v{self.version}[/]")
-            sys.exit(0)
-
-        if self.cli_args.command == "preview":
-            self.options.set("mode", FalyxMode.PREVIEW)
-            _, command, args, kwargs = await self.get_command(self.cli_args.name)
-            if not command:
+        if parse_result.mode == FalyxMode.COMMAND:
+            if not parse_result.command:
                 self.console.print(
-                    f"[{OneColors.DARK_RED}]❌ Command '{self.cli_args.name}' not found."
+                    f"[{OneColors.DARK_RED}]Error: No command specified for execution mode.[/]"
                 )
                 sys.exit(1)
-            self.console.print(
-                f"Preview of command '{command.key}': {command.description}"
-            )
-            await command.preview()
-            sys.exit(0)
+            command = parse_result.command
 
-        if self.cli_args.command == "run":
-            self.options.set("mode", FalyxMode.RUN)
-            is_preview, command, _, __ = await self.get_command(self.cli_args.name)
-            if is_preview:
+            if parse_result.is_preview:
                 if command is None:
                     sys.exit(1)
                 logger.info("Preview command '%s' selected.", command.key)
@@ -1364,17 +1503,32 @@ class Falyx:
                 sys.exit(0)
             if not command:
                 sys.exit(1)
-            self._set_retry_policy(command)
             try:
-                args, kwargs = await command.parse_args(self.cli_args.command_args)
+                args, kwargs, execution_args = await command.resolve_args(
+                    parse_result.command_argv
+                )
             except HelpSignal:
                 sys.exit(0)
             except CommandArgumentError as error:
-                self.console.print(f"[{OneColors.DARK_RED}]❌ ['{command.key}'] {error}")
                 command.render_help()
-                sys.exit(1)
+                self.console.print(f"[{OneColors.DARK_RED}]❌ ['{command.key}'] {error}")
+                sys.exit(2)
             try:
-                await self.run_key(self.cli_args.name, args=args, kwargs=kwargs)
+                logger.debug(
+                    "Executing command '%s' with args=%s, kwargs=%s, execution_args=%s",
+                    command.description,
+                    args,
+                    kwargs,
+                    execution_args,
+                )
+                await self._executor.execute(
+                    command=command,
+                    args=args,
+                    kwargs=kwargs,
+                    execution_args=execution_args,
+                    raise_on_error=False,
+                    wrap_errors=True,
+                )
             except FalyxError as error:
                 self.console.print(f"[{OneColors.DARK_RED}]❌ Error: {error}[/]")
                 sys.exit(1)
@@ -1387,63 +1541,10 @@ class Falyx:
             except CancelSignal:
                 logger.info("[CancelSignal]. <- Exiting run.")
                 sys.exit(1)
-
-            if self.cli_args.summary:
-                er.summary()
-            if not always_start_menu:
-                sys.exit(0)
-
-        if self.cli_args.command == "run-all":
-            self.options.set("mode", FalyxMode.RUN_ALL)
-            matching = [
-                cmd
-                for cmd in self.commands.values()
-                if self.cli_args.tag.lower() in (tag.lower() for tag in cmd.tags)
-            ]
-            if not matching:
-                self.console.print(
-                    f"[{OneColors.LIGHT_YELLOW}]⚠️ No commands found with tag: "
-                    f"'{self.cli_args.tag}'"
-                )
+            except asyncio.CancelledError:
+                logger.info("[asyncio.CancelledError]. <- Exiting run.")
                 sys.exit(1)
 
-            self.console.print(
-                f"[{OneColors.CYAN_b}]🚀 Running all commands with tag:[/] "
-                f"{self.cli_args.tag}"
-            )
-
-            tasks = []
-            try:
-                for cmd in matching:
-                    self._set_retry_policy(cmd)
-                    tasks.append(self.run_key(cmd.key))
-            except Exception as error:
-                self.console.print(
-                    f"[{OneColors.DARK_RED}]❌ Unexpected error: {error}[/]"
-                )
-                sys.exit(1)
-
-            had_errors = False
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for result in results:
-                if isinstance(result, QuitSignal):
-                    logger.info("[QuitSignal]. <- Exiting run.")
-                    sys.exit(130)
-                elif isinstance(result, CancelSignal):
-                    logger.info("[CancelSignal]. <- Execution cancelled.")
-                    sys.exit(1)
-                elif isinstance(result, BackSignal):
-                    logger.info("[BackSignal]. <- Back signal received.")
-                    sys.exit(1)
-                elif isinstance(result, FalyxError):
-                    self.console.print(f"[{OneColors.DARK_RED}]❌ Error: {result}[/]")
-                    had_errors = True
-
-            if had_errors:
-                sys.exit(1)
-
-            if self.cli_args.summary:
-                er.summary()
             if not always_start_menu:
                 sys.exit(0)
 

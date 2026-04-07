@@ -5,7 +5,7 @@ from falyx.action import Action
 
 
 @pytest.mark.asyncio
-async def test_run_key():
+async def test_execute_command():
     """Test if Falyx can run in run key mode."""
     falyx = Falyx("Run Key Test")
 
@@ -17,12 +17,12 @@ async def test_run_key():
     )
 
     # Run the CLI
-    result = await falyx.run_key("T")
+    result = await falyx.execute_command("T")
     assert result == "Hello, World!"
 
 
 @pytest.mark.asyncio
-async def test_run_key_recover():
+async def test_execute_command_recover():
     """Test if Falyx can recover from a failure in run key mode."""
     falyx = Falyx("Run Key Recovery Test")
 
@@ -42,5 +42,5 @@ async def test_run_key_recover():
         retry=True,
     )
 
-    result = await falyx.run_key("E")
+    result = await falyx.execute_command("E")
     assert result == "ok"

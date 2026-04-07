@@ -29,15 +29,27 @@ def should_prompt_user(
     *,
     confirm: bool,
     options: OptionsManager,
-    namespace: str = "cli_args",
-):
+    namespace: str = "default",
+    override_namespace: str = "execution",
+) -> bool:
+    """Determine whether to prompt the user for confirmation.
+
+    Checks the `confirm` flag and consults the `OptionsManager` for any relevant
+    flags that may override the need for confirmation, such as `--never-prompt`,
+    `--force-confirm`, or `--skip-confirm`. The `override_namespace` is checked
+    first for any explicit overrides, followed by the main `namespace` for defaults.
     """
-    Determine whether to prompt the user for confirmation based on command
-    and global options.
-    """
-    never_prompt = options.get("never_prompt", False, namespace)
-    force_confirm = options.get("force_confirm", False, namespace)
-    skip_confirm = options.get("skip_confirm", False, namespace)
+    never_prompt = options.get("never_prompt", None, override_namespace)
+    if never_prompt is None:
+        never_prompt = options.get("never_prompt", False, namespace)
+
+    force_confirm = options.get("force_confirm", None, override_namespace)
+    if force_confirm is None:
+        force_confirm = options.get("force_confirm", False, namespace)
+
+    skip_confirm = options.get("skip_confirm", None, override_namespace)
+    if skip_confirm is None:
+        skip_confirm = options.get("skip_confirm", False, namespace)
 
     if never_prompt or skip_confirm:
         return False

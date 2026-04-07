@@ -1,6 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Provides `FalyxCompleter`, an intelligent autocompletion engine for Falyx CLI
+"""Provides `FalyxCompleter`, an intelligent autocompletion engine for Falyx CLI
 menus using Prompt Toolkit.
 
 This completer supports:
@@ -33,8 +32,7 @@ if TYPE_CHECKING:
 
 
 class FalyxCompleter(Completer):
-    """
-    Prompt Toolkit completer for Falyx CLI command input.
+    """Prompt Toolkit completer for Falyx CLI command input.
 
     This completer provides real-time, context-aware suggestions for:
     - Command keys and aliases (resolved via Falyx._name_map)
@@ -57,9 +55,58 @@ class FalyxCompleter(Completer):
     def __init__(self, falyx: "Falyx"):
         self.falyx = falyx
 
+    @property
+    def _command_names(self) -> list[str]:
+        names: list[str] = []
+        seen: set[str] = set()
+
+        def add(name: str):
+            normalized = name.upper()
+            if normalized not in seen:
+                seen.add(normalized)
+                names.append(name)
+
+        for command in self.falyx.commands.values():
+            add(command.key)
+            for alias in command.aliases:
+                add(alias)
+
+        for command in self.falyx.builtins.values():
+            add(command.key)
+            for alias in command.aliases:
+                add(alias)
+
+        if self.falyx.history_command:
+            add(self.falyx.history_command.key)
+            for alias in self.falyx.history_command.aliases:
+                add(alias)
+
+        add(self.falyx.exit_command.key)
+        for alias in self.falyx.exit_command.aliases:
+            add(alias)
+
+        return names
+
+    def _resolve_command_for_completion(self, token: str):
+        normalized = token.upper().strip()
+        name_map = self.falyx._name_map
+
+        if normalized in name_map:
+            return name_map[normalized]
+
+        matches = []
+        seen = set()
+        for key, command in name_map.items():
+            if key.startswith(normalized) and id(command) not in seen:
+                matches.append(command)
+                seen.add(id(command))
+
+        if len(matches) == 1:
+            return matches[0]
+        return None
+
     def get_completions(self, document: Document, complete_event) -> Iterable[Completion]:
-        """
-        Compute completions for the current user input.
+        """Compute completions for the current user input.
 
         Analyzes the input buffer, determines whether the user is typing:
         • A command key/alias
@@ -82,6 +129,13 @@ class FalyxCompleter(Completer):
         except ValueError:
             return
 
+        if tokens and not cursor_at_end_of_token and tokens[0].startswith("?"):
+            stub = tokens[0][1:]
+            suggestions = [c.text for c in self._suggest_commands(stub)]
+            prefixed = [f"?{s}" for s in suggestions]
+            yield from self._yield_lcp_completions(prefixed, tokens[0])
+            return
+
         if not tokens or (len(tokens) == 1 and not cursor_at_end_of_token):
             # Suggest command keys and aliases
             stub = tokens[0] if tokens else ""
@@ -91,7 +145,7 @@ class FalyxCompleter(Completer):
 
         # Identify command
         command_key = tokens[0].upper()
-        command = self.falyx._name_map.get(command_key)
+        command = self._resolve_command_for_completion(command_key)
         if not command or not command.arg_parser:
             return
 
@@ -108,8 +162,7 @@ class FalyxCompleter(Completer):
             return
 
     def _suggest_commands(self, prefix: str) -> Iterable[Completion]:
-        """
-        Suggest top-level command keys and aliases based on the given prefix.
+        """Suggest top-level command keys and aliases based on the given prefix.
 
         Filters all known commands (and `exit`, `help`, `history` built-ins)
         to only those starting with the given prefix.
@@ -120,26 +173,13 @@ class FalyxCompleter(Completer):
         Yields:
             Completion: Matching keys or aliases from all registered commands.
         """
-        keys = [self.falyx.exit_command.key]
-        keys.extend(self.falyx.exit_command.aliases)
-        if self.falyx.history_command:
-            keys.append(self.falyx.history_command.key)
-            keys.extend(self.falyx.history_command.aliases)
-        if self.falyx.help_command:
-            keys.append(self.falyx.help_command.key)
-            keys.extend(self.falyx.help_command.aliases)
-        for cmd in self.falyx.commands.values():
-            keys.append(cmd.key)
-            keys.extend(cmd.aliases)
-        for key in keys:
-            if key.upper().startswith(prefix):
-                yield Completion(key.upper(), start_position=-len(prefix))
-            elif key.lower().startswith(prefix):
-                yield Completion(key.lower(), start_position=-len(prefix))
+        for name in self._command_names:
+            if name.upper().startswith(prefix.upper()):
+                text = name.lower() if prefix.islower() else name
+                yield Completion(text, start_position=-len(prefix), display=text)
 
     def _ensure_quote(self, text: str) -> str:
-        """
-        Ensure that a suggestion is shell-safe by quoting if needed.
+        """Ensure that a suggestion is shell-safe by quoting if needed.
 
         Adds quotes around completions containing whitespace so they can
         be inserted into the CLI without breaking tokenization.
@@ -155,8 +195,7 @@ class FalyxCompleter(Completer):
         return text
 
     def _yield_lcp_completions(self, suggestions, stub):
-        """
-        Yield completions for the current stub using longest-common-prefix logic.
+        """Yield completions for the current stub using longest-common-prefix logic.
 
         Behavior:
         - If only one match → yield it fully.

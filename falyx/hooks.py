@@ -38,34 +38,34 @@ from falyx.themes import OneColors
 
 async def spinner_before_hook(context: ExecutionContext):
     """Adds a spinner before the action starts."""
-    cmd = context.action
-    if cmd.options_manager is None:
+    command = context.action
+    if command.options_manager is None:
         return
     sm = context.action.options_manager.spinners
-    if hasattr(cmd, "name"):
-        cmd_name = cmd.name
+    if hasattr(command, "name"):
+        command_name = command.name
     else:
-        cmd_name = cmd.key
+        command_name = command.key
     await sm.add(
-        cmd_name,
-        cmd.spinner_message,
-        cmd.spinner_type,
-        cmd.spinner_style,
-        cmd.spinner_speed,
+        command_name,
+        command.spinner_message,
+        command.spinner_type,
+        command.spinner_style,
+        command.spinner_speed,
     )
 
 
 async def spinner_teardown_hook(context: ExecutionContext):
     """Removes the spinner after the action finishes (success or failure)."""
-    cmd = context.action
-    if cmd.options_manager is None:
+    command = context.action
+    if command.options_manager is None:
         return
-    if hasattr(cmd, "name"):
-        cmd_name = cmd.name
+    if hasattr(command, "name"):
+        command_name = command.name
     else:
-        cmd_name = cmd.key
+        command_name = command.key
     sm = context.action.options_manager.spinners
-    await sm.remove(cmd_name)
+    await sm.remove(command_name)
 
 
 class ResultReporter:

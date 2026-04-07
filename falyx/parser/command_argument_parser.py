@@ -1,56 +1,55 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-This module implements `CommandArgumentParser`, a flexible, rich-aware alternative to
-argparse tailored specifically for Falyx CLI workflows. It provides structured parsing,
-type coercion, flag support, and usage/help rendering for CLI-defined commands.
+"""CommandArgumentParser implementation for the Falyx CLI framework.
 
-Unlike argparse, this parser is lightweight, introspectable, and designed to integrate
-deeply with Falyx's Action system, including support for lazy execution and resolver
-binding via `BaseAction`.
+This module provides a structured, extensible argument parsing system designed
+specifically for Falyx commands. It replaces traditional argparse usage with a
+parser that is deeply integrated with Falyx's execution model, including support
+for Actions, execution options, and interactive completion.
+
+The parser is designed to:
+- Define command arguments declaratively via `add_argument`
+- Support both positional and keyword-style flags
+- Perform type coercion and validation
+- Separate execution-level options (e.g. retries, confirmation) from command inputs
+- Integrate with Falyx lifecycle and Action-based execution
+- Provide rich help rendering and interactive suggestions
 
 Key Features:
-- Declarative argument registration via `add_argument()`
-- Support for positional and keyword flags, type coercion, default values
-- Enum- and action-driven argument semantics via `ArgumentAction`
-- Lazy evaluation of arguments using Falyx `Action` resolvers
-- Optional value completion via suggestions and choices
-- Rich-powered help rendering with grouped display
-- Optional boolean flags via `--flag` / `--no-flag`
-- POSIX-style bundling for single-character flags (`-abc`)
-- Partial parsing for completions and validation via `suggest_next()`
+- Positional and flagged argument support
+- Type coercion via configurable `type` handlers
+- Enum-driven behavior via `ArgumentAction`
+- Lazy and eager resolution using BaseAction resolvers
+- Execution option support (e.g. retries, summary, confirm flags)
+- Mutually exclusive and grouped argument definitions
+- POSIX-style short flag bundling (e.g. `-abc`)
+- Interactive suggestions via `suggest_next`
+- Rich-based help and TLDR rendering
 
-Public Interface:
-- `add_argument(...)`: Register a new argument with type, flags, and behavior.
-- `parse_args(...)`: Parse CLI-style argument list into a `dict[str, Any]`.
-- `parse_args_split(...)`: Return `(*args, **kwargs)` for Action invocation.
-- `render_help()`: Render a rich-styled help panel.
-- `render_tldr()`: Render quick usage examples.
-- `suggest_next(...)`: Return suggested flags or values for completion.
+Core Parsing APIs:
+- `parse_args(...)`:
+    Parse arguments into a resolved dictionary of values
+- `parse_args_split(...)`:
+    Split parsed results into `(args, kwargs, execution_args)` for execution
+- `add_argument(...)`:
+    Register argument definitions declaratively
+- `suggest_next(...)`:
+    Provide completion suggestions for interactive input
 
-Example Usage:
-    parser = CommandArgumentParser(command_key="D")
-    parser.add_argument("--env", choices=["prod", "dev"], required=True)
-    parser.add_argument("path", type=Path)
+Design Principles:
+- Minimal surface area compared to argparse
+- Strong integration with Falyx execution model
+- Predictable and explicit parsing behavior
+- Separation of parsing, execution, and runtime configuration
 
-    args = await parser.parse_args(["--env", "prod", "./config.yml"])
-
-    # args == {'env': 'prod', 'path': Path('./config.yml')}
-
-    parser.render_help()  # Pretty Rich output
-
-Design Notes:
-This parser intentionally omits argparse-style groups, metavar support,
-and complex multi-level conflict handling. Instead, it favors:
-- Simplicity
-- Completeness
-- Falyx-specific integration (hooks, lifecycle, and error surfaces)
+This parser is intended for use exclusively within Falyx and is not a
+general-purpose argparse replacement.
 """
 from __future__ import annotations
 
 from collections import Counter, defaultdict
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Generator, Iterable, Sequence
 
 from rich.console import Console
 from rich.markup import escape
@@ -60,13 +59,47 @@ from rich.panel import Panel
 from falyx.action.base_action import BaseAction
 from falyx.console import console
 from falyx.exceptions import CommandArgumentError
+from falyx.execution_option import ExecutionOption
 from falyx.mode import FalyxMode
 from falyx.options_manager import OptionsManager
 from falyx.parser.argument import Argument
 from falyx.parser.argument_action import ArgumentAction
+from falyx.parser.group import ArgumentGroup, MutuallyExclusiveGroup
 from falyx.parser.parser_types import ArgumentState, TLDRExample, false_none, true_none
 from falyx.parser.utils import coerce_value
 from falyx.signals import HelpSignal
+
+
+class _GroupBuilder:
+    """Helper for assigning arguments to a named group or mutex group.
+
+    This lightweight wrapper preserves the normal `add_argument()` API while
+    injecting `group` or `mutex_group` metadata into each registered argument.
+
+    Args:
+        parser (CommandArgumentParser): Parser that owns the group definitions.
+        group_name (str | None): Name of the argument group to assign.
+        mutex_name (str | None): Name of the mutually exclusive group to assign.
+    """
+
+    def __init__(
+        self,
+        parser: CommandArgumentParser,
+        *,
+        group_name: str | None = None,
+        mutex_name: str | None = None,
+    ) -> None:
+        self.parser = parser
+        self.group_name = group_name
+        self.mutex_name = mutex_name
+
+    def add_argument(self, *flags, **kwargs) -> None:
+        self.parser.add_argument(
+            *flags,
+            group=self.group_name,
+            mutex_group=self.mutex_name,
+            **kwargs,
+        )
 
 
 class CommandArgumentParser:
@@ -90,7 +123,7 @@ class CommandArgumentParser:
     - Render Help using Rich library.
     """
 
-    RESERVED_DESTS = frozenset(("help", "tldr"))
+    RESERVED_DESTS = frozenset({"help", "tldr"})
 
     def __init__(
         self,
@@ -120,14 +153,88 @@ class CommandArgumentParser:
         self._keyword_list: list[Argument] = []
         self._flag_map: dict[str, Argument] = {}
         self._dest_set: set[str] = set()
+        self._execution_dests: set[str] = set()
         self._add_help()
         self._last_positional_states: dict[str, ArgumentState] = {}
         self._last_keyword_states: dict[str, ArgumentState] = {}
+        self._argument_groups: dict[str, ArgumentGroup] = {}
+        self._mutex_groups: dict[str, MutuallyExclusiveGroup] = {}
+        self._arg_group_by_dest: dict[str, str] = {}
+        self._mutex_group_by_dest: dict[str, str] = {}
         self._tldr_examples: list[TLDRExample] = []
         self._is_help_command: bool = _is_help_command
         if tldr_examples:
             self.add_tldr_examples(tldr_examples)
         self.options_manager: OptionsManager = options_manager or OptionsManager()
+
+    def set_options_manager(self, options_manager: OptionsManager) -> None:
+        """Set the options manager for the parser."""
+        if not isinstance(options_manager, OptionsManager):
+            raise ValueError("options_manager must be an instance of OptionsManager")
+        self.options_manager = options_manager
+
+    def enable_execution_options(
+        self,
+        execution_options: frozenset[ExecutionOption],
+    ) -> None:
+        """Enable support for execution options like retries, summary, etc."""
+        if ExecutionOption.SUMMARY in execution_options:
+            self.add_argument(
+                "--summary",
+                action=ArgumentAction.STORE_TRUE,
+                help="Print an execution summary after command completes",
+            )
+            self._register_execution_dest("summary")
+
+        if ExecutionOption.RETRY in execution_options:
+            self.add_argument(
+                "--retries",
+                type=int,
+                help="Number of retries on failure",
+                default=0,
+            )
+            self._register_execution_dest("retries")
+            self.add_argument(
+                "--retry-delay",
+                type=float,
+                default=0.0,
+                help="Initial delay between retries in seconds",
+            )
+            self._register_execution_dest("retry_delay")
+            self.add_argument(
+                "--retry-backoff",
+                type=float,
+                default=0.0,
+                help="Backoff multiplier for retries (e.g. 2.0 doubles the delay each retry)",
+            )
+            self._register_execution_dest("retry_backoff")
+
+        if ExecutionOption.CONFIRM in execution_options:
+            self.add_argument(
+                "--confirm",
+                dest="force_confirm",
+                action=ArgumentAction.STORE_TRUE,
+                help="Force confirmation prompts",
+            )
+            self._register_execution_dest("force_confirm")
+            self.add_argument(
+                "--skip-confirm",
+                action=ArgumentAction.STORE_TRUE,
+                help="Skip confirmation prompts",
+            )
+            self._register_execution_dest("skip_confirm")
+
+    def _register_execution_dest(self, dest: str) -> None:
+        """Register a destination as an execution argument."""
+        if dest in self._execution_dests:
+            raise CommandArgumentError(
+                f"Destination '{dest}' is already registered as an execution argument"
+            )
+        self._execution_dests.add(dest)
+
+    def _is_execution_dest(self, dest: str) -> bool:
+        """Check if a destination is registered as an execution argument."""
+        return dest in self._execution_dests
 
     def _add_help(self):
         """Add help argument to the parser."""
@@ -165,6 +272,32 @@ class CommandArgumentParser:
             )
             self._register_argument(tldr)
 
+    def add_argument_group(
+        self,
+        name: str,
+        description: str = "",
+    ) -> _GroupBuilder:
+        if name in self._argument_groups:
+            raise CommandArgumentError(f"Argument group '{name}' already exists")
+        self._argument_groups[name] = ArgumentGroup(name=name, description=description)
+        return _GroupBuilder(self, group_name=name)
+
+    def add_mutually_exclusive_group(
+        self,
+        name: str,
+        *,
+        required: bool = False,
+        description: str = "",
+    ) -> _GroupBuilder:
+        if name in self._mutex_groups:
+            raise CommandArgumentError(f"Mutex group '{name}' already exists")
+        self._mutex_groups[name] = MutuallyExclusiveGroup(
+            name=name,
+            required=required,
+            description=description,
+        )
+        return _GroupBuilder(self, mutex_name=name)
+
     def _is_positional(self, flags: tuple[str, ...]) -> bool:
         """Check if the flags are positional."""
         positional = False
@@ -174,6 +307,34 @@ class CommandArgumentParser:
         if positional and len(flags) > 1:
             raise CommandArgumentError("Positional arguments cannot have multiple flags")
         return positional
+
+    def _validate_groups(
+        self,
+        group: str | None,
+        mutex_group: str | None,
+        positional: bool = False,
+        required: bool = False,
+    ) -> None:
+        """Validate that the specified groups exist and are compatible."""
+        if group is not None:
+            if group not in self._argument_groups:
+                raise CommandArgumentError(f"Argument group '{group}' does not exist")
+
+        if mutex_group is not None:
+            if mutex_group not in self._mutex_groups:
+                raise CommandArgumentError(
+                    f"Mutually exclusive group '{mutex_group}' does not exist"
+                )
+        if positional and mutex_group is not None:
+            raise CommandArgumentError(
+                "Positional arguments cannot belong to a mutually exclusive group"
+            )
+
+        if required and mutex_group is not None:
+            raise CommandArgumentError(
+                "Arguments inside a mutually exclusive group should not be individually required; "
+                "make the group required instead."
+            )
 
     def _get_dest_from_flags(self, flags: tuple[str, ...], dest: str | None) -> str:
         """Convert flags to a destination name."""
@@ -444,6 +605,8 @@ class CommandArgumentParser:
         flags: tuple[str, ...],
         dest: str,
         help: str,
+        group: str | None,
+        mutex_group: str | None,
     ) -> None:
         """Register a store_bool_optional action with the parser."""
         if len(flags) != 1:
@@ -464,6 +627,8 @@ class CommandArgumentParser:
             type=true_none,
             default=None,
             help=help,
+            group=group,
+            mutex_group=mutex_group,
         )
 
         negated_argument = Argument(
@@ -473,6 +638,8 @@ class CommandArgumentParser:
             type=false_none,
             default=None,
             help=help,
+            group=group,
+            mutex_group=mutex_group,
         )
 
         self._register_argument(argument)
@@ -503,6 +670,14 @@ class CommandArgumentParser:
             else:
                 self._keyword_list.append(argument)
 
+        if argument.group:
+            self._arg_group_by_dest[argument.dest] = argument.group
+            self._argument_groups[argument.group].dests.append(argument.dest)
+
+        if argument.mutex_group:
+            self._mutex_group_by_dest[argument.dest] = argument.mutex_group
+            self._mutex_groups[argument.mutex_group].dests.append(argument.dest)
+
     def add_argument(
         self,
         *flags,
@@ -517,6 +692,8 @@ class CommandArgumentParser:
         resolver: BaseAction | None = None,
         lazy_resolver: bool = True,
         suggestions: list[str] | None = None,
+        group: str | None = None,
+        mutex_group: str | None = None,
     ) -> None:
         """
         Define a new argument for the parser.
@@ -537,6 +714,8 @@ class CommandArgumentParser:
             resolver (BaseAction | None): If action="action", the BaseAction to call.
             lazy_resolver (bool): If True, resolver defers until action is triggered.
             suggestions (list[str] | None): Optional suggestions for interactive completion.
+            group (str | None): Optional argument group name for help organization.
+            mutex_group (str | None): Optional mutually exclusive group name.
         """
         expected_type = type
         self._validate_flags(flags)
@@ -552,6 +731,9 @@ class CommandArgumentParser:
             raise CommandArgumentError(
                 f"Destination '{dest}' is reserved and cannot be used."
             )
+
+        self._validate_groups(group, mutex_group, positional, required)
+
         action = self._validate_action(action, positional)
         resolver = self._validate_resolver(action, resolver)
 
@@ -587,7 +769,7 @@ class CommandArgumentParser:
                 f"lazy_resolver must be a boolean, got {type(lazy_resolver)}"
             )
         if action == ArgumentAction.STORE_BOOL_OPTIONAL:
-            self._register_store_bool_optional(flags, dest, help)
+            self._register_store_bool_optional(flags, dest, help, group, mutex_group)
         else:
             argument = Argument(
                 flags=flags,
@@ -603,6 +785,8 @@ class CommandArgumentParser:
                 resolver=resolver,
                 lazy_resolver=lazy_resolver,
                 suggestions=suggestions,
+                group=group,
+                mutex_group=mutex_group,
             )
             self._register_argument(argument)
 
@@ -641,6 +825,8 @@ class CommandArgumentParser:
                     "positional": arg.positional,
                     "default": arg.default,
                     "help": arg.help,
+                    "group": arg.group,
+                    "mutex_group": arg.mutex_group,
                 }
             )
         return defs
@@ -700,6 +886,10 @@ class CommandArgumentParser:
         ), f"Invalid nargs value: {spec.nargs}"
         values = []
         if isinstance(spec.nargs, int):
+            if index + spec.nargs > len(args):
+                raise CommandArgumentError(
+                    f"Expected {spec.nargs} value(s) for '{spec.dest}' but got {len(args) - index}"
+                )
             values = args[index : index + spec.nargs]
             return values, index + spec.nargs
         elif spec.nargs == "+":
@@ -744,7 +934,6 @@ class CommandArgumentParser:
             if spec_index not in consumed_positional_indicies
         ]
         index = 0
-
         for spec_index, spec in remaining_positional_args:
             # estimate how many args the remaining specs might need
             is_last = spec_index == len(positional_args) - 1
@@ -779,7 +968,6 @@ class CommandArgumentParser:
             )
             values, new_index = self._consume_nargs(slice_args, 0, spec)
             index += new_index
-
             try:
                 typed = [coerce_value(value, spec.type) for value in values]
             except Exception as error:
@@ -798,6 +986,14 @@ class CommandArgumentParser:
                 assert isinstance(
                     spec.resolver, BaseAction
                 ), "resolver should be an instance of BaseAction"
+                if spec.nargs == "+" and len(typed) == 0:
+                    raise CommandArgumentError(
+                        f"Argument '{spec.dest}' requires at least one value"
+                    )
+                if isinstance(spec.nargs, int) and len(typed) != spec.nargs:
+                    raise CommandArgumentError(
+                        f"Argument '{spec.dest}' requires exactly {spec.nargs} value(s)"
+                    )
                 if not spec.lazy_resolver or not from_validate:
                     try:
                         result[spec.dest] = await spec.resolver(*typed)
@@ -831,7 +1027,6 @@ class CommandArgumentParser:
 
             if spec.nargs not in ("*", "+"):
                 consumed_positional_indicies.add(spec_index)
-
         if index < len(args):
             if len(args[index:]) == 1 and args[index].startswith("-"):
                 token = args[index]
@@ -1103,18 +1298,90 @@ class CommandArgumentParser:
                 args[expand_index : expand_index + 1] = expand_token
             expand_index += len(expand_token) if isinstance(expand_token, list) else 1
 
+    def _is_present(self, spec: Argument, value: Any) -> bool:
+        """
+        Presence means 'user actually selected/provided this', not merely that
+        a default exists.
+        """
+        if spec.action == ArgumentAction.STORE_TRUE:
+            return value is True
+        if spec.action == ArgumentAction.STORE_FALSE:
+            return value is False
+        if spec.action == ArgumentAction.STORE_BOOL_OPTIONAL:
+            return value is not None
+        if spec.action == ArgumentAction.COUNT:
+            return bool(value)
+        if spec.action in (ArgumentAction.APPEND, ArgumentAction.EXTEND):
+            return bool(value)
+        return value is not None
+
+    def _validate_mutex_groups(self, result: dict[str, Any]) -> None:
+        for group in self._mutex_groups.values():
+            present: list[str] = []
+
+            for dest in group.dests:
+                spec = self.get_argument(dest)
+                if spec is None:
+                    continue
+                if self._is_present(spec, result.get(dest)):
+                    present.append(dest)
+
+            if len(present) > 1:
+                raise CommandArgumentError(
+                    f"Arguments in mutually exclusive group '{group.name}' "
+                    f"cannot be used together: {', '.join(present)}"
+                )
+
+            if group.required and not present:
+                members = []
+                for dest in group.dests:
+                    spec = self.get_argument(dest)
+                    if spec:
+                        members.append(spec.flags[0] if spec.flags else dest)
+                raise CommandArgumentError(
+                    f"One of the following is required for group '{group.name}': "
+                    f"{', '.join(members)}"
+                )
+
     async def parse_args(
         self, args: list[str] | None = None, from_validate: bool = False
     ) -> dict[str, Any]:
-        """
-        Parse arguments into a dictionary of resolved values.
+        """Parse CLI arguments into a resolved mapping of values.
+
+        This method parses the provided CLI-style tokens and returns a dictionary
+        mapping argument destinations to their resolved values. It performs full
+        validation, type coercion, default handling, and resolver execution.
+
+        Unlike `parse_args_split`, this method returns a unified mapping of all
+        parsed arguments, including both command arguments and execution options.
+
+        Behavior:
+        - Parses positional and keyword arguments based on registered definitions
+        - Applies type coercion via configured `type` handlers
+        - Resolves values using BaseAction resolvers (if defined)
+        - Validates required arguments, choices, and mutual exclusion constraints
+        - Applies default values for missing optional arguments
+        - Supports validation mode (`from_validate=True`) for interactive contexts
 
         Args:
-            args (list[str]): The CLI-style argument list.
-            from_validate (bool): If True, enables relaxed resolution for validation mode.
+            args (list[str]): CLI-style argument tokens to parse.
+            from_validate (bool): Whether parsing is occurring in validation mode
+                (e.g. prompt_toolkit validator). When True, may defer certain
+                resolution steps or suppress eager failures.
 
         Returns:
-            dict[str, Any]: Parsed argument result mapping.
+            dict[str, Any]: Mapping of argument destination names to resolved values.
+
+        Raises:
+            CommandArgumentError: If parsing, validation, or coercion fails.
+            HelpSignal: If help or TLDR output is triggered during parsing.
+
+        Notes:
+            - This method returns a flat mapping of all arguments.
+            - Use `parse_args_split` when separating execution options from
+            command arguments is required for execution.
+            - This is the primary parsing entrypoint used internally by
+            `parse_args_split`.
         """
         if args is None:
             args = []
@@ -1150,6 +1417,27 @@ class CommandArgumentParser:
                 arg_states=arg_states,
                 from_validate=from_validate,
             )
+
+        # Compare length of args with length of required positional arguments to catch missing required positionals
+        if len(args) < len(
+            [
+                arg
+                for arg in self._arguments
+                if (arg.positional and arg.required and not arg.default)
+            ]
+        ):
+            missing_positionals = [
+                arg.dest
+                for arg in self._arguments
+                if arg.positional
+                and arg.required
+                and arg.dest not in consumed_positional_indices
+                and not arg.default
+            ]
+            if missing_positionals:
+                raise CommandArgumentError(
+                    f"Missing positional argument(s): {', '.join(missing_positionals)}"
+                )
 
         # Required validation
         for spec in self._arguments:
@@ -1203,6 +1491,21 @@ class CommandArgumentParser:
                         f"Invalid number of values for '{spec.dest}': expected {spec.nargs}, got {len(result[spec.dest])}"
                     )
 
+            if isinstance(spec.nargs, str) and spec.nargs == "+":
+                assert isinstance(
+                    result.get(spec.dest), list
+                ), f"Invalid value for '{spec.dest}': expected a list"
+                if not result[spec.dest] and not spec.required:
+                    continue
+                help_text = f" help: {spec.help}" if spec.help else ""
+                if not result[spec.dest]:
+                    arg_states[spec.dest].reset()
+                    raise CommandArgumentError(
+                        f"Argument '{spec.dest}' requires at least one value{help_text}"
+                    )
+
+        self._validate_mutex_groups(result)
+
         result.pop("help", None)
         if not self._is_help_command:
             result.pop("tldr", None)
@@ -1210,18 +1513,33 @@ class CommandArgumentParser:
 
     async def parse_args_split(
         self, args: list[str], from_validate: bool = False
-    ) -> tuple[tuple[Any, ...], dict[str, Any]]:
-        """
-        Parse arguments and return both positional and keyword mappings.
+    ) -> tuple[tuple[Any, ...], dict[str, Any], dict[str, Any]]:
+        """Parse arguments and split them into execution-ready components.
 
-        Useful for function-style calling with `*args, **kwargs`.
+        This method parses the provided CLI-style tokens and separates the resolved
+        values into three categories:
+
+        - positional arguments for `*args`
+        - keyword arguments for `**kwargs`
+        - execution arguments for Falyx runtime behavior
+
+        Execution arguments are options such as retries, confirmation flags, or
+        summary output that should not be passed to the underlying action.
+
+        Args:
+            args (list[str]): CLI-style argument tokens to parse.
+            from_validate (bool): Whether parsing is occurring in validation mode.
 
         Returns:
-            tuple: (args tuple, kwargs dict)
+            tuple:
+                - tuple[Any, ...]: Positional arguments for execution.
+                - dict[str, Any]: Keyword arguments for execution.
+                - dict[str, Any]: Execution-specific arguments handled by Falyx.
         """
         parsed = await self.parse_args(args, from_validate)
         args_list = []
         kwargs_dict = {}
+        execution_dict = {}
         for arg in self._arguments:
             if arg.dest == "help":
                 continue
@@ -1229,9 +1547,11 @@ class CommandArgumentParser:
                 continue
             if arg.positional:
                 args_list.append(parsed[arg.dest])
+            elif self._is_execution_dest(arg.dest):
+                execution_dict[arg.dest] = parsed[arg.dest]
             else:
                 kwargs_dict[arg.dest] = parsed[arg.dest]
-        return tuple(args_list), kwargs_dict
+        return tuple(args_list), kwargs_dict, execution_dict
 
     def _suggest_paths(self, stub: str) -> list[str]:
         """Return filesystem path suggestions based on a stub."""
@@ -1320,20 +1640,57 @@ class CommandArgumentParser:
             return self._suggest_paths(prefix if not cursor_at_end_of_token else ".")
         return []
 
+    def _filter_mutex_flags(
+        self,
+        remaining_flags: list[str],
+        consumed_dests: list[str],
+    ) -> list[str]:
+        active_mutex_groups = {
+            self._mutex_group_by_dest[dest]
+            for dest in consumed_dests
+            if dest in self._mutex_group_by_dest
+        }
+
+        if not active_mutex_groups:
+            return remaining_flags
+
+        filtered: list[str] = []
+        for flag in remaining_flags:
+            arg = self._keyword[flag]
+            mutex_name = self._mutex_group_by_dest.get(arg.dest)
+            if (
+                mutex_name
+                and mutex_name in active_mutex_groups
+                and arg.dest not in consumed_dests
+            ):
+                continue
+            filtered.append(flag)
+
+        return filtered
+
     def suggest_next(
         self, args: list[str], cursor_at_end_of_token: bool = False
     ) -> list[str]:
-        """
-        Suggest completions for the next argument based on current input.
+        """Suggest valid completions for the current argument state.
 
-        This is used for interactive shell completion or prompt_toolkit integration.
+        This method analyzes the partially entered argument list and returns
+        context-aware suggestions for the next token. Suggestions may include:
+
+        - remaining flags
+        - valid choices for the current argument
+        - configured custom suggestions
+        - filesystem paths for `Path`-typed arguments
+
+        It supports positional arguments, flagged arguments, multi-value arguments,
+        POSIX short-flag bundling, and mutually exclusive group filtering.
 
         Args:
             args (list[str]): Current partial argument tokens.
-            cursor_at_end_of_token (bool): True if space at end of args
+            cursor_at_end_of_token (bool): Whether the cursor is positioned after a
+                completed token (for example, after a trailing space).
 
         Returns:
-            list[str]: List of suggested completions.
+            list[str]: Sorted completion suggestions valid for the current parse state.
         """
         self._resolve_posix_bundling(args)
         last = args[-1] if args else ""
@@ -1406,6 +1763,7 @@ class CommandArgumentParser:
         remaining_flags = [
             flag for flag, arg in self._keyword.items() if arg.dest not in consumed_dests
         ]
+        remaining_flags = self._filter_mutex_flags(remaining_flags, consumed_dests)
 
         last_keyword_state_in_args = None
         last_keyword = None
@@ -1665,23 +2023,65 @@ class CommandArgumentParser:
         command_keys = self.get_command_keys_text(plain_text)
         options_text = self.get_options_text(plain_text)
         if options_text:
-            return f"{command_keys} {options_text}"
+            if self.options_manager.get("mode") == FalyxMode.MENU:
+                return f"{command_keys} {options_text}"
+            else:
+                program = self.program or "falyx"
+                program_style = (
+                    self.options_manager.get("program_style") or self.command_style
+                )
+                return f"[{program_style}]{program}[/{program_style}] {command_keys} {options_text}"
         return command_keys
 
-    def render_help(self) -> None:
+    def _iter_keyword_help_sections(
+        self,
+    ) -> Generator[tuple[str, str, list[Argument]], None, None]:
         """
-        Print formatted help text for this command using Rich output.
+        Yields (title, description, arguments)
+        """
+        assigned = set()
 
-        Includes usage, description, argument groups, and optional epilog.
+        for group in self._argument_groups.values():
+            args = []
+            for dest in group.dests:
+                spec = self.get_argument(dest)
+                if spec and not spec.positional:
+                    args.append(spec)
+                    assigned.add(dest)
+            if args:
+                yield group.name, group.description, args
+
+        ungrouped = []
+        for arg in self._keyword_list:
+            if arg.dest not in assigned:
+                ungrouped.append(arg)
+
+        if ungrouped:
+            yield "options", "", ungrouped
+
+    def render_help(self) -> None:
+        """Render full help output for the command.
+
+        This method displays a complete help view for the command, including
+        usage, description, argument definitions, execution options, and any
+        additional help text.
+
+        The output is formatted using Rich and is intended for both CLI and
+        interactive menu contexts.
+
+        Behavior:
+        - Renders a usage string derived from the parser configuration
+        - Displays command description, aliases, and optional epilog text
+        - Lists positional and keyword arguments with types, defaults, and help text
+        - Supports argument grouping and mutually exclusive groups
+        - Applies styling based on configured command style
         """
         usage = self.get_usage()
         self.console.print(f"[bold]usage: {usage}[/bold]\n")
 
-        # Description
         if self.help_text:
             self.console.print(self.help_text + "\n")
 
-        # Arguments
         if self._arguments:
             if self._positional:
                 self.console.print("[bold]positional:[/bold]")
@@ -1692,62 +2092,70 @@ class CommandArgumentParser:
                     if help_text and len(flags) > 30:
                         help_text = f"\n{'':<33}{help_text}"
                     self.console.print(f"{arg_line}{help_text}")
-            self.console.print("[bold]options:[/bold]")
-            arg_groups = defaultdict(list)
-            for arg in self._keyword_list:
-                arg_groups[arg.dest].append(arg)
 
-            for group in arg_groups.values():
-                if len(group) == 2 and all(
-                    arg.action == ArgumentAction.STORE_BOOL_OPTIONAL for arg in group
-                ):
-                    # Merge --flag / --no-flag pair into single help line for STORE_BOOL_OPTIONAL
-                    all_flags = tuple(
-                        sorted(
-                            (arg.flags[0] for arg in group),
-                            key=lambda f: f.startswith("--no-"),
+            for title, description, args in self._iter_keyword_help_sections():
+                self.console.print(f"\n[bold]{title}:[/bold]")
+                if description:
+                    self.console.print(f"  [dim]{description}[/dim]")
+
+                arg_groups: defaultdict[str, list[Argument]] = defaultdict(list)
+                for arg in args:
+                    arg_groups[arg.dest].append(arg)
+
+                for group in arg_groups.values():
+                    if len(group) == 2 and all(
+                        arg.action == ArgumentAction.STORE_BOOL_OPTIONAL for arg in group
+                    ):
+                        # Merge --flag / --no-flag pair into single help line for STORE_BOOL_OPTIONAL
+                        all_flags = tuple(
+                            sorted(
+                                (arg.flags[0] for arg in group),
+                                key=lambda f: f.startswith("--no-"),
+                            )
                         )
-                    )
-                else:
-                    all_flags = group[0].flags
+                    else:
+                        all_flags = group[0].flags
 
-                flags = ", ".join(all_flags)
-                flags_choice = f"{flags} {group[0].get_choice_text()}"
-                arg_line = f"  {flags_choice:<30} "
-                help_text = group[0].help or ""
-                if help_text and len(flags_choice) > 30:
-                    help_text = f"\n{'':<33}{help_text}"
-                self.console.print(f"{arg_line}{help_text}")
+                    suffix = ""
+                    mutex_name = group[0].mutex_group
+                    if mutex_name:
+                        suffix = f" [dim]({mutex_name})[/dim]"
+                    flags = ", ".join(all_flags)
+                    flags_choice = f"{flags} {group[0].get_choice_text()}"
+                    arg_line = f"  {flags_choice:<30} "
+                    help_text = f"{group[0].help or ''}{suffix}"
+                    if help_text and len(flags_choice) > 30:
+                        help_text = f"\n{'':<33}{help_text}"
+                    self.console.print(f"{arg_line}{help_text}")
 
-        # Epilog
         if self.help_epilog:
             self.console.print("\n" + self.help_epilog, style="dim")
 
     def render_tldr(self) -> None:
-        """
-        Print TLDR examples for this command using Rich output.
+        """Render concise example usage (TLDR) for the command.
 
-        Displays brief usage examples with descriptions.
+        This method displays a minimal, example-driven view of how to invoke
+        the command. It is intended as a quick-start reference rather than a
+        complete specification.
+
+        Notes:
+            - TLDR output is designed for speed and clarity, not completeness.
+            - Typically invoked via `--tldr` or equivalent help flags.
+            - Complements `render_help`, which provides full documentation.
         """
         if not self._tldr_examples:
             self.console.print(
                 f"[bold]No TLDR examples available for {self.command_key}.[/bold]"
             )
             return
-        is_cli_mode = self.options_manager.get("mode") in {
-            FalyxMode.RUN,
-            FalyxMode.PREVIEW,
-            FalyxMode.RUN_ALL,
-            FalyxMode.HELP,
-        }
+        is_cli_mode = self.options_manager.get("mode") != FalyxMode.MENU
         program = self.program or "falyx"
+        program_style = self.options_manager.get("program_style") or self.command_style
         command = self.aliases[0] if self.aliases else self.command_key
         if self._is_help_command and is_cli_mode:
-            command = f"[{self.command_style}]{program} help[/{self.command_style}]"
+            command = f"[{program_style}]{program}[/{program_style}] [{self.command_style}]help[/{self.command_style}]"
         elif is_cli_mode:
-            command = (
-                f"[{self.command_style}]{program} run {command}[/{self.command_style}]"
-            )
+            command = f"[{program_style}]{program}[/{program_style}] [{self.command_style}]{command}[/{self.command_style}]"
         else:
             command = f"[{self.command_style}]{command}[/{self.command_style}]"
 

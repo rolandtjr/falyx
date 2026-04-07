@@ -431,7 +431,6 @@ async def test_parse_args_flagged_nargs_plus():
     assert args["files"] == ["a", "b", "c"]
 
     args = await parser.parse_args(["--files", "a"])
-    print(args)
     assert args["files"] == ["a"]
 
     args = await parser.parse_args([])
@@ -666,7 +665,7 @@ async def test_parse_args_split_order():
     cap.add_argument("a")
     cap.add_argument("--x")
     cap.add_argument("b", nargs="*")
-    args, kwargs = await cap.parse_args_split(["1", "--x", "100", "2"])
+    args, kwargs, _ = await cap.parse_args_split(["1", "--x", "100", "2"])
     assert args == ("1", ["2"])
     assert kwargs == {"x": "100"}
 

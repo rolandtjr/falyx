@@ -60,6 +60,8 @@ class Argument:
             An action object that resolves the argument, if applicable.
         lazy_resolver (bool): True if the resolver should be called lazily, False otherwise
         suggestions (list[str] | None): Optional completions for interactive shells
+        group (str | None): Optional name of the argument group this belongs to.
+        mutex_group (str | None): Optional name of the mutually exclusive group this belongs to.
     """
 
     flags: tuple[str, ...]
@@ -75,6 +77,8 @@ class Argument:
     resolver: BaseAction | None = None
     lazy_resolver: bool = False
     suggestions: list[str] | None = None
+    group: str | None = None
+    mutex_group: str | None = None
 
     def get_positional_text(self) -> str:
         """Get the positional text for the argument."""
@@ -132,6 +136,8 @@ class Argument:
             and self.positional == other.positional
             and self.default == other.default
             and self.help == other.help
+            and self.group == other.group
+            and self.mutex_group == other.mutex_group
         )
 
     def __hash__(self) -> int:
@@ -147,5 +153,7 @@ class Argument:
                 self.positional,
                 self.default,
                 self.help,
+                self.group,
+                self.mutex_group,
             )
         )

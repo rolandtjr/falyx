@@ -1,6 +1,8 @@
 import pytest
+from rich.text import Text
 
 from falyx import Falyx
+from falyx.console import console
 
 
 @pytest.mark.asyncio
@@ -8,7 +10,7 @@ async def test_help_command(capsys):
     flx = Falyx()
     assert flx.help_command.arg_parser.aliases[0] == "HELP"
     assert flx.help_command.arg_parser.command_key == "H"
-    await flx.run_key("H")
+    await flx.execute_command("H")
 
     captured = capsys.readouterr()
     assert "Show this help menu" in captured.out
@@ -28,7 +30,7 @@ async def test_help_command_with_new_command(capsys):
         aliases=["TEST"],
         help_text="This is a new command.",
     )
-    await flx.run_key("H")
+    await flx.execute_command("H")
 
     captured = capsys.readouterr()
     assert "This is a new command." in captured.out
@@ -70,12 +72,14 @@ async def test_help_command_by_tag(capsys):
         tags=["tag1"],
         help_text="This command is tagged.",
     )
-    await flx.run_key("H", args=("tag1",))
+    await flx.execute_command("H -t tag1")
 
     captured = capsys.readouterr()
-    assert "tag1" in captured.out
-    assert "This command is tagged." in captured.out
-    assert "HELP" not in captured.out
+    print(captured.out)
+    text = Text.from_ansi(captured.out)
+    assert "tag1" in text.plain
+    assert "This command is tagged." in text.plain
+    assert "HELP" not in text.plain
 
 
 @pytest.mark.asyncio
@@ -88,9 +92,8 @@ async def test_help_command_empty_tags(capsys):
     flx.add_command(
         "U", "Untagged Command", untagged_command, help_text="This command has no tags."
     )
-    await flx.run_key("H", args=("nonexistent_tag",))
+    await flx.execute_command("H nonexistent_tag")
 
     captured = capsys.readouterr()
-    print(captured.out)
-    assert "nonexistent_tag" in captured.out
-    assert "Nothing to show here" in captured.out
+    text = Text.from_ansi(captured.out)
+    assert "Unexpected positional argument: nonexistent_tag" in text.plain

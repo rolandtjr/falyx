@@ -202,7 +202,7 @@ class BottomBar:
         label: str,
         options: OptionsManager,
         option_name: str,
-        namespace_name: str = "cli_args",
+        namespace_name: str = "default",
         fg: str = OneColors.BLACK,
         bg_on: str = OneColors.GREEN,
         bg_off: str = OneColors.DARK_RED,
