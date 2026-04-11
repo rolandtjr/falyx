@@ -1,6 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines all custom exception classes used in the Falyx CLI framework.
+"""Defines all custom exception classes used in the Falyx CLI framework.
 
 These exceptions provide structured error handling for common failure cases,
 including command conflicts, invalid actions or hooks, parser errors, and execution guards
@@ -26,11 +25,11 @@ developer-facing problems that should be caught and reported.
 
 
 class FalyxError(Exception):
-    """Custom exception for the Menu class."""
+    """Custom exception for the Falyx class."""
 
 
 class CommandAlreadyExistsError(FalyxError):
-    """Exception raised when an command with the same key already exists in the menu."""
+    """Exception raised when an command with the same key already exists in the Falyx instance."""
 
 
 class InvalidHookError(FalyxError):
@@ -42,7 +41,7 @@ class InvalidActionError(FalyxError):
 
 
 class NotAFalyxError(FalyxError):
-    """Exception raised when the provided submenu is not an instance of Menu."""
+    """Exception raised when the provided object is not an instance of a Falyx class."""
 
 
 class CircuitBreakerOpen(FalyxError):
@@ -54,11 +53,11 @@ class EmptyChainError(FalyxError):
 
 
 class EmptyGroupError(FalyxError):
-    """Exception raised when the chain is empty."""
+    """Exception raised when the group is empty."""
 
 
 class EmptyPoolError(FalyxError):
-    """Exception raised when the chain is empty."""
+    """Exception raised when the pool is empty."""
 
 
 class CommandArgumentError(FalyxError):

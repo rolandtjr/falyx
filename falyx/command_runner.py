@@ -87,7 +87,7 @@ class CommandRunner:
         command (Command): The command executed by this runner.
         options (OptionsManager): Shared options manager used by the command,
             parser, and executor.
-        hooks (HookManager): Executor-level hooks used during execution.
+        runner_hooks (HookManager): Executor-level hooks used during execution.
         console (Console): Rich console used for user-facing output.
         executor (CommandExecutor): Shared execution engine used to run the
             bound command.
@@ -98,7 +98,7 @@ class CommandRunner:
         command: Command,
         *,
         options: OptionsManager | None = None,
-        hooks: HookManager | None = None,
+        runner_hooks: HookManager | None = None,
         console: Console | None = None,
     ) -> None:
         """Initialize a `CommandRunner` for a single command.
@@ -111,28 +111,52 @@ class CommandRunner:
             command (Command): The command to execute.
             options (OptionsManager | None): Optional shared options manager. If
                 omitted, a new `OptionsManager` is created.
-            hooks (HookManager | None): Optional executor-level hook manager. If
+            runner_hooks (HookManager | None): Optional executor-level hook manager. If
                 omitted, a new `HookManager` is created.
             console (Console | None): Optional Rich console for output. If omitted,
                 the default Falyx console is used.
         """
         self.command = command
-        self.options = options or OptionsManager()
-        self.hooks = hooks or HookManager()
-        self.console = console or falyx_console
+        self.options = self._get_options(options)
+        self.runner_hooks = self._get_hooks(runner_hooks)
+        self.console = self._get_console(console)
         self.command.options_manager = self.options
         if isinstance(self.command.arg_parser, CommandArgumentParser):
             self.command.arg_parser.set_options_manager(self.options)
         self.executor = CommandExecutor(
             options=self.options,
-            hooks=self.hooks,
+            hooks=self.runner_hooks,
             console=self.console,
         )
         self.options.from_mapping(values={}, namespace_name="execution")
 
+    def _get_console(self, console) -> Console:
+        if console is None:
+            return falyx_console
+        elif isinstance(console, Console):
+            return console
+        else:
+            raise NotAFalyxError("console must be an instance of rich.Console or None.")
+
+    def _get_options(self, options) -> OptionsManager:
+        if options is None:
+            return OptionsManager()
+        elif isinstance(options, OptionsManager):
+            return options
+        else:
+            raise NotAFalyxError("options must be an instance of OptionsManager or None.")
+
+    def _get_hooks(self, hooks) -> HookManager:
+        if hooks is None:
+            return HookManager()
+        elif isinstance(hooks, HookManager):
+            return hooks
+        else:
+            raise NotAFalyxError("hooks must be an instance of HookManager or None.")
+
     async def run(
         self,
-        argv: list[str] | None = None,
+        argv: list[str] | str | None = None,
         raise_on_error: bool = True,
         wrap_errors: bool = False,
         summary_last_result: bool = False,
@@ -145,8 +169,9 @@ class CommandRunner:
         then delegates execution to the internal `CommandExecutor`.
 
         Args:
-            argv (list[str] | None): Optional argv-style argument tokens. If
-                omitted, `sys.argv[1:]` is used.
+            argv (list[str] | str | None): Optional argv-style argument tokens or
+                string (uses `shlex.split()` if a string is provided). If omitted,
+                `sys.argv[1:]` is used.
 
         Returns:
             Any: The result returned by the bound command.
@@ -176,7 +201,7 @@ class CommandRunner:
 
     async def cli(
         self,
-        argv: list[str] | None = None,
+        argv: list[str] | str | None = None,
         summary_last_result: bool = False,
     ) -> Any:
         """Run the bound command as a shell-oriented CLI entrypoint.
@@ -197,8 +222,9 @@ class CommandRunner:
             - Exits with status code `130` for quit/interrupt-style termination
 
         Args:
-            argv (list[str] | None): Optional argv-style argument tokens. If omitted,
-                `sys.argv[1:]` is used by `run()`.
+            argv (list[str] | str | None): Optional argv-style argument tokens or string
+                (uses `shlex.split()` if a string is provided). If omitted, `sys.argv[1:]`
+                is used by `run()`.
             summary_last_result (bool): Whether summary output should include the last
                 recorded result when summary reporting is enabled.
 
@@ -274,12 +300,14 @@ class CommandRunner:
             NotAFalyxError: If `runner_hooks` is provided but is not a
                 `HookManager` instance.
         """
+        if not isinstance(command, Command):
+            raise NotAFalyxError("command must be an instance of Command.")
         if runner_hooks and not isinstance(runner_hooks, HookManager):
             raise NotAFalyxError("runner_hooks must be an instance of HookManager.")
         return cls(
             command=command,
             options=options,
-            hooks=runner_hooks,
+            runner_hooks=runner_hooks,
             console=console,
         )
 
@@ -462,6 +490,6 @@ class CommandRunner:
         return cls(
             command=command,
             options=options,
-            hooks=runner_hooks,
+            runner_hooks=runner_hooks,
             console=console,
         )

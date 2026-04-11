@@ -1,5 +1,7 @@
 import pytest
+from rich.text import Text
 
+from falyx.console import console as falyx_console
 from falyx.exceptions import CommandArgumentError
 from falyx.parser import ArgumentAction, CommandArgumentParser
 from falyx.signals import HelpSignal
@@ -825,4 +827,11 @@ async def test_render_help():
     parser.add_argument("--foo", type=str, help="Foo help")
     parser.add_argument("--bar", action=ArgumentAction.APPEND, type=str, help="Bar help")
 
-    assert parser.render_help() is None
+    with falyx_console.capture() as capture:
+        parser.render_help()
+    output = Text.from_ansi(capture.get()).plain
+    assert "usage:" in output
+    assert "--foo" in output
+    assert "Foo help" in output
+    assert "--bar" in output
+    assert "Bar help" in output

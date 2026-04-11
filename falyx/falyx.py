@@ -57,11 +57,13 @@ from rich.text import Text
 
 from falyx.action.action import Action
 from falyx.action.base_action import BaseAction
+from falyx.action.signal_action import SignalAction
 from falyx.bottom_bar import BottomBar
 from falyx.command import Command
 from falyx.command_executor import CommandExecutor
 from falyx.completer import FalyxCompleter
 from falyx.console import console
+from falyx.context import InvocationContext
 from falyx.debug import log_after, log_before, log_error, log_success
 from falyx.exceptions import (
     CommandAlreadyExistsError,
@@ -75,14 +77,16 @@ from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import Hook, HookManager, HookType
 from falyx.logger import logger
 from falyx.mode import FalyxMode
+from falyx.namespace import FalyxNamespace
 from falyx.options_manager import OptionsManager
-from falyx.parser import CommandArgumentParser, FalyxParser, ParseResult
+from falyx.parser import CommandArgumentParser, FalyxParser, RootParseResult
 from falyx.prompt_utils import rich_text_to_prompt_text
 from falyx.protocols import ArgParserProtocol
 from falyx.retry import RetryPolicy
+from falyx.routing import RouteKind, RouteResult
 from falyx.signals import BackSignal, CancelSignal, HelpSignal, QuitSignal
 from falyx.themes import OneColors
-from falyx.utils import CaseInsensitiveDict, _noop, chunks, ensure_async
+from falyx.utils import CaseInsensitiveDict, chunks, ensure_async
 from falyx.validators import CommandValidator
 from falyx.version import __version__
 
@@ -209,11 +213,11 @@ class Falyx:
         self.columns: int = columns
         self.commands: dict[str, Command] = CaseInsensitiveDict()
         self.builtins: dict[str, Command] = CaseInsensitiveDict()
+        self.namespaces: dict[str, FalyxNamespace] = CaseInsensitiveDict()
         self.console: Console = console
         self.welcome_message: str | Markdown | dict[str, Any] = welcome_message
         self.exit_message: str | Markdown | dict[str, Any] = exit_message
         self.hooks: HookManager = HookManager()
-        self.last_run_command: Command | None = None
         self.key_bindings: KeyBindings = key_bindings or KeyBindings()
         self.bottom_bar: BottomBar | str | Callable[[], None] | None = bottom_bar
         self._never_prompt: bool = never_prompt
@@ -246,6 +250,21 @@ class Falyx:
             hooks=self.hooks,
             console=self.console,
         )
+
+    def get_current_invocation_context(self) -> InvocationContext:
+        """Returns the current invocation context."""
+        return InvocationContext(
+            program=self.program,
+            typed_path=[],
+            mode=self.options.get("mode"),
+        )
+
+    def format_invocation_path(
+        self, program: str, typed_path: list[str], *, cli_mode: bool
+    ) -> str:
+        if cli_mode:
+            return " ".join([program, *typed_path]).strip()
+        return " ".join(typed_path).strip()
 
     @property
     def is_cli_mode(self) -> bool:
@@ -280,27 +299,30 @@ class Falyx:
         if not self.options.get("program_style"):
             self.options.set("program_style", self.program_style)
 
+        if not self.options.get("invocation_path"):
+            self.options.set("invocation_path", self.program)
+
     @property
-    def _name_map(self) -> dict[str, Command]:
+    def _entry_map(self) -> dict[str, Command | FalyxNamespace]:
         """Builds a mapping of all valid input names to Command objects.
 
         If a collision occurs, logs a warning and keeps the first
         registered command.
         """
-        mapping: dict[str, Command] = {}
+        mapping: dict[str, Command | FalyxNamespace] = {}
 
-        def register(name: str, command: Command):
+        def register(name: str, entry: Command | FalyxNamespace):
             norm = name.upper().strip()
             if norm in mapping:
                 existing = mapping[norm]
-                if existing is not command:
+                if existing is not entry:
                     raise CommandAlreadyExistsError(
                         f"Identifier '{norm}' is already registered.\n"
-                        f"Existing command: {mapping[norm].key}\n"
-                        f"New command: {command.key}"
+                        f"Existing entry: {mapping[norm].key}\n"
+                        f"New entry: {entry.key}"
                     )
             else:
-                mapping[norm] = command
+                mapping[norm] = entry
 
         for special in [self.exit_command, self.history_command]:
             if special:
@@ -320,6 +342,11 @@ class Falyx:
             for alias in command.aliases:
                 register(alias, command)
             register(command.description, command)
+
+        for namespace in self.namespaces.values():
+            register(namespace.key, namespace)
+            for alias in namespace.aliases:
+                register(alias, namespace)
         return mapping
 
     def get_title(self) -> str:
@@ -335,7 +362,7 @@ class Falyx:
         exit_command = Command(
             key="X",
             description="Exit",
-            action=Action("Exit", action=_noop),
+            action=SignalAction("Exit", QuitSignal()),
             aliases=["EXIT", "QUIT"],
             style=OneColors.DARK_RED,
             simple_help_signature=True,
@@ -454,42 +481,37 @@ class Falyx:
             )
         return choice(tips)
 
-    async def _render_command_tldr(self, key: str | None = None) -> None:
+    async def _render_command_tldr(self, command: Command) -> None:
         """Renders the TLDR examples for a command, if available."""
-        if not key and self.help_command:
-            key = "H"
-        if not key:
-            self.console.print("[bold]No command specified for TLDR examples.[/bold]")
+        if not isinstance(command, Command):
+            self.console.print(
+                f"Entry '{command.key}' is not a command.", style=OneColors.DARK_RED
+            )
             return None
-        _, command, args, kwargs, execution_args = await self.get_command(
-            key, from_help=True
-        )
-        if command and command.arg_parser:
-            command.arg_parser.render_tldr()
+        if command.render_tldr():
             if self.enable_help_tips:
                 self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
-        elif command and not command.arg_parser:
+        else:
             self.console.print(
                 f"[bold]No TLDR examples available for '{command.description}'.[/bold]"
             )
-        else:
-            self.console.print(f"[bold]No command found for '{key}'.[/bold]")
 
-    async def _render_command_help(self, key: str) -> None:
+    async def _render_command_help(self, command: Command, tldr: bool = False) -> None:
         """Renders the detailed help for a command, if available."""
-        _, command, args, kwargs, execution_args = await self.get_command(
-            key, from_help=True
-        )
-        if command and command.arg_parser:
-            command.arg_parser.render_help()
+        if not isinstance(command, Command):
+            self.console.print(
+                f"Entry '{command.key}' is not a command.", style=OneColors.DARK_RED
+            )
+            return None
+        if tldr:
+            await self._render_command_tldr(command)
+        elif command.render_help():
             if self.enable_help_tips:
                 self.console.print(f"\n[bold]tip:[/bold] {self.get_tip()}")
-        elif command and not command.arg_parser:
+        else:
             self.console.print(
                 f"[bold]No detailed help available for '{command.description}'.[/bold]"
             )
-        else:
-            self.console.print(f"[bold]No command found for '{key}'.[/bold]")
 
     async def _render_tag_help(self, tag: str) -> None:
         """Renders a list of commands matching a specific tag."""
@@ -557,6 +579,30 @@ class Falyx:
         if self.enable_help_tips:
             self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
 
+    async def _render_unknown_route(self, route: RouteResult) -> None:
+        context = route.context
+        typed_key = context.typed_path[0].upper()
+        await route.namespace.render_namespace_help(context)
+        self.console.print(
+            f"[{OneColors.DARK_RED}]❌ Unknown Command or FalyxNamespace [{typed_key}]"
+        )
+        return None
+
+    async def render_namespace_help(
+        self, context: InvocationContext, tldr: bool = False
+    ) -> None:
+        if context.mode is FalyxMode.MENU:
+            await self._render_menu_help()
+        else:
+            print(
+                self.format_invocation_path(
+                    context.program,
+                    context.typed_path,
+                    cli_mode=True,
+                )
+            )
+            await self._render_cli_help()
+
     async def _render_cli_help(self) -> None:
         """Renders the CLI help menu with all available commands and options."""
         usage = self.usage or "[GLOBAL OPTIONS] [COMMAND] [OPTIONS]"
@@ -607,26 +653,36 @@ class Falyx:
         if self.enable_help_tips:
             self.console.print(f"\n[bold]tip:[/bold] {self.get_tip()}")
 
-    async def _render_help(
+    async def render_help(
         self,
         tag: str = "",
         key: str | None = None,
         tldr: bool = False,
     ) -> None:
         """Renders the help menu with command details, usage examples, and tips."""
-        if tldr:
-            await self._render_command_tldr(key)
-            return None
         if key:
-            await self._render_command_help(key)
-            return None
-        if tag:
+            entry, suggestions = self.resolve_entry(key)
+            if suggestions:
+                self.console.print(
+                    f"[{OneColors.LIGHT_YELLOW}]⚠️  Unknown entry '{key}'. Did you mean:[/]"
+                    f"{', '.join(suggestions)[:10]}"
+                )
+            elif isinstance(entry, Command):
+                await self._render_command_help(entry, tldr)
+            elif isinstance(entry, FalyxNamespace):
+                await entry.namespace.render_namespace_help(
+                    self.get_current_invocation_context(), tldr
+                )
+            else:
+                self.console.print(
+                    f"[{OneColors.DARK_RED}]❌ No entry found for '{key}'.[/]"
+                )
+        elif tag:
             await self._render_tag_help(tag)
-            return None
-        if self.options.get("mode") == FalyxMode.MENU:
+        elif self.options.get("mode") == FalyxMode.MENU:
             await self._render_menu_help()
-            return None
-        await self._render_cli_help()
+        else:
+            await self._render_cli_help()
 
     def _get_help_command(self) -> Command:
         """Returns the help command for the menu."""
@@ -667,7 +723,7 @@ class Falyx:
             aliases=["HELP", "?"],
             description="Help",
             help_text="Show this help menu.",
-            action=Action("Help", self._render_help),
+            action=Action("Help", self.render_help),
             style=OneColors.LIGHT_YELLOW,
             arg_parser=parser,
             ignore_in_history=True,
@@ -675,15 +731,11 @@ class Falyx:
             program=self.program,
         )
 
-    async def _preview(self, command_key: str) -> None:
+    async def _preview(self, key: str) -> None:
         """Previews the execution of a command without actually running it."""
-        _, command, args, kwargs, execution_args = await self.get_command(
-            command_key, from_help=True
-        )
+        command = await self.resolve_command(key)
         if not command:
-            self.console.print(
-                f"[{OneColors.DARK_RED}]❌ Command '{command_key}' not found."
-            )
+            self.console.print(f"[{OneColors.DARK_RED}]❌ Command '{key}' not found.")
             return None
         self.console.print(f"Preview of command '{command.key}': {command.description}")
         await command.preview()
@@ -699,7 +751,7 @@ class Falyx:
             help_text="Preview the execution of a command without running it.",
         )
         preview_parser.add_argument(
-            "command_key",
+            "key",
             help="The key or alias of the command to preview.",
         )
         preview_parser.add_tldr_examples(
@@ -747,7 +799,7 @@ class Falyx:
         """Adds a built-in command to Falyx."""
         self._validate_command_aliases(command.key, command.aliases)
         self.builtins[command.key.upper()] = command
-        _ = self._name_map
+        _ = self._entry_map
 
     def _register_default_builtins(self) -> None:
         """Registers the default built-in commands for Falyx."""
@@ -761,19 +813,15 @@ class Falyx:
 
     def _get_validator_error_message(self) -> str:
         """Validator to check if the input is a valid command."""
-        keys = {self.exit_command.key.upper()}
-        keys.update({alias.upper() for alias in self.exit_command.aliases})
-        if self.history_command:
-            keys.add(self.history_command.key.upper())
-            keys.update({alias.upper() for alias in self.history_command.aliases})
-
-        for command in self.builtins.values():
-            keys.add(command.key.upper())
-            keys.update({alias.upper() for alias in command.aliases})
-
-        for command in self.commands.values():
-            keys.add(command.key.upper())
-            keys.update({alias.upper() for alias in command.aliases})
+        visible = self.iter_visible_entries(
+            include_help=True,
+            include_history=True,
+            include_exit=True,
+        )
+        keys = {entry.key.upper() for entry in visible}
+        for entry in visible:
+            for alias in entry.aliases:
+                keys.add(alias.upper())
 
         commands_str = ", ".join(sorted(keys))
 
@@ -799,9 +847,7 @@ class Falyx:
     def bottom_bar(self, bottom_bar: BottomBar | str | Callable[[], Any] | None) -> None:
         """Sets the bottom bar for the menu."""
         if bottom_bar is None:
-            self._bottom_bar: BottomBar | str | Callable[[], Any] = BottomBar(
-                self.columns, self.key_bindings
-            )
+            self._bottom_bar = BottomBar(self.columns, self.key_bindings)
         elif isinstance(bottom_bar, BottomBar):
             bottom_bar.key_bindings = self.key_bindings
             self._bottom_bar = bottom_bar
@@ -815,7 +861,7 @@ class Falyx:
 
     def _get_bottom_bar_render(self) -> Callable[[], Any] | str | None:
         """Returns the bottom bar for the menu."""
-        if isinstance(self.bottom_bar, BottomBar) and self.bottom_bar._named_items:
+        if isinstance(self.bottom_bar, BottomBar) and self.bottom_bar.has_items:
             return self.bottom_bar.render
         elif callable(self.bottom_bar):
             return self.bottom_bar
@@ -916,7 +962,7 @@ class Falyx:
     ) -> None:
         """Updates the back command of the menu."""
         self._validate_command_aliases(key, aliases)
-        action = action or Action(description, action=_noop)
+        action = action or SignalAction(description, QuitSignal())
         if not callable(action):
             raise InvalidActionError("Action must be a callable.")
         self.exit_command = Command(
@@ -936,15 +982,32 @@ class Falyx:
             self.exit_command.arg_parser.add_tldr_examples([("", help_text)])
 
     def add_submenu(
-        self, key: str, description: str, submenu: Falyx, *, style: str = OneColors.CYAN
+        self,
+        key: str,
+        description: str,
+        submenu: Falyx,
+        *,
+        style: str = OneColors.CYAN,
+        aliases: list[str] | None = None,
+        help_text: str = "",
     ) -> None:
         """Adds a submenu to the menu."""
         if not isinstance(submenu, Falyx):
             raise NotAFalyxError("submenu must be an instance of Falyx.")
-        self._validate_command_aliases(key, [])
-        self.add_command(
-            key, description, submenu.menu, style=style, simple_help_signature=True
+
+        self._validate_command_aliases(key, aliases)
+
+        entry = FalyxNamespace(
+            key=key,
+            description=description,
+            namespace=submenu,
+            aliases=aliases or [],
+            help_text=help_text or f"Open the {description} namespace.",
+            style=style,
         )
+
+        self.namespaces[key] = entry
+
         if submenu.exit_command.key == "X":
             submenu.update_exit_command(
                 key="B",
@@ -971,7 +1034,7 @@ class Falyx:
             raise FalyxError("command must be an instance of Command.")
         self._validate_command_aliases(command.key, command.aliases)
         self.commands[command.key] = command
-        _ = self._name_map
+        _ = self._entry_map
 
     def add_command(
         self,
@@ -1064,7 +1127,7 @@ class Falyx:
         )
 
         self.commands[key] = command
-        _ = self._name_map
+        _ = self._entry_map
         return command
 
     def get_bottom_row(self) -> list[str]:
@@ -1086,18 +1149,39 @@ class Falyx:
         )
         return bottom_row
 
+    def iter_visible_entries(
+        self,
+        *,
+        include_builtins: bool = False,
+        include_help: bool = False,
+        include_history: bool = False,
+        include_exit: bool = False,
+    ) -> list[Command | FalyxNamespace]:
+        visible: list[Command | FalyxNamespace] = []
+        visible.extend([cmd for cmd in self.commands.values() if not cmd.hidden])
+        visible.extend([ns for ns in self.namespaces.values() if not ns.hidden])
+        if include_builtins:
+            visible.extend([cmd for cmd in self.builtins.values() if not cmd.hidden])
+        if include_help:
+            visible.append(self.help_command)
+        if include_history and self.history_command:
+            visible.append(self.history_command)
+        if include_exit:
+            visible.append(self.exit_command)
+        return visible
+
     def build_default_table(self) -> Table:
         """Build the standard table layout.
 
         Developers can subclass or call this in custom tables.
         """
         table = Table(title=self.title, show_header=False, box=box.SIMPLE)  # type: ignore[arg-type]
-        visible_commands = [item for item in self.commands.items() if not item[1].hidden]
-        for chunk in chunks(visible_commands, self.columns):
+        visible = self.iter_visible_entries()
+        for chunk in chunks(visible, self.columns):
             row = []
-            for key, command in chunk:
-                escaped_key = escape(f"[{key}]")
-                row.append(f"{escaped_key} [{command.style}]{command.description}")
+            for entry in chunk:
+                escaped_key = escape(f"[{entry.key}]")
+                row.append(f"{escaped_key} [{entry.style}]{entry.description}")
             table.add_row(*row)
         bottom_row = self.get_bottom_row()
         for row in chunks(bottom_row, self.columns):
@@ -1139,105 +1223,176 @@ class Falyx:
             return True, input_str[1:].strip()
         return False, input_str.strip()
 
-    async def get_command(
-        self, raw_choices: str, from_validate=False, from_help=False
-    ) -> tuple[bool, Command | None, tuple, dict[str, Any], dict[str, Any]]:
-        """Returns the selected command based on user input.
+    def resolve_entry(
+        self,
+        token: str,
+    ) -> tuple[Command | FalyxNamespace | None, list[str]]:
+        normalized = token.upper().strip()
 
-        Supports keys, aliases, and abbreviations.
-        """
-        args = ()
+        # exact match
+        if normalized in self._entry_map:
+            return self._entry_map[normalized], []
+
+        # unique prefix match
+        prefix_matches = []
+        seen = set()
+        for key, entry in self._entry_map.items():
+            if key.startswith(normalized) and id(entry) not in seen:
+                prefix_matches.append(entry)
+                seen.add(id(entry))
+
+        if len(prefix_matches) == 1:
+            return prefix_matches[0], []
+
+        suggestions = get_close_matches(
+            normalized, list(self._entry_map.keys()), n=3, cutoff=0.7
+        )
+        return None, suggestions
+
+    async def prepare_route(
+        self,
+        raw_arguments: list[str] | str,
+        *,
+        mode: FalyxMode | None = None,
+        from_validate: bool = False,
+    ) -> tuple[RouteResult | None, tuple, dict[str, Any], dict[str, Any]]:
+        args: tuple = ()
         kwargs: dict[str, Any] = {}
         execution_args: dict[str, Any] = {}
-        try:
-            choice, *input_args = shlex.split(raw_choices)
-        except ValueError:
-            return False, None, args, kwargs, execution_args
-        is_preview, choice = self.parse_preview_command(choice)
-        if is_preview and not choice and self.help_command:
-            is_preview = False
-            choice = "?"
-        elif is_preview and not choice:
-            # No help (list) command enabled
-            if not from_validate:
-                self.console.print(
-                    f"[{OneColors.DARK_RED}]❌ You must enter a command for preview mode."
-                )
-            return is_preview, None, args, kwargs, execution_args
-
-        choice = choice.upper()
-        name_map = self._name_map
-        run_command = None
-        if name_map.get(choice):
-            run_command = name_map[choice]
-        else:
-            prefix_matches = [
-                command for key, command in name_map.items() if key.startswith(choice)
-            ]
-            if len(prefix_matches) == 1:
-                run_command = prefix_matches[0]
-
-        if run_command:
-            if not from_validate:
-                logger.info("Command '%s' selected.", run_command.key)
-            if is_preview:
-                return True, run_command, args, kwargs, execution_args
-            elif self.is_cli_mode or from_help:
-                return False, run_command, args, kwargs, execution_args
+        if isinstance(raw_arguments, str):
             try:
-                args, kwargs, execution_args = await run_command.resolve_args(
-                    input_args, from_validate
-                )
-            except (CommandArgumentError, Exception) as error:
-                if not from_validate:
-                    run_command.render_help()
-                    self.console.print(
-                        f"[{OneColors.DARK_RED}]❌ [{run_command.key}]: {error}"
-                    )
-                else:
+                tokens = shlex.split(raw_arguments)
+            except ValueError as error:
+                if from_validate:
                     raise ValidationError(
-                        message=str(error), cursor_position=len(raw_choices)
-                    )
-                return is_preview, None, args, kwargs, execution_args
-            except HelpSignal:
-                return True, None, args, kwargs, execution_args
-            return is_preview, run_command, args, kwargs, execution_args
-
-        fuzzy_matches = get_close_matches(choice, list(name_map.keys()), n=3, cutoff=0.7)
-        if fuzzy_matches:
-            if not from_validate:
+                        cursor_position=len(raw_arguments), message=str(error)
+                    ) from error
                 self.console.print(
-                    f"[{OneColors.LIGHT_YELLOW}]⚠️ Unknown command '{choice}'. "
-                    "Did you mean:"
+                    f"Parse error: {error}",
+                    style=OneColors.DARK_RED,
                 )
-                for match in fuzzy_matches:
-                    command = name_map[match]
-                    self.console.print(f"  • [bold]{match}[/] → {command.description}")
-            else:
-                raise ValidationError(
-                    message=f"Unknown command '{choice}'. Did you mean: "
-                    f"{', '.join(fuzzy_matches)}?",
-                    cursor_position=len(raw_choices),
-                )
+                return None, args, kwargs, execution_args
+        elif isinstance(raw_arguments, list):
+            tokens = raw_arguments
         else:
-            if not from_validate:
-                self.console.print(
-                    f"[{OneColors.LIGHT_YELLOW}]⚠️ Unknown command '{choice}'[/]"
-                )
-            else:
+            if from_validate:
                 raise ValidationError(
-                    message=f"Unknown command '{choice}'.",
-                    cursor_position=len(raw_choices),
+                    cursor_position=len(raw_arguments),
+                    message="TypeError",
                 )
-        return is_preview, None, args, kwargs, execution_args
+            return None, args, kwargs, execution_args
+
+        is_preview = False
+        if tokens and tokens[0].startswith("?"):
+            is_preview = True
+            tokens[0] = tokens[0][1:]
+
+        context = InvocationContext(
+            program=self.program,
+            typed_path=[],
+            mode=mode or self.options.get("mode"),
+            is_preview=is_preview,
+        )
+
+        route = await self.resolve_route(tokens, context=context)
+
+        if is_preview:
+            route.is_preview = True
+            return route, args, kwargs, execution_args
+
+        if route.kind is RouteKind.COMMAND:
+            assert route.command is not None
+            try:
+                args, kwargs, execution_args = await route.command.resolve_args(
+                    route.leaf_argv, from_validate=from_validate
+                )
+            except CommandArgumentError as error:
+                if from_validate:
+                    raise ValidationError(
+                        cursor_position=len(raw_arguments), message=str(error)
+                    ) from error
+                else:
+                    route.command.render_help()
+                    self.console.print(
+                        f"[{OneColors.DARK_RED}]❌ [{route.command.key}]: {error}"
+                    )
+                    raise error
+            except HelpSignal:
+                if not from_validate:
+                    raise
+            return route, args, kwargs, execution_args
+
+        return route, args, kwargs, execution_args
+
+    async def _dispatch_route(
+        self,
+        route: RouteResult,
+        *,
+        args: tuple = (),
+        kwargs: dict[str, Any] | None = None,
+        execution_args: dict[str, Any] | None = None,
+        raise_on_error: bool = False,
+        wrap_errors: bool = True,
+        summary_last_result: bool = False,
+    ) -> Any | None:
+
+        if route.kind is RouteKind.NAMESPACE_MENU:
+            await route.namespace.menu()
+            return None
+
+        if route.kind is RouteKind.NAMESPACE_HELP:
+            await route.namespace.render_namespace_help(route.context)
+            return None
+
+        if route.kind is RouteKind.NAMESPACE_TLDR:
+            await route.namespace.render_namespace_help(route.context, tldr=True)
+            return None
+
+        if route.kind is RouteKind.UNKNOWN:
+            await self._render_unknown_route(route)
+            return None
+
+        if route.kind is RouteKind.COMMAND:
+            if not route.command:
+                self.console.print(
+                    f"[{OneColors.DARK_RED}]Error: No command specified for execution mode.[/]"
+                )
+                if wrap_errors or raise_on_error:
+                    raise FalyxError
+                return None
+
+            command = route.command
+
+            if route.is_preview:
+                logger.info("Preview command '%s' selected.", command.key)
+                await command.preview()
+                return None
+
+            logger.debug(
+                "Executing command '%s' with args=%s, kwargs=%s, execution_args=%s",
+                route.command.description,
+                args,
+                kwargs,
+                execution_args,
+            )
+            return await self._executor.execute(
+                command=route.command,
+                args=args,
+                kwargs=kwargs or {},
+                execution_args=execution_args or {},
+                raise_on_error=raise_on_error,
+                wrap_errors=wrap_errors,
+                summary_last_result=summary_last_result,
+            )
 
     async def execute_command(
         self,
-        raw_arguments: str,
+        raw_arguments: list[str] | str,
         *,
         raise_on_error: bool = False,
         wrap_errors: bool = True,
         summary_last_result: bool = False,
+        mode: FalyxMode = FalyxMode.MENU,
     ) -> Any | None:
         """Execute a command from a raw CLI-style input string.
 
@@ -1247,10 +1402,9 @@ class Falyx:
 
         Behavior:
             - Resolves the command and its parsed `args`, `kwargs`, and
-            `execution_args` via `get_command()`.
+            `execution_args` via `prepare_route()`.
             - Returns `None` when help output is triggered, argument parsing fails,
             the command cannot be found, or preview mode is requested.
-            - Updates `last_run_command` when a valid command is resolved.
             - Raises `QuitSignal` if the resolved command is the configured exit
             command.
             - For normal execution, forwards the resolved command and execution
@@ -1281,51 +1435,84 @@ class Falyx:
             command from a raw input string outside the interactive menu loop.
         """
         try:
-            is_preview, command, args, kwargs, execution_args = await self.get_command(
-                raw_arguments
+            route, args, kwargs, execution_args = await self.prepare_route(
+                raw_arguments, mode=mode
             )
+        except (CommandArgumentError, Exception):
+            return None
         except HelpSignal:
             return None
-        except CommandArgumentError as error:
-            logger.error(
-                "Argument parsing error for input '%s': %s", raw_arguments, error
-            )
-            self.console.print(f"[{OneColors.DARK_RED}]❌ ['{raw_arguments}'] {error}[/]")
+
+        if route is None:
             return None
 
-        if not command:
-            logger.error("Command not found for input '%s'", raw_arguments)
-            self.console.print(
-                f"[{OneColors.DARK_RED}]❌ ['{raw_arguments}'] Command not found.[/]"
-            )
-            return None
-
-        self.last_run_command = command
-
-        if is_preview:
-            logger.info("Preview command '%s' selected.", command.key)
-            await command.preview()
-            return None
-
-        if command == self.exit_command:
-            logger.info("Back selected: exiting %s", self.get_title())
-            raise QuitSignal()
-
-        logger.debug(
-            "Executing command '%s' with args=%s, kwargs=%s, execution_args=%s",
-            command.description,
-            args,
-            kwargs,
-            execution_args,
-        )
-        return await self._executor.execute(
-            command=command,
+        return await self._dispatch_route(
+            route=route,
             args=args,
-            kwargs=kwargs or {},
-            execution_args=execution_args or {},
+            kwargs=kwargs,
+            execution_args=execution_args,
             raise_on_error=raise_on_error,
             wrap_errors=wrap_errors,
             summary_last_result=summary_last_result,
+        )
+
+    async def resolve_route(
+        self,
+        tokens: list[str],
+        *,
+        context: InvocationContext,
+    ) -> RouteResult:
+        # 1. No more tokens -> this namespace itself was targeted
+        if not tokens:
+            return RouteResult(
+                kind=RouteKind.NAMESPACE_MENU,
+                namespace=self,
+                context=context,
+            )
+
+        head, *tail = tokens
+
+        # 2. Namespace-level help/tldr belongs to the current namespace
+        if head in {"-h", "--help"}:
+            return RouteResult(
+                kind=RouteKind.NAMESPACE_HELP,
+                namespace=self,
+                context=context,
+            )
+
+        if head in {"-T", "--tldr"}:
+            return RouteResult(
+                kind=RouteKind.NAMESPACE_TLDR,
+                namespace=self,
+                context=context,
+            )
+
+        # 3. Resolve the next entry in this namespace
+        entry, suggestions = self.resolve_entry(head)
+        if entry is None:
+            return RouteResult(
+                kind=RouteKind.UNKNOWN,
+                namespace=self,
+                context=context,
+                suggestions=suggestions,
+            )
+
+        child_context = context.child(head)
+
+        # 4. Namespace entry -> recurse with remaining tokens
+        if isinstance(entry, FalyxNamespace):
+            return await entry.namespace.resolve_route(
+                tail,
+                context=child_context,
+            )
+
+        # 5. Leaf command -> stop routing; leave tail untouched for leaf parser
+        return RouteResult(
+            kind=RouteKind.COMMAND,
+            namespace=self,
+            context=child_context,
+            command=entry,
+            leaf_argv=tail,
         )
 
     async def process_command(self) -> None:
@@ -1388,7 +1575,7 @@ class Falyx:
             if self.exit_message:
                 self.print_message(self.exit_message)
 
-    def _apply_parse_result(self, result: ParseResult) -> None:
+    def _apply_parse_result(self, result: RootParseResult) -> None:
         """Applies the parsed CLI arguments to the menu options."""
         self.options.set("mode", result.mode)
 
@@ -1418,22 +1605,6 @@ class Falyx:
         This method is the primary entrypoint for Falyx applications. It parses
         CLI arguments, configures runtime state, and dispatches execution based
         on the resolved mode.
-
-        Execution Pipeline:
-        1. Parse CLI input via `FalyxParser` into a `ParseResult`
-        2. Optionally invoke a user-provided callback with the parse result
-        3. Apply root-level options (e.g. verbose, debug hooks, prompt behavior)
-        4. Dispatch based on `ParseResult.mode`:
-        - HELP: Render help output and exit
-        - COMMAND: Execute a resolved command
-        - MENU: Launch interactive menu loop
-        - ERROR: Render error and exit
-
-        Command Execution:
-        - Arguments are parsed via `CommandArgumentParser`
-        - Execution options (e.g. retries, confirmation flags) are separated
-        - Execution-scoped overrides are applied using `OptionsManager`
-        - Commands are executed via `CommandExecutor.execute()` with full lifecycle hooks
 
         Callback Behavior:
         - If provided, `callback` is executed after parsing but before dispatch
@@ -1466,9 +1637,7 @@ class Falyx:
             >>> asyncio.run(flx.run())
             ```
         """
-
-        falyx_parser = FalyxParser(self)
-        parse_result = falyx_parser.parse(sys.argv[1:])
+        parse_result = FalyxParser.parse(sys.argv[1:])
 
         if callback:
             if not callable(callback):
@@ -1478,74 +1647,54 @@ class Falyx:
 
         self._apply_parse_result(parse_result)
 
-        if parse_result.mode == FalyxMode.ERROR:
-            await self._render_help()
-            self.console.print(f"[{OneColors.DARK_RED}]Error: {parse_result.error}[/]")
-            sys.exit(1)
-
         if parse_result.mode == FalyxMode.HELP:
-            await self._render_help()
+            await self.render_help()
             sys.exit(0)
 
-        if parse_result.mode == FalyxMode.COMMAND:
-            if not parse_result.command:
-                self.console.print(
-                    f"[{OneColors.DARK_RED}]Error: No command specified for execution mode.[/]"
-                )
-                sys.exit(1)
-            command = parse_result.command
+        try:
+            route, args, kwargs, execution_args = await self.prepare_route(
+                raw_arguments=parse_result.remaining_argv,
+            )
+        except CommandArgumentError:
+            sys.exit(2)
+        except HelpSignal:
+            sys.exit(0)
 
-            if parse_result.is_preview:
-                if command is None:
-                    sys.exit(1)
-                logger.info("Preview command '%s' selected.", command.key)
-                await command.preview()
-                sys.exit(0)
-            if not command:
-                sys.exit(1)
-            try:
-                args, kwargs, execution_args = await command.resolve_args(
-                    parse_result.command_argv
-                )
-            except HelpSignal:
-                sys.exit(0)
-            except CommandArgumentError as error:
-                command.render_help()
-                self.console.print(f"[{OneColors.DARK_RED}]❌ ['{command.key}'] {error}")
-                sys.exit(2)
-            try:
-                logger.debug(
-                    "Executing command '%s' with args=%s, kwargs=%s, execution_args=%s",
-                    command.description,
-                    args,
-                    kwargs,
-                    execution_args,
-                )
-                await self._executor.execute(
-                    command=command,
-                    args=args,
-                    kwargs=kwargs,
-                    execution_args=execution_args,
-                    raise_on_error=False,
-                    wrap_errors=True,
-                )
-            except FalyxError as error:
-                self.console.print(f"[{OneColors.DARK_RED}]❌ Error: {error}[/]")
-                sys.exit(1)
-            except QuitSignal:
-                logger.info("[QuitSignal]. <- Exiting run.")
-                sys.exit(130)
-            except BackSignal:
-                logger.info("[BackSignal]. <- Exiting run.")
-                sys.exit(1)
-            except CancelSignal:
-                logger.info("[CancelSignal]. <- Exiting run.")
-                sys.exit(1)
-            except asyncio.CancelledError:
-                logger.info("[asyncio.CancelledError]. <- Exiting run.")
-                sys.exit(1)
+        if not route:
+            await self.render_help()
+            self.console.print(
+                f"[{OneColors.DARK_RED}]❌ Error unable to parse: {parse_result.raw_argv}"
+            )
+            sys.exit(2)
 
-            if not always_start_menu:
-                sys.exit(0)
+        try:
+            await self._dispatch_route(
+                route=route,
+                args=args,
+                kwargs=kwargs,
+                execution_args=execution_args,
+                raise_on_error=False,
+                wrap_errors=True,
+            )
+        except FalyxError as error:
+            self.console.print(f"[{OneColors.DARK_RED}]❌ Error: {error}[/]")
+            sys.exit(1)
+        except Exception:
+            sys.exit(1)
+        except QuitSignal:
+            logger.info("[QuitSignal]. <- Exiting run.")
+            sys.exit(130)
+        except BackSignal:
+            logger.info("[BackSignal]. <- Exiting run.")
+            sys.exit(1)
+        except CancelSignal:
+            logger.info("[CancelSignal]. <- Exiting run.")
+            sys.exit(1)
+        except asyncio.CancelledError:
+            logger.info("[asyncio.CancelledError]. <- Exiting run.")
+            sys.exit(1)
+
+        if route.kind is RouteKind.NAMESPACE_MENU or not always_start_menu:
+            sys.exit(0)
 
         await self.menu()

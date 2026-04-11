@@ -17,7 +17,7 @@ def fake_falyx():
         help_command=SimpleNamespace(key="H", aliases=["HELP"]),
         history_command=SimpleNamespace(key="Y", aliases=["HISTORY"]),
         commands={"R": fake_command},
-        _name_map={"R": fake_command, "RUN": fake_command, "X": fake_command},
+        _entry_map={"R": fake_command, "RUN": fake_command, "X": fake_command},
     )
 
 

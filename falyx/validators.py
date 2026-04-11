@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING, KeysView, Sequence
 
 from prompt_toolkit.validation import ValidationError, Validator
 
+from falyx.routing import RouteKind
+
 if TYPE_CHECKING:
     from falyx.falyx import Falyx
 
@@ -48,12 +50,28 @@ class CommandValidator(Validator):
                 message=self.error_message,
                 cursor_position=len(text),
             )
-        is_preview, choice, _, __, ___ = await self.falyx.get_command(
-            text, from_validate=True
-        )
-        if is_preview:
+        route, _, __, ___ = await self.falyx.prepare_route(text, from_validate=True)
+        if not route:
+            raise ValidationError(
+                message=self.error_message,
+                cursor_position=len(text),
+            )
+        if route.is_preview:
             return None
-        if not choice:
+        if route.kind in {
+            RouteKind.NAMESPACE_MENU,
+            RouteKind.NAMESPACE_HELP,
+            RouteKind.NAMESPACE_TLDR,
+        }:
+            return None
+        if route.kind is RouteKind.COMMAND and route.command is None:
+            raise ValidationError(
+                message=self.error_message,
+                cursor_position=len(text),
+            )
+        elif route.kind is RouteKind.COMMAND:
+            return None
+        if route.kind is RouteKind.UNKNOWN:
             raise ValidationError(
                 message=self.error_message,
                 cursor_position=len(text),

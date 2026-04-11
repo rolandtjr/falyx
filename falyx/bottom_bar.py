@@ -72,6 +72,11 @@ class BottomBar:
         self.toggle_keys: list[str] = []
         self.key_bindings = key_bindings or KeyBindings()
 
+    @property
+    def has_items(self) -> bool:
+        """Check if the bottom bar has any registered items."""
+        return bool(self._named_items)
+
     @staticmethod
     def default_render(label: str, value: Any, fg: str, bg: str, width: int) -> HTML:
         return HTML(f"<style fg='{fg}' bg='{bg}'>{label}: {value:^{width}}</style>")

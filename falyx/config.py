@@ -1,6 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Configuration loader and schema definitions for the Falyx CLI framework.
+"""Configuration loader and schema definitions for the Falyx CLI framework.
 
 This module supports config-driven initialization of CLI commands and submenus
 from YAML or TOML files. It enables declarative command definitions, auto-imports

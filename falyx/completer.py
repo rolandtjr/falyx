@@ -27,6 +27,8 @@ from typing import TYPE_CHECKING, Iterable
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
 
+from falyx.namespace import FalyxNamespace
+
 if TYPE_CHECKING:
     from falyx import Falyx
 
@@ -35,7 +37,7 @@ class FalyxCompleter(Completer):
     """Prompt Toolkit completer for Falyx CLI command input.
 
     This completer provides real-time, context-aware suggestions for:
-    - Command keys and aliases (resolved via Falyx._name_map)
+    - Command keys and aliases (resolved via Falyx._entry_map)
     - CLI argument flags and values for each command
     - Suggestions and choices defined in the associated CommandArgumentParser
 
@@ -89,14 +91,14 @@ class FalyxCompleter(Completer):
 
     def _resolve_command_for_completion(self, token: str):
         normalized = token.upper().strip()
-        name_map = self.falyx._name_map
+        entry_map = self.falyx._entry_map
 
-        if normalized in name_map:
-            return name_map[normalized]
+        if normalized in entry_map:
+            return entry_map[normalized]
 
         matches = []
         seen = set()
-        for key, command in name_map.items():
+        for key, command in entry_map.items():
             if key.startswith(normalized) and id(command) not in seen:
                 matches.append(command)
                 seen.add(id(command))
@@ -146,6 +148,13 @@ class FalyxCompleter(Completer):
         # Identify command
         command_key = tokens[0].upper()
         command = self._resolve_command_for_completion(command_key)
+        if isinstance(command, FalyxNamespace):
+            completer = command.namespace._get_completer()
+            for completion in completer.get_completions(
+                Document(" ".join(tokens[1:])), complete_event
+            ):
+                yield completion
+            return
         if not command or not command.arg_parser:
             return
 

@@ -320,7 +320,9 @@ class CommandExecutor:
             await self.hooks.trigger(HookType.ON_ERROR, context)
             await self._handle_action_error(command, error)
             if wrap_errors:
-                raise FalyxError(f"[execute] '{command.description}' failed.") from error
+                raise FalyxError(
+                    f"[execute] '{command.description}' failed: {error}"
+                ) from error
             if raise_on_error:
                 raise error
         finally:

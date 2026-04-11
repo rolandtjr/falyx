@@ -58,7 +58,7 @@ from rich.panel import Panel
 
 from falyx.action.base_action import BaseAction
 from falyx.console import console
-from falyx.exceptions import CommandArgumentError
+from falyx.exceptions import CommandArgumentError, NotAFalyxError
 from falyx.execution_option import ExecutionOption
 from falyx.mode import FalyxMode
 from falyx.options_manager import OptionsManager
@@ -170,7 +170,7 @@ class CommandArgumentParser:
     def set_options_manager(self, options_manager: OptionsManager) -> None:
         """Set the options manager for the parser."""
         if not isinstance(options_manager, OptionsManager):
-            raise ValueError("options_manager must be an instance of OptionsManager")
+            raise NotAFalyxError("options_manager must be an instance of OptionsManager")
         self.options_manager = options_manager
 
     def enable_execution_options(

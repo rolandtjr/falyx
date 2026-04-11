@@ -29,4 +29,6 @@ class ActionFactoryProtocol(Protocol):
 
 @runtime_checkable
 class ArgParserProtocol(Protocol):
-    def __call__(self, args: list[str]) -> tuple[tuple, dict, dict]: ...
+    def __call__(
+        self, args: list[str]
+    ) -> tuple[tuple, dict[str, Any], dict[str, Any]]: ...

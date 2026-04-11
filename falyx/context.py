@@ -1,6 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Execution context management for Falyx CLI actions.
+"""Context management for Falyx CLI.
 
 This module defines `ExecutionContext` and `SharedContext`, which are responsible for
 capturing per-action and cross-action metadata during CLI workflow execution. These
@@ -26,6 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from rich.console import Console
 
 from falyx.console import console
+from falyx.mode import FalyxMode
 
 
 class ExecutionContext(BaseModel):
@@ -283,6 +283,30 @@ class SharedContext(BaseModel):
             f"Results: {self.results} | "
             f"Errors: {self.errors}>"
         )
+
+
+class InvocationContext(BaseModel):
+    program: str = ""
+    typed_path: list[str] = Field(default_factory=list)
+    mode: FalyxMode = FalyxMode.MENU
+    is_preview: bool = False
+
+    @property
+    def is_cli_mode(self) -> bool:
+        return self.mode != FalyxMode.MENU
+
+    def child(self, token: str) -> InvocationContext:
+        return InvocationContext(
+            program=self.program,
+            typed_path=[*self.typed_path, token],
+            mode=self.mode,
+            is_preview=self.is_preview,
+        )
+
+    def display_path(self) -> str:
+        if self.is_cli_mode:
+            return " ".join([self.program, *self.typed_path]).strip()
+        return " ".join(self.typed_path).strip()
 
 
 if __name__ == "__main__":

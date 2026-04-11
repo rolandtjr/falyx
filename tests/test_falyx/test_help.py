@@ -51,7 +51,7 @@ async def test_render_help(capsys):
         aliases=["SC"],
         help_text="This is a sample command.",
     )
-    await flx._render_help()
+    await flx.render_help()
 
     captured = capsys.readouterr()
     assert "This is a sample command." in captured.out
@@ -75,7 +75,6 @@ async def test_help_command_by_tag(capsys):
     await flx.execute_command("H -t tag1")
 
     captured = capsys.readouterr()
-    print(captured.out)
     text = Text.from_ansi(captured.out)
     assert "tag1" in text.plain
     assert "This command is tagged." in text.plain

@@ -53,13 +53,12 @@ from falyx.action.base_action import BaseAction
 from falyx.console import console
 from falyx.context import ExecutionContext
 from falyx.debug import register_debug_hooks
-from falyx.exceptions import NotAFalyxError
+from falyx.exceptions import CommandArgumentError, NotAFalyxError
 from falyx.execution_option import ExecutionOption
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
 from falyx.hooks import spinner_before_hook, spinner_teardown_hook
 from falyx.logger import logger
-from falyx.mode import FalyxMode
 from falyx.options_manager import OptionsManager
 from falyx.parser.command_argument_parser import CommandArgumentParser
 from falyx.parser.signature import infer_args_from_func
@@ -149,6 +148,8 @@ class Command(BaseModel):
             Override parser logic entirely.
         custom_help (Callable[[], str | None] | None):
             Override help rendering.
+        custom_tldr (Callable[[], str | None] | None):
+            Override TLDR rendering.
         auto_args (bool): Auto-generate arguments from action signature.
         arg_metadata (dict[str, Any], optional): Metadata for arguments.
         simple_help_signature (bool): Use simplified help formatting.
@@ -199,7 +200,8 @@ class Command(BaseModel):
     arguments: list[dict[str, Any]] = Field(default_factory=list)
     argument_config: Callable[[CommandArgumentParser], None] | None = None
     custom_parser: ArgParserProtocol | None = None
-    custom_help: Callable[[], str | None] | None = None
+    custom_help: Callable[[], None] | None = None
+    custom_tldr: Callable[[], None] | None = None
     auto_args: bool = True
     arg_metadata: dict[str, str | dict[str, Any]] = Field(default_factory=dict)
     simple_help_signature: bool = False
@@ -236,7 +238,7 @@ class Command(BaseModel):
         - Handles help/preview signals raised during parsing.
 
         Args:
-            args (list[str] | None): CLI-style argument tokens.
+            args (list[str] | str | None): CLI-style argument tokens or a single string.
             from_validate (bool): Whether parsing is occurring in validation mode
                 (e.g. prompt_toolkit validator). When True, may suppress eager
                 resolution or defer certain errors.
@@ -257,35 +259,38 @@ class Command(BaseModel):
             - This method is the canonical boundary between CLI parsing and
             execution semantics.
         """
-        if callable(self.custom_parser):
+        if self.custom_parser is not None:
+            if not callable(self.custom_parser):
+                raise NotAFalyxError(
+                    "custom_parser must be a callable that implements ArgParserProtocol."
+                )
             if isinstance(raw_args, str):
                 try:
                     raw_args = shlex.split(raw_args)
-                except ValueError:
-                    logger.warning(
-                        "[Command:%s] Failed to split arguments: %s",
-                        self.key,
-                        raw_args,
-                    )
-                    return ((), {}, {})
+                except ValueError as error:
+                    raise CommandArgumentError(
+                        f"[{self.key}] Failed to parse arguments: {error}"
+                    ) from error
             return self.custom_parser(raw_args)
 
         if isinstance(raw_args, str):
             try:
                 raw_args = shlex.split(raw_args)
-            except ValueError:
-                logger.warning(
-                    "[Command:%s] Failed to split arguments: %s",
-                    self.key,
-                    raw_args,
-                )
-                return ((), {}, {})
-        if not isinstance(self.arg_parser, CommandArgumentParser):
-            logger.warning(
-                "[Command:%s] No argument parser configured, using default parsing.",
-                self.key,
+            except ValueError as error:
+                raise CommandArgumentError(
+                    f"[{self.key}] Failed to parse arguments: {error}"
+                ) from error
+
+        if self.arg_parser is None:
+            raise NotAFalyxError(
+                "Command has no parser configured. "
+                "Provide a custom_parser or CommandArgumentParser."
             )
-            return ((), {}, {})
+        if not isinstance(self.arg_parser, CommandArgumentParser):
+            raise NotAFalyxError(
+                "arg_parser must be an instance of CommandArgumentParser"
+            )
+
         return await self.arg_parser.parse_args_split(
             raw_args, from_validate=from_validate
         )
@@ -506,19 +511,15 @@ class Command(BaseModel):
             tuple:
                 - str: Usage string (e.g. "falyx D | deploy [--help] region")
                 - str: Command description
-                - str | None: Optional tag/category label
+                - str: Optional tag/category label
 
         Notes:
             - This is the primary interface used by help menus, CLI help output,
             and command listings.
             - Formatting may vary depending on CLI vs menu mode.
         """
-        is_cli_mode = self.options_manager.get("mode") != FalyxMode.MENU
-
-        program = f"{self.program} " if is_cli_mode else ""
-
         if self.arg_parser and not self.simple_help_signature:
-            usage = f"[{self.style}]{program}[/]{self.arg_parser.get_usage()}"
+            usage = self.arg_parser.get_usage()
             description = f"[dim]{self.help_text or self.description}[/dim]"
             if self.tags:
                 tags = f"[dim]Tags: {', '.join(self.tags)}[/dim]"
@@ -531,7 +532,7 @@ class Command(BaseModel):
             + [f"[{self.style}]{alias}[/{self.style}]" for alias in self.aliases]
         )
         return (
-            f"[{self.style}]{program}[/]{command_keys}",
+            f"{command_keys}",
             f"[dim]{self.help_text or self.description}[/dim]",
             "",
         )
@@ -549,6 +550,18 @@ class Command(BaseModel):
             return True
         if isinstance(self.arg_parser, CommandArgumentParser):
             self.arg_parser.render_help()
+            return True
+        return False
+
+    def render_tldr(self) -> bool:
+        """Display the TLDR message for the command."""
+        if callable(self.custom_tldr):
+            output = self.custom_tldr()
+            if output:
+                console.print(output)
+            return True
+        if isinstance(self.arg_parser, CommandArgumentParser):
+            self.arg_parser.render_tldr()
             return True
         return False
 
@@ -623,6 +636,7 @@ class Command(BaseModel):
         execution_options: list[ExecutionOption | str] | None = None,
         custom_parser: ArgParserProtocol | None = None,
         custom_help: Callable[[], str | None] | None = None,
+        custom_tldr: Callable[[], str | None] | None = None,
         auto_args: bool = True,
         arg_metadata: dict[str, str | dict[str, Any]] | None = None,
         simple_help_signature: bool = False,
@@ -697,6 +711,8 @@ class Command(BaseModel):
                 implementation that overrides normal parser behavior.
             custom_help (Callable[[], str | None] | None): Optional custom help
                 renderer.
+            custom_tldr (Callable[[], str | None] | None): Optional custom TLDR
+                renderer.
             auto_args (bool): Whether to infer arguments automatically from the action
                 signature when explicit definitions are not provided.
             arg_metadata (dict[str, str | dict[str, Any]] | None): Optional metadata
@@ -722,12 +738,23 @@ class Command(BaseModel):
             - This method is the canonical command-construction path used by higher-
             level APIs such as `Falyx.add_command()` and `CommandRunner.build()`.
         """
-        if arg_parser:
-            if not isinstance(arg_parser, CommandArgumentParser):
-                raise NotAFalyxError(
-                    "arg_parser must be an instance of CommandArgumentParser."
-                )
-            arg_parser = arg_parser
+        if arg_parser and not isinstance(arg_parser, CommandArgumentParser):
+            raise NotAFalyxError(
+                "arg_parser must be an instance of CommandArgumentParser."
+            )
+        arg_parser = arg_parser
+
+        if options_manager and not isinstance(options_manager, OptionsManager):
+            raise NotAFalyxError("options_manager must be an instance of OptionsManager.")
+        options_manager = options_manager or OptionsManager()
+
+        if hooks and not isinstance(hooks, HookManager):
+            raise NotAFalyxError("hooks must be an instance of HookManager.")
+        hooks = hooks or HookManager()
+
+        if retry_policy and not isinstance(retry_policy, RetryPolicy):
+            raise NotAFalyxError("retry_policy must be an instance of RetryPolicy.")
+        retry_policy = retry_policy or RetryPolicy()
 
         if execution_options:
             parsed_execution_options = frozenset(
@@ -736,8 +763,6 @@ class Command(BaseModel):
             )
         else:
             parsed_execution_options = frozenset()
-
-        options_manager = options_manager or OptionsManager()
 
         command = Command(
             key=key,
@@ -760,9 +785,10 @@ class Command(BaseModel):
             spinner_speed=spinner_speed,
             tags=tags if tags else [],
             logging_hooks=logging_hooks,
+            hooks=hooks,
             retry=retry,
             retry_all=retry_all,
-            retry_policy=retry_policy or RetryPolicy(),
+            retry_policy=retry_policy,
             options_manager=options_manager,
             arg_parser=arg_parser,
             execution_options=parsed_execution_options,
@@ -770,17 +796,13 @@ class Command(BaseModel):
             argument_config=argument_config,
             custom_parser=custom_parser,
             custom_help=custom_help,
+            custom_tldr=custom_tldr,
             auto_args=auto_args,
             arg_metadata=arg_metadata or {},
             simple_help_signature=simple_help_signature,
             ignore_in_history=ignore_in_history,
             program=program,
         )
-
-        if hooks:
-            if not isinstance(hooks, HookManager):
-                raise NotAFalyxError("hooks must be an instance of HookManager.")
-            command.hooks = hooks
 
         for hook in before_hooks or []:
             command.hooks.register(HookType.BEFORE, hook)

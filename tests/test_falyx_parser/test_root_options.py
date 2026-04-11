@@ -1,10 +1,8 @@
-from falyx import Falyx
 from falyx.parser.falyx_parser import FalyxParser, RootOptions
 
 
 def get_falyx_parser():
-    falyx = Falyx()
-    return FalyxParser(falyx=falyx)
+    return FalyxParser()
 
 
 def test_parse_root_options_empty():
