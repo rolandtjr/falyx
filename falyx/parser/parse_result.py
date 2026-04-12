@@ -12,3 +12,4 @@ class RootParseResult:
     debug_hooks: bool = False
     never_prompt: bool = False
     remaining_argv: list[str] = field(default_factory=list)
+    tldr_requested: bool = False

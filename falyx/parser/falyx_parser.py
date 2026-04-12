@@ -14,6 +14,7 @@ class RootOptions:
     debug_hooks: bool = False
     never_prompt: bool = False
     help: bool = False
+    tldr: bool = False
 
 
 class FalyxParser:
@@ -27,13 +28,17 @@ class FalyxParser:
     """
 
     ROOT_FLAG_ALIASES: dict[str, str] = {
+        "-n": "never_prompt",
         "--never-prompt": "never_prompt",
         "-v": "verbose",
         "--verbose": "verbose",
+        "-d": "debug_hooks",
         "--debug-hooks": "debug_hooks",
         "?": "help",
         "-h": "help",
         "--help": "help",
+        "-T": "tldr",
+        "--tldr": "tldr",
     }
 
     @classmethod
@@ -78,13 +83,14 @@ class FalyxParser:
         argv = argv or []
         root, remaining = cls._parse_root_options(argv)
 
-        if root.help:
+        if root.help or root.tldr:
             return RootParseResult(
                 mode=FalyxMode.HELP,
                 raw_argv=argv,
                 never_prompt=root.never_prompt,
                 verbose=root.verbose,
                 debug_hooks=root.debug_hooks,
+                tldr_requested=root.tldr,
             )
 
         return RootParseResult(

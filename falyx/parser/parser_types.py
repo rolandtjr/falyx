@@ -17,7 +17,7 @@ These tools support richer expressiveness and user-friendly ergonomics in
 Falyx's declarative command-line interfaces.
 """
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeAlias
 
 from falyx.parser.argument import Argument
 
@@ -48,6 +48,21 @@ class TLDRExample:
 
     usage: str
     description: str
+
+
+TLDRInput: TypeAlias = TLDRExample | tuple[str, str]
+
+
+@dataclass(frozen=True)
+class FalyxTLDRExample:
+    """Represents a usage example for Falyx TLDR output, with optional metadata."""
+
+    entry_key: str
+    usage: str
+    description: str
+
+
+FalyxTLDRInput: TypeAlias = FalyxTLDRExample | tuple[str, str, str]
 
 
 def true_none(value: Any) -> bool | None:

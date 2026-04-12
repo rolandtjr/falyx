@@ -1,21 +1,32 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""Provides `FalyxCompleter`, an intelligent autocompletion engine for Falyx CLI
-menus using Prompt Toolkit.
+"""Prompt Toolkit completion support for routed Falyx command input.
 
-This completer supports:
-- Command key and alias completion (e.g. `R`, `HELP`, `X`)
-- Argument flag completion for registered commands (e.g. `--tag`, `--name`)
-- Context-aware suggestions based on cursor position and argument structure
-- Interactive value completions (e.g. choices and suggestions defined per argument)
-- File/path-friendly behavior, quoting completions with spaces automatically
+This module defines `FalyxCompleter`, the interactive completion layer used by
+Falyx menu and prompt-driven CLI sessions. The completer is routing-aware: it
+delegates namespace traversal to `Falyx.resolve_completion_route()` and only
+hands control to a command's `CommandArgumentParser` after a leaf command has
+been identified.
 
+Completion behavior is split into two phases:
 
-Completions are generated from:
-- Registered commands in `Falyx`
-- Argument metadata and `suggest_next()` from `CommandArgumentParser`
+1. Namespace completion
+   While the user is still selecting a command or namespace entry, completion
+   candidates are derived from the active namespace via
+   `iter_completion_names`. Namespace-level help flags such as `-h`, `--help`,
+   `-T`, and `--tldr` are also suggested when appropriate.
 
+2. Leaf-command completion
+   Once routing reaches a concrete command, the remaining argv fragment is
+   delegated to `CommandArgumentParser.suggest_next()` so command-specific
+   flags, values, choices, and positional suggestions can be surfaced.
 
-Integrated with the `Falyx.prompt_session` to enhance the interactive experience.
+The completer also supports preview-prefixed input such as `?deploy`, preserves
+shell-safe quoting for suggestions containing whitespace, and integrates
+directly with Prompt Toolkit's completion API by yielding `Completion`
+instances.
+
+Typical usage:
+    session = PromptSession(completer=FalyxCompleter(falyx))
 """
 
 from __future__ import annotations
@@ -27,183 +38,177 @@ from typing import TYPE_CHECKING, Iterable
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
 
-from falyx.namespace import FalyxNamespace
-
 if TYPE_CHECKING:
     from falyx import Falyx
 
 
 class FalyxCompleter(Completer):
-    """Prompt Toolkit completer for Falyx CLI command input.
+    """Prompt Toolkit completer for routed Falyx input.
 
-    This completer provides real-time, context-aware suggestions for:
-    - Command keys and aliases (resolved via Falyx._entry_map)
-    - CLI argument flags and values for each command
-    - Suggestions and choices defined in the associated CommandArgumentParser
+    `FalyxCompleter` provides context-aware completions for interactive Falyx
+    sessions. It first asks the owning `Falyx` instance to resolve the current
+    input into a partial completion route. Based on that route, it either:
 
-    It leverages `CommandArgumentParser.suggest_next()` to compute valid completions
-    based on current argument state, including:
-        - Remaining required or optional flags
-        - Flag value suggestions (choices or custom completions)
-        - Next positional argument hints
-        - Inserts longest common prefix (LCP) completions when applicable
-        - Handles special cases like quoted strings and spaces
-        - Supports dynamic argument suggestions (e.g. flags, file paths, etc.)
+    - suggests visible entries from the active namespace, or
+    - delegates argument completion to the resolved command's argument parser.
+
+    This keeps completion aligned with Falyx's routing model so nested
+    namespaces, preview-prefixed commands, and command-local argument parsing
+    all behave consistently with actual execution.
 
     Args:
-        falyx (Falyx): The active Falyx instance providing command and parser context.
+        falyx (Falyx): Active Falyx application instance used to resolve routes
+            and retrieve completion candidates.
     """
 
-    def __init__(self, falyx: "Falyx"):
-        self.falyx = falyx
-
-    @property
-    def _command_names(self) -> list[str]:
-        names: list[str] = []
-        seen: set[str] = set()
-
-        def add(name: str):
-            normalized = name.upper()
-            if normalized not in seen:
-                seen.add(normalized)
-                names.append(name)
-
-        for command in self.falyx.commands.values():
-            add(command.key)
-            for alias in command.aliases:
-                add(alias)
-
-        for command in self.falyx.builtins.values():
-            add(command.key)
-            for alias in command.aliases:
-                add(alias)
-
-        if self.falyx.history_command:
-            add(self.falyx.history_command.key)
-            for alias in self.falyx.history_command.aliases:
-                add(alias)
-
-        add(self.falyx.exit_command.key)
-        for alias in self.falyx.exit_command.aliases:
-            add(alias)
-
-        return names
-
-    def _resolve_command_for_completion(self, token: str):
-        normalized = token.upper().strip()
-        entry_map = self.falyx._entry_map
-
-        if normalized in entry_map:
-            return entry_map[normalized]
-
-        matches = []
-        seen = set()
-        for key, command in entry_map.items():
-            if key.startswith(normalized) and id(command) not in seen:
-                matches.append(command)
-                seen.add(id(command))
-
-        if len(matches) == 1:
-            return matches[0]
-        return None
-
-    def get_completions(self, document: Document, complete_event) -> Iterable[Completion]:
-        """Compute completions for the current user input.
-
-        Analyzes the input buffer, determines whether the user is typing:
-        • A command key/alias
-        • A flag/option
-        • An argument value
-
-        and yields appropriate completions.
+    def __init__(self, falyx: Falyx):
+        """Initialize the completer with a bound Falyx instance.
 
         Args:
-            document (Document): The current Prompt Toolkit document (input buffer & cursor).
-            complete_event: The triggering event (TAB key, menu display, etc.) — not used here.
+            falyx (Falyx): Active Falyx application that owns the routing and
+                command metadata used for completion.
+        """
+        self.falyx = falyx
+
+    def get_completions(self, document: Document, complete_event):
+        """Yield completions for the current input buffer.
+
+        This method is the main Prompt Toolkit completion entrypoint. It parses
+        the text before the cursor, determines whether the user is still routing
+        through namespaces or has already reached a leaf command, and then
+        yields matching `Completion` objects.
+
+        Behavior:
+            - Splits the current input using `shlex.split()`.
+            - Detects preview-mode input prefixed with `?`.
+            - Separates committed tokens from the active stub under the cursor.
+            - Resolves the partial route through `Falyx.resolve_completion_route()`.
+            - Suggests namespace entries and namespace help flags while routing.
+            - Delegates leaf-command completion to
+              `CommandArgumentParser.suggest_next()` once a command is resolved.
+            - Preserves shell-safe quoting for suggestions containing spaces.
+
+        Args:
+            document (Document): Prompt Toolkit document representing the current
+                input buffer and cursor position.
+            complete_event: Prompt Toolkit completion event metadata. It is not
+                currently inspected directly.
 
         Yields:
-            Completion: One or more completions matching the current stub text.
+            Completion: Completion candidates appropriate to the current routed
+            input state.
+
+        Notes:
+            - Invalid shell quoting causes completion to stop silently rather
+              than raising.
+            - Command-specific completion is only attempted after a concrete leaf
+              command has been resolved.
         """
         text = document.text_before_cursor
         try:
             tokens = shlex.split(text)
-            cursor_at_end_of_token = document.text_before_cursor.endswith((" ", "\t"))
+            cursor_at_end = text.endswith((" ", "\t"))
         except ValueError:
             return
 
-        if tokens and not cursor_at_end_of_token and tokens[0].startswith("?"):
-            stub = tokens[0][1:]
-            suggestions = [c.text for c in self._suggest_commands(stub)]
-            prefixed = [f"?{s}" for s in suggestions]
-            yield from self._yield_lcp_completions(prefixed, tokens[0])
+        is_preview = False
+        if tokens and tokens[0].startswith("?"):
+            is_preview = True
+            tokens[0] = tokens[0][1:]
+
+        if cursor_at_end:
+            committed_tokens = tokens
+            stub = ""
+        else:
+            committed_tokens = tokens[:-1] if tokens else []
+            stub = tokens[-1] if tokens else ""
+
+        context = self.falyx.get_current_invocation_context().model_copy(
+            update={"is_preview": is_preview}
+        )
+
+        route = self.falyx.resolve_completion_route(
+            committed_tokens,
+            stub=stub,
+            cursor_at_end_of_token=cursor_at_end,
+            context=context,
+            is_preview=is_preview,
+        )
+
+        # Still selecting an entry in the current namespace
+        if route.expecting_entry:
+            suggestions = self._suggest_namespace_entries(route.namespace, route.stub)
+
+            # Only here should namespace-level help/TLDR be suggested.
+            if not route.command and (not route.stub or route.stub.startswith("-")):
+                suggestions.extend(
+                    flag
+                    for flag in ("-h", "--help", "-T", "--tldr")
+                    if flag.startswith(route.stub)
+                )
+
+            if route.is_preview:
+                suggestions = [f"?{s}" for s in suggestions]
+                current_stub = f"?{route.stub}" if route.stub else "?"
+            else:
+                current_stub = route.stub
+
+            yield from self._yield_lcp_completions(suggestions, current_stub)
             return
 
-        if not tokens or (len(tokens) == 1 and not cursor_at_end_of_token):
-            # Suggest command keys and aliases
-            stub = tokens[0] if tokens else ""
-            suggestions = [c.text for c in self._suggest_commands(stub)]
-            yield from self._yield_lcp_completions(suggestions, stub)
+        # Leaf command: CAP owns the rest
+        if not route.command or not route.command.arg_parser:
             return
 
-        # Identify command
-        command_key = tokens[0].upper()
-        command = self._resolve_command_for_completion(command_key)
-        if isinstance(command, FalyxNamespace):
-            completer = command.namespace._get_completer()
-            for completion in completer.get_completions(
-                Document(" ".join(tokens[1:])), complete_event
-            ):
-                yield completion
-            return
-        if not command or not command.arg_parser:
-            return
-
-        # If at end of token, e.g., "--t" vs "--tag ", add a stub so suggest_next sees it
-        parsed_args = tokens[1:] if cursor_at_end_of_token else tokens[1:-1]
-        stub = "" if cursor_at_end_of_token else tokens[-1]
+        leaf_tokens = list(route.leaf_argv)
+        if route.stub:
+            leaf_tokens.append(route.stub)
 
         try:
-            suggestions = command.arg_parser.suggest_next(
-                parsed_args + ([stub] if stub else []), cursor_at_end_of_token
+            suggestions = route.command.arg_parser.suggest_next(
+                leaf_tokens,
+                route.cursor_at_end_of_token,
             )
-            yield from self._yield_lcp_completions(suggestions, stub)
         except Exception:
             return
 
-    def _suggest_commands(self, prefix: str) -> Iterable[Completion]:
-        """Suggest top-level command keys and aliases based on the given prefix.
+        yield from self._yield_lcp_completions(suggestions, route.stub)
 
-        Filters all known commands (and `exit`, `help`, `history` built-ins)
-        to only those starting with the given prefix.
+    def _suggest_namespace_entries(self, namespace: Falyx, prefix: str) -> list[str]:
+        """Return matching visible entry names for a namespace prefix.
 
-        Args:
-            prefix (str): The current typed prefix.
-
-        Yields:
-            Completion: Matching keys or aliases from all registered commands.
-        """
-        for name in self._command_names:
-            if name.upper().startswith(prefix.upper()):
-                text = name.lower() if prefix.islower() else name
-                yield Completion(text, start_position=-len(prefix), display=text)
-
-    def _ensure_quote(self, text: str) -> str:
-        """Ensure that a suggestion is shell-safe by quoting if needed.
-
-        Adds quotes around completions containing whitespace so they can
-        be inserted into the CLI without breaking tokenization.
+        This helper filters the current namespace's visible completion names so
+        only entries beginning with the provided prefix are returned. Case of the
+        returned value is adjusted to follow the case style of the typed prefix.
 
         Args:
-            text (str): The input text to quote.
+            namespace (Falyx): Namespace whose entries should be searched for
+                completion candidates.
+            prefix (str): Current partially typed entry name.
 
         Returns:
-            str: The quoted text, suitable for shell command usage.
+            list[str]: Matching namespace entry keys and aliases.
+        """
+        results: list[str] = []
+        for name in namespace.iter_completion_names:
+            if name.upper().startswith(prefix.upper()):
+                results.append(name.lower() if prefix.islower() else name)
+        return results
+
+    def _ensure_quote(self, text: str) -> str:
+        """Quote a completion candidate when it contains whitespace.
+
+        Args:
+            text (str): Raw completion candidate.
+
+        Returns:
+            str: Shell-safe candidate wrapped in double quotes when needed.
         """
         if " " in text or "\t" in text:
             return f'"{text}"'
         return text
 
-    def _yield_lcp_completions(self, suggestions, stub):
+    def _yield_lcp_completions(self, suggestions, stub) -> Iterable[Completion]:
         """Yield completions for the current stub using longest-common-prefix logic.
 
         Behavior:
@@ -219,26 +224,35 @@ class FalyxCompleter(Completer):
         Yields:
             Completion: Completion objects for the Prompt Toolkit menu.
         """
-        matches = [s for s in suggestions if s.startswith(stub)]
+
+        if not suggestions:
+            return
+
+        matches = list(dict.fromkeys(s for s in suggestions if s.startswith(stub)))
         if not matches:
             return
 
         lcp = os.path.commonprefix(matches)
 
         if len(matches) == 1:
+            match = matches[0]
             yield Completion(
-                self._ensure_quote(matches[0]),
+                self._ensure_quote(match),
                 start_position=-len(stub),
-                display=matches[0],
+                display=match,
             )
-        elif len(lcp) > len(stub) and not lcp.startswith("-"):
-            yield Completion(lcp, start_position=-len(stub), display=lcp)
-            for match in matches:
-                yield Completion(
-                    self._ensure_quote(match), start_position=-len(stub), display=match
-                )
-        else:
-            for match in matches:
-                yield Completion(
-                    self._ensure_quote(match), start_position=-len(stub), display=match
-                )
+            return
+
+        if len(lcp) > len(stub) and not lcp.startswith("-"):
+            yield Completion(
+                self._ensure_quote(lcp),
+                start_position=-len(stub),
+                display=lcp,
+            )
+
+        for match in matches:
+            yield Completion(
+                self._ensure_quote(match),
+                start_position=-len(stub),
+                display=match,
+            )

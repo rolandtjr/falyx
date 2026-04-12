@@ -16,5 +16,5 @@ __all__ = [
     "ArgumentAction",
     "CommandArgumentParser",
     "FalyxParser",
-    "ParseResult",
+    "RootParseResult",
 ]

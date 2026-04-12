@@ -66,7 +66,13 @@ from falyx.options_manager import OptionsManager
 from falyx.parser.argument import Argument
 from falyx.parser.argument_action import ArgumentAction
 from falyx.parser.group import ArgumentGroup, MutuallyExclusiveGroup
-from falyx.parser.parser_types import ArgumentState, TLDRExample, false_none, true_none
+from falyx.parser.parser_types import (
+    ArgumentState,
+    TLDRExample,
+    TLDRInput,
+    false_none,
+    true_none,
+)
 from falyx.parser.utils import coerce_value
 from falyx.signals import HelpSignal
 
@@ -134,7 +140,7 @@ class CommandArgumentParser:
         help_text: str = "",
         help_epilog: str = "",
         aliases: list[str] | None = None,
-        tldr_examples: list[tuple[str, str]] | None = None,
+        tldr_examples: list[TLDRInput] | None = None,
         program: str | None = None,
         options_manager: OptionsManager | None = None,
     ) -> None:
@@ -250,31 +256,46 @@ class CommandArgumentParser:
         )
         self._register_argument(help)
 
-    def add_tldr_examples(self, examples: list[tuple[str, str]]) -> None:
+    def _add_tldr(self):
+        """Add TLDR argument to the parser."""
+        tldr = Argument(
+            flags=("--tldr", "-T"),
+            action=ArgumentAction.TLDR,
+            help="Show quick usage examples.",
+            dest="tldr",
+        )
+        self._register_argument(tldr)
+
+    def add_tldr_example(self, usage: str, description: str) -> None:
+        """Add a single TLDR example to the parser."""
+        self._tldr_examples.append(TLDRExample(usage=usage, description=description))
+        if "tldr" not in self._dest_set:
+            self._add_tldr()
+
+    def add_tldr_examples(self, examples: list[TLDRInput]) -> None:
         """
         Add TLDR examples to the parser.
 
         Args:
-            examples (list[tuple[str, str]]): List of (usage, description) tuples.
+            examples (list[TLDRInput]): List of TLDRExample instances or (usage, description) tuples.
         """
-        if not all(
-            isinstance(example, tuple) and len(example) == 2 for example in examples
-        ):
-            raise CommandArgumentError(
-                "TLDR examples must be a list of (usage, description) tuples"
-            )
-
-        for usage, description in examples:
-            self._tldr_examples.append(TLDRExample(usage=usage, description=description))
+        for example in examples:
+            if isinstance(example, TLDRExample):
+                self._tldr_examples.append(example)
+            elif isinstance(example, tuple) and len(example) == 2:
+                usage, description = example
+                self._tldr_examples.append(
+                    TLDRExample(usage=usage, description=description)
+                )
+            else:
+                raise CommandArgumentError(
+                    f"Invalid TLDR example format: {example}. "
+                    "Examples must be either TLDRExample instances "
+                    "or tuples of (usage, description)."
+                )
 
         if "tldr" not in self._dest_set:
-            tldr = Argument(
-                ("--tldr", "-T"),
-                action=ArgumentAction.TLDR,
-                help="Show quick usage examples.",
-                dest="tldr",
-            )
-            self._register_argument(tldr)
+            self._add_tldr()
 
     def add_argument_group(
         self,

@@ -1,38 +1,42 @@
 from types import SimpleNamespace
 
 import pytest
-from prompt_toolkit.document import Document
 
 from falyx.completer import FalyxCompleter
 
 
-@pytest.fixture
-def fake_falyx():
-    fake_arg_parser = SimpleNamespace(
-        suggest_next=lambda tokens, end: ["AETHERWARP", "AETHERZOOM"]
-    )
-    fake_command = SimpleNamespace(key="R", aliases=["RUN"], arg_parser=fake_arg_parser)
-    return SimpleNamespace(
-        exit_command=SimpleNamespace(key="X", aliases=["EXIT"]),
-        help_command=SimpleNamespace(key="H", aliases=["HELP"]),
-        history_command=SimpleNamespace(key="Y", aliases=["HISTORY"]),
-        commands={"R": fake_command},
-        _entry_map={"R": fake_command, "RUN": fake_command, "X": fake_command},
-    )
+def completion_texts(completions) -> list[str]:
+    return [c.text for c in completions]
 
 
-def test_lcp_completions(fake_falyx):
-    completer = FalyxCompleter(fake_falyx)
-    doc = Document("R A")
-    results = list(completer.get_completions(doc, None))
-    assert any(c.text == "AETHER" for c in results)
-    assert any(c.text == "AETHERWARP" for c in results)
-    assert any(c.text == "AETHERZOOM" for c in results)
+def test_lcp_completions():
+    completer = FalyxCompleter(SimpleNamespace())
+    suggestions = ["AETHERWARP", "AETHERZOOM"]
+    stub = "A"
+    completions = list(completer._yield_lcp_completions(suggestions, stub))
+    texts = completion_texts(completions)
+
+    assert "AETHER" in texts
+    assert "AETHERWARP" in texts
+    assert "AETHERZOOM" in texts
 
 
-def test_lcp_completions_space(fake_falyx):
-    completer = FalyxCompleter(fake_falyx)
+def test_lcp_completions_space():
+    completer = FalyxCompleter(SimpleNamespace())
     suggestions = ["London", "New York", "San Francisco"]
     stub = "N"
     completions = list(completer._yield_lcp_completions(suggestions, stub))
-    assert any(c.text == '"New York"' for c in completions)
+    texts = completion_texts(completions)
+    assert '"New York"' in texts
+
+
+def test_lcp_completions_does_not_collapse_flags():
+    completer = FalyxCompleter(SimpleNamespace())
+    suggestions = ["--tag", "--target"]
+    stub = "--t"
+    completions = list(completer._yield_lcp_completions(suggestions, stub))
+    texts = completion_texts(completions)
+
+    assert "--tag" in texts
+    assert "--target" in texts
+    assert "--ta" not in texts

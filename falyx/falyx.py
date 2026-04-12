@@ -62,6 +62,7 @@ from falyx.bottom_bar import BottomBar
 from falyx.command import Command
 from falyx.command_executor import CommandExecutor
 from falyx.completer import FalyxCompleter
+from falyx.completer_types import CompletionRoute
 from falyx.console import console
 from falyx.context import InvocationContext
 from falyx.debug import log_after, log_before, log_error, log_success
@@ -80,6 +81,7 @@ from falyx.mode import FalyxMode
 from falyx.namespace import FalyxNamespace
 from falyx.options_manager import OptionsManager
 from falyx.parser import CommandArgumentParser, FalyxParser, RootParseResult
+from falyx.parser.parser_types import FalyxTLDRExample, FalyxTLDRInput
 from falyx.prompt_utils import rich_text_to_prompt_text
 from falyx.protocols import ArgParserProtocol
 from falyx.retry import RetryPolicy
@@ -243,6 +245,7 @@ class Falyx:
         else:
             self.history = None
         self.enable_help_tips = enable_help_tips
+        self._tldr_examples: list[FalyxTLDRExample] = []
         self._register_default_builtins()
         self._register_options()
         self._executor = CommandExecutor(
@@ -250,6 +253,51 @@ class Falyx:
             hooks=self.hooks,
             console=self.console,
         )
+
+    def _print_suggestions_message(self, key: str, suggestions: list[str]) -> None:
+        """Prints a message with suggestions for the user."""
+        if not suggestions:
+            self.console.print(
+                f"[{OneColors.DARK_RED}]❌ No command, alias, or namespace found for '{key}'.[/]"
+            )
+            return None
+        self.console.print(
+            f"[{OneColors.LIGHT_YELLOW}]⚠️  Unknown command, alias, or namespace '{key}'. Did you mean: [/]"
+            f"{', '.join(suggestions)[:10]}"
+        )
+
+    def add_tldr_example(
+        self,
+        *,
+        entry_key: str,
+        usage: str,
+        description: str,
+    ) -> None:
+        """Adds a TLDR example to the Falyx instance."""
+        self._tldr_examples.append(
+            FalyxTLDRExample(entry_key=entry_key, usage=usage, description=description)
+        )
+
+    def add_tldr_examples(self, examples: list[FalyxTLDRInput]) -> None:
+        """Adds TLDR examples to the Falyx instance."""
+        for example in examples:
+            if isinstance(example, FalyxTLDRExample):
+                self._tldr_examples.append(example)
+            elif len(example) == 3:
+                entry_key, usage, description = example
+                self._tldr_examples.append(
+                    FalyxTLDRExample(
+                        entry_key=entry_key,
+                        usage=usage,
+                        description=description,
+                    )
+                )
+            else:
+                raise FalyxError(
+                    f"Invalid TLDR example format: {example}. "
+                    "Examples must be either FalyxTLDRExample instances "
+                    "or tuples of (entry_key, usage, description).",
+                )
 
     def get_current_invocation_context(self) -> InvocationContext:
         """Returns the current invocation context."""
@@ -297,6 +345,46 @@ class Falyx:
             self.options.set("invocation_path", self.program)
 
     @property
+    def iter_completion_names(self) -> list[str]:
+        names: list[str] = []
+        seen: set[str] = set()
+
+        def add(name: str) -> None:
+            normalized = name.upper().strip()
+            if normalized not in seen:
+                seen.add(normalized)
+                names.append(name)
+
+        for command in self.commands.values():
+            if not command.hidden:
+                add(command.key)
+                for alias in command.aliases:
+                    add(alias)
+
+        for namespace in self.namespaces.values():
+            if not namespace.hidden:
+                add(namespace.key)
+                for alias in namespace.aliases:
+                    add(alias)
+
+        for command in self.builtins.values():
+            if not command.hidden:
+                add(command.key)
+                for alias in command.aliases:
+                    add(alias)
+
+        if self.history_command and not self.history_command.hidden:
+            add(self.history_command.key)
+            for alias in self.history_command.aliases:
+                add(alias)
+
+        add(self.exit_command.key)
+        for alias in self.exit_command.aliases:
+            add(alias)
+
+        return names
+
+    @property
     def _entry_map(self) -> dict[str, Command | FalyxNamespace]:
         """Builds a mapping of all valid input names to Command objects.
 
@@ -318,19 +406,6 @@ class Falyx:
             else:
                 mapping[norm] = entry
 
-        for special in [self.exit_command, self.history_command]:
-            if special:
-                register(special.key, special)
-                for alias in special.aliases:
-                    register(alias, special)
-                register(special.description, special)
-
-        for command in self.builtins.values():
-            register(command.key, command)
-            for alias in command.aliases:
-                register(alias, command)
-            register(command.description, command)
-
         for command in self.commands.values():
             register(command.key, command)
             for alias in command.aliases:
@@ -341,6 +416,20 @@ class Falyx:
             register(namespace.key, namespace)
             for alias in namespace.aliases:
                 register(alias, namespace)
+
+        for command in self.builtins.values():
+            register(command.key, command)
+            for alias in command.aliases:
+                register(alias, command)
+            register(command.description, command)
+
+        for special in [self.history_command, self.exit_command]:
+            if special:
+                register(special.key, special)
+                for alias in special.aliases:
+                    register(alias, special)
+                register(special.description, special)
+
         return mapping
 
     def get_title(self) -> str:
@@ -582,18 +671,49 @@ class Falyx:
         if self.enable_help_tips:
             self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
 
-    async def _render_unknown_route(self, route: RouteResult) -> None:
-        context = route.context
-        typed_key = context.typed_path[0].upper()
-        await route.namespace.render_namespace_help(context)
-        self.console.print(
-            f"[{OneColors.DARK_RED}]❌ Unknown Command or FalyxNamespace [{typed_key}]"
-        )
-        return None
+    def get_usage(self, context: InvocationContext) -> str:
+        has_namespaces = any(not ns.hidden for ns in self.namespaces.values())
+        target = "command" if not has_namespaces else "command or namespace"
+        if not context.typed_path and context.is_cli_mode:
+            return escape(f"[-h] [-T] [-v] [-d] [-n] <{target}> [args...]")
+        elif not context.typed_path:
+            return escape(f"[-h] [-T] <{target}> [args...]")
+        return escape(f"<{target}> [args...]")
 
     async def _render_namespace_tldr_help(self, context: InvocationContext) -> None:
-        # TODO: Create namespace tldr
-        console.print(context.markup_path)
+        if not self._tldr_examples:
+            self.console.print(
+                f"[bold]No TLDR examples available for '{self.get_title()}'.[/bold]"
+            )
+            return None
+        usage = self.usage or self.get_usage(context)
+        prefix = context.markup_path
+        self.console.print(
+            f"[bold]usage:[/bold] {prefix} [{self.usage_style}]{usage}[/{self.usage_style}]"
+        )
+        if self.description:
+            self.console.print(
+                f"\n[{self.description_style}]{self.description}[/{self.description_style}]"
+            )
+        if self._tldr_examples:
+            self.console.print("\n[bold]examples:[/bold]")
+            for example in self._tldr_examples:
+                entry, _ = self.resolve_entry(example.entry_key)
+                if not entry:
+                    self.console.print(
+                        f"[{OneColors.LIGHT_YELLOW}]⚠️  TLDR example references unknown entry '{example.entry_key}'.[/]"
+                    )
+                    continue
+                command = f"[{entry.style}]{example.entry_key}[/{entry.style}]"
+                usage = f"{prefix} {command} {example.usage.strip()}"
+                description = example.description.strip()
+                block = f"[bold]{usage}[/bold]"
+                self.console.print(
+                    Padding(
+                        Panel(block, expand=False, title=description, title_align="left"),
+                        (0, 2),
+                    )
+                )
 
     async def render_namespace_help(
         self, context: InvocationContext, tldr: bool = False
@@ -607,7 +727,7 @@ class Falyx:
 
     async def _render_cli_help(self, context: InvocationContext) -> None:
         """Renders the CLI help menu with all available commands and options."""
-        usage = self.usage or "[GLOBAL OPTIONS] [COMMAND] [OPTIONS]"
+        usage = self.usage or self.get_usage(context)
         self.console.print(
             f"[bold]usage:[/bold] {context.markup_path} [{self.usage_style}]{usage}[/{self.usage_style}]"
         )
@@ -617,6 +737,7 @@ class Falyx:
             )
         self.console.print("\n[bold]global options:[/bold]")
         self.console.print(f"  {'-h, --help':<22}{'Show this help message and exit.'}")
+        self.console.print(f"  {'-T, --tldr':<22}{'Show quick usage examples and exit.'}")
         self.console.print(
             f"  {'-v, --verbose':<22}{'Enable verbose debug logging for the session.'}"
         )
@@ -672,21 +793,15 @@ class Falyx:
         tag: str = "",
         key: str | None = None,
         tldr: bool = False,
+        namespace_tldr: bool = False,
         invocation_context: InvocationContext | None = None,
     ) -> None:
         """Renders the help menu with command details, usage examples, and tips."""
         context = invocation_context or self.get_current_invocation_context()
         if key:
-            entry, suggestions = self.resolve_entry(key)
-            if suggestions:
-                self.console.print(
-                    f"[{OneColors.LIGHT_YELLOW}]⚠️  Unknown entry '{key}'. Did you mean:[/]"
-                    f"{', '.join(suggestions)[:10]}"
-                )
-                return None
-
             base_context = self._help_target_base_context(context)
 
+            entry, suggestions = self.resolve_entry(key)
             if isinstance(entry, Command):
                 await self._render_command_help(
                     command=entry,
@@ -699,10 +814,9 @@ class Falyx:
                     tldr=tldr,
                 )
             else:
-                # TODO: Should print something helpful here
-                self.console.print(
-                    f"[{OneColors.DARK_RED}]❌ No entry found for '{key}'.[/]"
-                )
+                await self.render_namespace_help(base_context)
+                self._print_suggestions_message(key, suggestions)
+            return None
         elif tldr:
             await self._render_command_help(
                 self.help_command,
@@ -711,10 +825,8 @@ class Falyx:
             )
         elif tag:
             await self._render_tag_help(tag)
-        elif self.options.get("mode") == FalyxMode.MENU:
-            await self._render_menu_help()
         else:
-            await self._render_cli_help(context)
+            await self.render_namespace_help(context, namespace_tldr)
 
     def _get_help_command(self) -> Command:
         """Returns the help command for the menu."""
@@ -766,23 +878,16 @@ class Falyx:
     async def _preview(self, key: str) -> None:
         """Previews the execution of a command without actually running it."""
         entry, suggestions = self.resolve_entry(key)
-        if suggestions:
-            self.console.print(
-                f"[{OneColors.LIGHT_YELLOW}]⚠️  Unknown entry '{key}'. Did you mean:[/]"
-                f"{', '.join(suggestions)[:10]}"
-            )
-            return None
         if isinstance(entry, FalyxNamespace):
             self.console.print(
                 f"❌ Entry '{key}' is a namespace. Please specify a command to preview.",
                 style=OneColors.DARK_RED,
             )
-            return None
-        if not isinstance(entry, Command):
-            self.console.print(f"[{OneColors.DARK_RED}]❌ No entry found for '{key}'.[/]")
-            return None
-        self.console.print(f"Preview of command '{entry.key}': {entry.description}")
-        await entry.preview()
+        elif isinstance(entry, Command):
+            self.console.print(f"Preview of command '{entry.key}': {entry.description}")
+            await entry.preview()
+        else:
+            self._print_suggestions_message(key, suggestions)
 
     def _get_preview_command(self) -> Command:
         """Returns the preview command for Falyx."""
@@ -1371,6 +1476,13 @@ class Falyx:
 
         return route, args, kwargs, execution_args
 
+    async def _render_unknown_route(self, route: RouteResult) -> None:
+        context = route.context
+        typed_key = context.typed_path[0].upper()
+        await route.namespace.render_namespace_help(context)
+        self._print_suggestions_message(typed_key, route.suggestions)
+        return None
+
     async def _dispatch_route(
         self,
         route: RouteResult,
@@ -1505,6 +1617,74 @@ class Falyx:
             raise_on_error=raise_on_error,
             wrap_errors=wrap_errors,
             summary_last_result=summary_last_result,
+        )
+
+    def resolve_completion_route(
+        self,
+        committed_tokens: list[str],
+        *,
+        stub: str,
+        cursor_at_end_of_token: bool,
+        context: InvocationContext,
+        is_preview: bool = False,
+    ) -> CompletionRoute:
+        """Route only until the leaf-command boundary.
+
+        Unlike resolve_route(), this method tolerates incomplete trailing input.
+        It stops either:
+        - inside a namespace, where the next token should be an entry, or
+        - at a leaf command, where remaining tokens belong to that command's argv.
+        """
+        namespace = self
+        route_context = context
+        remaining = list(committed_tokens)
+
+        while remaining:
+            head = remaining.pop(0)
+            entry, _ = namespace.resolve_entry(head)
+
+            if entry is None:
+                # Still routing namespace entries; could not resolve this token.
+                # Let the completer suggest entries or namespace-level help flags.
+                return CompletionRoute(
+                    namespace=namespace,
+                    context=route_context,
+                    command=None,
+                    leaf_argv=[],
+                    stub=head if not remaining else stub,
+                    cursor_at_end_of_token=cursor_at_end_of_token,
+                    expecting_entry=True,
+                    is_preview=is_preview,
+                )
+
+            route_context = route_context.with_path_segment(head, style=entry.style)
+
+            if isinstance(entry, FalyxNamespace):
+                namespace = entry.namespace
+                continue
+
+            # Leaf command found: everything after this belongs to CAP unchanged.
+            return CompletionRoute(
+                namespace=namespace,
+                context=route_context,
+                command=entry,
+                leaf_argv=remaining,
+                stub=stub,
+                cursor_at_end_of_token=cursor_at_end_of_token,
+                expecting_entry=False,
+                is_preview=is_preview,
+            )
+
+        # No committed leaf yet: next token should be a namespace entry.
+        return CompletionRoute(
+            namespace=namespace,
+            context=route_context,
+            command=None,
+            leaf_argv=[],
+            stub=stub,
+            cursor_at_end_of_token=cursor_at_end_of_token,
+            expecting_entry=True,
+            is_preview=is_preview,
         )
 
     async def resolve_route(
@@ -1696,7 +1876,7 @@ class Falyx:
         self._apply_parse_result(parse_result)
 
         if parse_result.mode == FalyxMode.HELP:
-            await self.render_help()
+            await self.render_help(namespace_tldr=parse_result.tldr_requested)
             sys.exit(0)
 
         try:
