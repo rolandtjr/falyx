@@ -28,6 +28,5 @@ class RouteResult:
     command: "Command | None" = None
     namespace_entry: FalyxNamespace | None = None
     leaf_argv: list[str] = field(default_factory=list)
-    typed_path: list[str] = field(default_factory=list)
     suggestions: list[str] = field(default_factory=list)
     is_preview: bool = False

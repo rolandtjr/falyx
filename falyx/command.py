@@ -51,7 +51,7 @@ from rich.tree import Tree
 from falyx.action.action import Action
 from falyx.action.base_action import BaseAction
 from falyx.console import console
-from falyx.context import ExecutionContext
+from falyx.context import ExecutionContext, InvocationContext
 from falyx.debug import register_debug_hooks
 from falyx.exceptions import CommandArgumentError, NotAFalyxError
 from falyx.execution_option import ExecutionOption
@@ -213,7 +213,10 @@ class Command(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     async def resolve_args(
-        self, raw_args: list[str] | str, from_validate: bool = False
+        self,
+        raw_args: list[str] | str,
+        from_validate: bool = False,
+        invocation_context: InvocationContext | None = None,
     ) -> tuple[tuple, dict, dict]:
         """Parse CLI arguments into execution-ready components.
 
@@ -292,7 +295,9 @@ class Command(BaseModel):
             )
 
         return await self.arg_parser.parse_args_split(
-            raw_args, from_validate=from_validate
+            raw_args,
+            from_validate=from_validate,
+            invocation_context=invocation_context,
         )
 
     @field_validator("action", mode="before")
@@ -483,12 +488,15 @@ class Command(BaseModel):
         if not self.arg_parser:
             return "No arguments defined."
 
-        command_keys_text = self.arg_parser.get_command_keys_text(plain_text=True)
-        options_text = self.arg_parser.get_options_text(plain_text=True)
+        command_keys_text = self.arg_parser.get_command_keys_text()
+        options_text = self.arg_parser.get_options_text()
         return f"  {command_keys_text:<20}  {options_text} "
 
     @property
-    def help_signature(self) -> tuple[str, str, str]:
+    def help_signature(
+        self,
+        invocation_context: InvocationContext | None = None,
+    ) -> tuple[str, str, str]:
         """Return a formatted help signature for display.
 
         This property provides the core information used to render command help
@@ -519,7 +527,7 @@ class Command(BaseModel):
             - Formatting may vary depending on CLI vs menu mode.
         """
         if self.arg_parser and not self.simple_help_signature:
-            usage = self.arg_parser.get_usage()
+            usage = self.arg_parser.get_usage(invocation_context=invocation_context)
             description = f"[dim]{self.help_text or self.description}[/dim]"
             if self.tags:
                 tags = f"[dim]Tags: {', '.join(self.tags)}[/dim]"
@@ -541,7 +549,7 @@ class Command(BaseModel):
         if self._context:
             self._context.log_summary()
 
-    def render_help(self) -> bool:
+    def render_help(self, invocation_context: InvocationContext | None = None) -> bool:
         """Display the help message for the command."""
         if callable(self.custom_help):
             output = self.custom_help()
@@ -549,11 +557,11 @@ class Command(BaseModel):
                 console.print(output)
             return True
         if isinstance(self.arg_parser, CommandArgumentParser):
-            self.arg_parser.render_help()
+            self.arg_parser.render_help(invocation_context=invocation_context)
             return True
         return False
 
-    def render_tldr(self) -> bool:
+    def render_tldr(self, invocation_context: InvocationContext | None = None) -> bool:
         """Display the TLDR message for the command."""
         if callable(self.custom_tldr):
             output = self.custom_tldr()
@@ -561,7 +569,7 @@ class Command(BaseModel):
                 console.print(output)
             return True
         if isinstance(self.arg_parser, CommandArgumentParser):
-            self.arg_parser.render_tldr()
+            self.arg_parser.render_tldr(invocation_context=invocation_context)
             return True
         return False
 

@@ -255,16 +255,10 @@ class Falyx:
         """Returns the current invocation context."""
         return InvocationContext(
             program=self.program,
+            program_style=self.program_style,
             typed_path=[],
             mode=self.options.get("mode"),
         )
-
-    def format_invocation_path(
-        self, program: str, typed_path: list[str], *, cli_mode: bool
-    ) -> str:
-        if cli_mode:
-            return " ".join([program, *typed_path]).strip()
-        return " ".join(typed_path).strip()
 
     @property
     def is_cli_mode(self) -> bool:
@@ -481,14 +475,18 @@ class Falyx:
             )
         return choice(tips)
 
-    async def _render_command_tldr(self, command: Command) -> None:
+    async def _render_command_tldr(
+        self,
+        command: Command,
+        context: InvocationContext | None = None,
+    ) -> None:
         """Renders the TLDR examples for a command, if available."""
         if not isinstance(command, Command):
             self.console.print(
                 f"Entry '{command.key}' is not a command.", style=OneColors.DARK_RED
             )
             return None
-        if command.render_tldr():
+        if command.render_tldr(invocation_context=context):
             if self.enable_help_tips:
                 self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
         else:
@@ -496,7 +494,12 @@ class Falyx:
                 f"[bold]No TLDR examples available for '{command.description}'.[/bold]"
             )
 
-    async def _render_command_help(self, command: Command, tldr: bool = False) -> None:
+    async def _render_command_help(
+        self,
+        command: Command,
+        tldr: bool = False,
+        context: InvocationContext | None = None,
+    ) -> None:
         """Renders the detailed help for a command, if available."""
         if not isinstance(command, Command):
             self.console.print(
@@ -504,8 +507,8 @@ class Falyx:
             )
             return None
         if tldr:
-            await self._render_command_tldr(command)
-        elif command.render_help():
+            await self._render_command_tldr(command, context=context)
+        elif command.render_help(invocation_context=context):
             if self.enable_help_tips:
                 self.console.print(f"\n[bold]tip:[/bold] {self.get_tip()}")
         else:
@@ -588,26 +591,25 @@ class Falyx:
         )
         return None
 
+    async def _render_namespace_tldr_help(self, context: InvocationContext) -> None:
+        # TODO: Create namespace tldr
+        console.print(context.markup_path)
+
     async def render_namespace_help(
         self, context: InvocationContext, tldr: bool = False
     ) -> None:
-        if context.mode is FalyxMode.MENU:
+        if tldr:
+            await self._render_namespace_tldr_help(context)
+        elif context.mode is FalyxMode.MENU:
             await self._render_menu_help()
         else:
-            print(
-                self.format_invocation_path(
-                    context.program,
-                    context.typed_path,
-                    cli_mode=True,
-                )
-            )
-            await self._render_cli_help()
+            await self._render_cli_help(context)
 
-    async def _render_cli_help(self) -> None:
+    async def _render_cli_help(self, context: InvocationContext) -> None:
         """Renders the CLI help menu with all available commands and options."""
         usage = self.usage or "[GLOBAL OPTIONS] [COMMAND] [OPTIONS]"
         self.console.print(
-            f"[bold]usage:[/bold] [{self.program_style}]{self.program}[/{self.program_style}] [{self.usage_style}]{usage}[/{self.usage_style}]"
+            f"[bold]usage:[/bold] {context.markup_path} [{self.usage_style}]{usage}[/{self.usage_style}]"
         )
         if self.description:
             self.console.print(
@@ -653,13 +655,27 @@ class Falyx:
         if self.enable_help_tips:
             self.console.print(f"\n[bold]tip:[/bold] {self.get_tip()}")
 
+    def _help_target_base_context(self, context: InvocationContext) -> InvocationContext:
+        if not context.typed_path:
+            return context
+
+        last_token = context.typed_path[-1]
+        entry, _ = self.resolve_entry(last_token)
+
+        if entry is self.help_command:
+            return context.without_last_path_segment()
+
+        return context
+
     async def render_help(
         self,
         tag: str = "",
         key: str | None = None,
         tldr: bool = False,
+        invocation_context: InvocationContext | None = None,
     ) -> None:
         """Renders the help menu with command details, usage examples, and tips."""
+        context = invocation_context or self.get_current_invocation_context()
         if key:
             entry, suggestions = self.resolve_entry(key)
             if suggestions:
@@ -667,22 +683,38 @@ class Falyx:
                     f"[{OneColors.LIGHT_YELLOW}]⚠️  Unknown entry '{key}'. Did you mean:[/]"
                     f"{', '.join(suggestions)[:10]}"
                 )
-            elif isinstance(entry, Command):
-                await self._render_command_help(entry, tldr)
+                return None
+
+            base_context = self._help_target_base_context(context)
+
+            if isinstance(entry, Command):
+                await self._render_command_help(
+                    command=entry,
+                    tldr=tldr,
+                    context=base_context.with_path_segment(key, style=entry.style),
+                )
             elif isinstance(entry, FalyxNamespace):
                 await entry.namespace.render_namespace_help(
-                    self.get_current_invocation_context(), tldr
+                    context=base_context.with_path_segment(key, style=entry.style),
+                    tldr=tldr,
                 )
             else:
+                # TODO: Should print something helpful here
                 self.console.print(
                     f"[{OneColors.DARK_RED}]❌ No entry found for '{key}'.[/]"
                 )
+        elif tldr:
+            await self._render_command_help(
+                self.help_command,
+                tldr,
+                context=context,
+            )
         elif tag:
             await self._render_tag_help(tag)
         elif self.options.get("mode") == FalyxMode.MENU:
             await self._render_menu_help()
         else:
-            await self._render_cli_help()
+            await self._render_cli_help(context)
 
     def _get_help_command(self) -> Command:
         """Returns the help command for the menu."""
@@ -693,8 +725,8 @@ class Falyx:
             aliases=["HELP", "?"],
             program=self.program,
             options_manager=self.options,
-            _is_help_command=True,
         )
+        parser.mark_as_help_command()
         parser.add_argument(
             "-t",
             "--tag",
@@ -733,12 +765,24 @@ class Falyx:
 
     async def _preview(self, key: str) -> None:
         """Previews the execution of a command without actually running it."""
-        command = await self.resolve_command(key)
-        if not command:
-            self.console.print(f"[{OneColors.DARK_RED}]❌ Command '{key}' not found.")
+        entry, suggestions = self.resolve_entry(key)
+        if suggestions:
+            self.console.print(
+                f"[{OneColors.LIGHT_YELLOW}]⚠️  Unknown entry '{key}'. Did you mean:[/]"
+                f"{', '.join(suggestions)[:10]}"
+            )
             return None
-        self.console.print(f"Preview of command '{command.key}': {command.description}")
-        await command.preview()
+        if isinstance(entry, FalyxNamespace):
+            self.console.print(
+                f"❌ Entry '{key}' is a namespace. Please specify a command to preview.",
+                style=OneColors.DARK_RED,
+            )
+            return None
+        if not isinstance(entry, Command):
+            self.console.print(f"[{OneColors.DARK_RED}]❌ No entry found for '{key}'.[/]")
+            return None
+        self.console.print(f"Preview of command '{entry.key}': {entry.description}")
+        await entry.preview()
 
     def _get_preview_command(self) -> Command:
         """Returns the preview command for Falyx."""
@@ -987,7 +1031,7 @@ class Falyx:
         description: str,
         submenu: Falyx,
         *,
-        style: str = OneColors.CYAN,
+        style: str | None = None,
         aliases: list[str] | None = None,
         help_text: str = "",
     ) -> None:
@@ -1003,7 +1047,7 @@ class Falyx:
             namespace=submenu,
             aliases=aliases or [],
             help_text=help_text or f"Open the {description} namespace.",
-            style=style,
+            style=style or submenu.program_style,
         )
 
         self.namespaces[key] = entry
@@ -1289,6 +1333,7 @@ class Falyx:
 
         context = InvocationContext(
             program=self.program,
+            program_style=self.program_style,
             typed_path=[],
             mode=mode or self.options.get("mode"),
             is_preview=is_preview,
@@ -1304,7 +1349,9 @@ class Falyx:
             assert route.command is not None
             try:
                 args, kwargs, execution_args = await route.command.resolve_args(
-                    route.leaf_argv, from_validate=from_validate
+                    route.leaf_argv,
+                    from_validate=from_validate,
+                    invocation_context=route.context,
                 )
             except CommandArgumentError as error:
                 if from_validate:
@@ -1312,7 +1359,7 @@ class Falyx:
                         cursor_position=len(raw_arguments), message=str(error)
                     ) from error
                 else:
-                    route.command.render_help()
+                    route.command.render_help(invocation_context=route.context)
                     self.console.print(
                         f"[{OneColors.DARK_RED}]❌ [{route.command.key}]: {error}"
                     )
@@ -1367,6 +1414,10 @@ class Falyx:
                 logger.info("Preview command '%s' selected.", command.key)
                 await command.preview()
                 return None
+
+            if command is route.namespace.help_command:
+                kwargs = kwargs or {}
+                kwargs["invocation_context"] = route.context
 
             logger.debug(
                 "Executing command '%s' with args=%s, kwargs=%s, execution_args=%s",
@@ -1497,20 +1548,17 @@ class Falyx:
                 suggestions=suggestions,
             )
 
-        child_context = context.child(head)
+        route_context = context.with_path_segment(head, style=entry.style)
 
         # 4. Namespace entry -> recurse with remaining tokens
         if isinstance(entry, FalyxNamespace):
-            return await entry.namespace.resolve_route(
-                tail,
-                context=child_context,
-            )
+            return await entry.namespace.resolve_route(tail, context=route_context)
 
         # 5. Leaf command -> stop routing; leave tail untouched for leaf parser
         return RouteResult(
             kind=RouteKind.COMMAND,
             namespace=self,
-            context=child_context,
+            context=route_context,
             command=entry,
             leaf_argv=tail,
         )
@@ -1694,7 +1742,16 @@ class Falyx:
             logger.info("[asyncio.CancelledError]. <- Exiting run.")
             sys.exit(1)
 
-        if route.kind is RouteKind.NAMESPACE_MENU or not always_start_menu:
+        if (
+            route.kind
+            in (
+                RouteKind.NAMESPACE_MENU,
+                RouteKind.NAMESPACE_TLDR,
+                RouteKind.NAMESPACE_HELP,
+            )
+            or route.command is self.help_command
+            or not always_start_menu
+        ):
             sys.exit(0)
 
         await self.menu()

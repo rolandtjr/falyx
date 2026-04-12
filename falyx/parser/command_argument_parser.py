@@ -58,6 +58,7 @@ from rich.panel import Panel
 
 from falyx.action.base_action import BaseAction
 from falyx.console import console
+from falyx.context import InvocationContext
 from falyx.exceptions import CommandArgumentError, NotAFalyxError
 from falyx.execution_option import ExecutionOption
 from falyx.mode import FalyxMode
@@ -136,7 +137,6 @@ class CommandArgumentParser:
         tldr_examples: list[tuple[str, str]] | None = None,
         program: str | None = None,
         options_manager: OptionsManager | None = None,
-        _is_help_command: bool = False,
     ) -> None:
         """Initialize the CommandArgumentParser."""
         self.console: Console = console
@@ -162,10 +162,14 @@ class CommandArgumentParser:
         self._arg_group_by_dest: dict[str, str] = {}
         self._mutex_group_by_dest: dict[str, str] = {}
         self._tldr_examples: list[TLDRExample] = []
-        self._is_help_command: bool = _is_help_command
+        self._is_help_command: bool = False
         if tldr_examples:
             self.add_tldr_examples(tldr_examples)
         self.options_manager: OptionsManager = options_manager or OptionsManager()
+
+    def mark_as_help_command(self) -> None:
+        """Mark this parser as the help command parser."""
+        self._is_help_command = True
 
     def set_options_manager(self, options_manager: OptionsManager) -> None:
         """Set the options manager for the parser."""
@@ -1129,6 +1133,7 @@ class CommandArgumentParser:
         consumed_indices: set[int],
         arg_states: dict[str, ArgumentState],
         from_validate: bool = False,
+        invocation_context: InvocationContext | None = None,
     ) -> int:
         """Handle a single token in the command line arguments."""
         if token in self._keyword:
@@ -1137,7 +1142,7 @@ class CommandArgumentParser:
 
             if action == ArgumentAction.HELP:
                 if not from_validate:
-                    self.render_help()
+                    self.render_help(invocation_context=invocation_context)
                 arg_states[spec.dest].set_consumed()
                 raise HelpSignal()
             elif action == ArgumentAction.TLDR:
@@ -1147,7 +1152,7 @@ class CommandArgumentParser:
                     consumed_indices.add(index)
                     index += 1
                 elif not from_validate:
-                    self.render_tldr()
+                    self.render_tldr(invocation_context=invocation_context)
                     arg_states[spec.dest].set_consumed()
                     raise HelpSignal()
                 else:
@@ -1344,7 +1349,10 @@ class CommandArgumentParser:
                 )
 
     async def parse_args(
-        self, args: list[str] | None = None, from_validate: bool = False
+        self,
+        args: list[str] | None = None,
+        from_validate: bool = False,
+        invocation_context: InvocationContext | None = None,
     ) -> dict[str, Any]:
         """Parse CLI arguments into a resolved mapping of values.
 
@@ -1416,6 +1424,7 @@ class CommandArgumentParser:
                 consumed_indices,
                 arg_states=arg_states,
                 from_validate=from_validate,
+                invocation_context=invocation_context,
             )
 
         # Compare length of args with length of required positional arguments to catch missing required positionals
@@ -1512,7 +1521,10 @@ class CommandArgumentParser:
         return result
 
     async def parse_args_split(
-        self, args: list[str], from_validate: bool = False
+        self,
+        args: list[str],
+        from_validate: bool = False,
+        invocation_context: InvocationContext | None = None,
     ) -> tuple[tuple[Any, ...], dict[str, Any], dict[str, Any]]:
         """Parse arguments and split them into execution-ready components.
 
@@ -1536,7 +1548,7 @@ class CommandArgumentParser:
                 - dict[str, Any]: Keyword arguments for execution.
                 - dict[str, Any]: Execution-specific arguments handled by Falyx.
         """
-        parsed = await self.parse_args(args, from_validate)
+        parsed = await self.parse_args(args, from_validate, invocation_context)
         args_list = []
         kwargs_dict = {}
         execution_dict = {}
@@ -1961,7 +1973,7 @@ class CommandArgumentParser:
 
         return sorted(set(suggestions))
 
-    def get_options_text(self, plain_text=False) -> str:
+    def get_options_text(self) -> str:
         """
         Render all defined arguments as a help-style string.
 
@@ -1983,62 +1995,64 @@ class CommandArgumentParser:
             choice_text = arg.get_choice_text()
             if isinstance(arg.nargs, int):
                 choice_text = " ".join([choice_text] * arg.nargs)
-            if plain_text:
-                options_list.append(choice_text)
-            else:
-                options_list.append(escape(choice_text))
+            options_list.append(escape(choice_text))
 
         return " ".join(options_list)
 
-    def get_command_keys_text(self, plain_text=False) -> str:
-        """
-        Return formatted string showing the command key and aliases.
+    def get_command_keys_text(self) -> str:
+        """Return formatted string showing the command key and aliases.
 
         Used in help rendering and introspection.
 
         Returns:
             str: The visual command selector line.
         """
-        if plain_text:
-            command_keys = " | ".join(
-                [f"{self.command_key}"] + [f"{alias}" for alias in self.aliases]
-            )
-        else:
-            command_keys = " | ".join(
-                [f"[{self.command_style}]{self.command_key}[/{self.command_style}]"]
-                + [
-                    f"[{self.command_style}]{alias}[/{self.command_style}]"
-                    for alias in self.aliases
-                ]
-            )
+        command_keys = " | ".join(
+            [f"[{self.command_style}]{self.command_key}[/{self.command_style}]"]
+            + [
+                f"[{self.command_style}]{alias}[/{self.command_style}]"
+                for alias in self.aliases
+            ]
+        )
         return command_keys
 
-    def get_usage(self, plain_text=False) -> str:
-        """
-        Render the usage string for this parser.
+    def _get_invocation_prefix(
+        self,
+        invocation_context: InvocationContext | None = None,
+    ) -> str:
+        if invocation_context is None:
+            command_keys = self.get_command_keys_text()
+            if self.options_manager.get("mode") == FalyxMode.MENU:
+                return command_keys
+
+            program = self.program or "falyx"
+            program_style = (
+                self.options_manager.get("program_style") or self.command_style
+            )
+            return f"[{program_style}]{program}[/{program_style}] {command_keys}"
+
+        if invocation_context.is_cli_mode:
+            return invocation_context.markup_path
+
+        return invocation_context.markup_path
+
+    def get_usage(
+        self,
+        invocation_context: InvocationContext | None = None,
+    ) -> str:
+        """Render the usage string for this parser.
 
         Returns:
             str: A formatted usage line showing syntax and argument structure.
         """
-        command_keys = self.get_command_keys_text(plain_text)
-        options_text = self.get_options_text(plain_text)
-        if options_text:
-            if self.options_manager.get("mode") == FalyxMode.MENU:
-                return f"{command_keys} {options_text}"
-            else:
-                program = self.program or "falyx"
-                program_style = (
-                    self.options_manager.get("program_style") or self.command_style
-                )
-                return f"[{program_style}]{program}[/{program_style}] {command_keys} {options_text}"
-        return command_keys
+        prefix = self._get_invocation_prefix(invocation_context)
+        options_text = self.get_options_text()
+        return f"{prefix} {options_text}".strip() if options_text else prefix
 
     def _iter_keyword_help_sections(
         self,
     ) -> Generator[tuple[str, str, list[Argument]], None, None]:
-        """
-        Yields (title, description, arguments)
-        """
+        """Yields (title, description, arguments)"""
         assigned = set()
 
         for group in self._argument_groups.values():
@@ -2059,7 +2073,11 @@ class CommandArgumentParser:
         if ungrouped:
             yield "options", "", ungrouped
 
-    def render_help(self) -> None:
+    def render_help(
+        self,
+        *,
+        invocation_context: InvocationContext | None = None,
+    ) -> None:
         """Render full help output for the command.
 
         This method displays a complete help view for the command, including
@@ -2076,7 +2094,7 @@ class CommandArgumentParser:
         - Supports argument grouping and mutually exclusive groups
         - Applies styling based on configured command style
         """
-        usage = self.get_usage()
+        usage = self.get_usage(invocation_context)
         self.console.print(f"[bold]usage: {usage}[/bold]\n")
 
         if self.help_text:
@@ -2131,7 +2149,7 @@ class CommandArgumentParser:
         if self.help_epilog:
             self.console.print("\n" + self.help_epilog, style="dim")
 
-    def render_tldr(self) -> None:
+    def render_tldr(self, *, invocation_context: InvocationContext | None = None) -> None:
         """Render concise example usage (TLDR) for the command.
 
         This method displays a minimal, example-driven view of how to invoke
@@ -2148,18 +2166,8 @@ class CommandArgumentParser:
                 f"[bold]No TLDR examples available for {self.command_key}.[/bold]"
             )
             return
-        is_cli_mode = self.options_manager.get("mode") != FalyxMode.MENU
-        program = self.program or "falyx"
-        program_style = self.options_manager.get("program_style") or self.command_style
-        command = self.aliases[0] if self.aliases else self.command_key
-        if self._is_help_command and is_cli_mode:
-            command = f"[{program_style}]{program}[/{program_style}] [{self.command_style}]help[/{self.command_style}]"
-        elif is_cli_mode:
-            command = f"[{program_style}]{program}[/{program_style}] [{self.command_style}]{command}[/{self.command_style}]"
-        else:
-            command = f"[{self.command_style}]{command}[/{self.command_style}]"
-
-        usage = self.get_usage()
+        prefix = self._get_invocation_prefix(invocation_context)
+        usage = self.get_usage(invocation_context)
         self.console.print(f"[bold]usage:[/] {usage}\n")
 
         if self.help_text:
@@ -2167,7 +2175,7 @@ class CommandArgumentParser:
 
         self.console.print("[bold]examples:[/bold]")
         for example in self._tldr_examples:
-            usage = f"{command} {example.usage.strip()}"
+            usage = f"{prefix} {example.usage.strip()}"
             description = example.description.strip()
             block = f"[bold]{usage}[/bold]"
             self.console.print(
