@@ -1,7 +1,6 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Provides the `ExecutionRegistry`, a centralized runtime store for capturing and inspecting
-the execution history of Falyx actions.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Provides the `ExecutionRegistry`, a centralized runtime store for capturing and
+inspecting the execution history of Falyx actions.
 
 The registry automatically records every `ExecutionContext` created during action
 execution—including context metadata, results, exceptions, duration, and tracebacks.
@@ -63,8 +62,7 @@ from falyx.themes import OneColors
 
 
 class ExecutionRegistry:
-    """
-    Global registry for recording and inspecting Falyx action executions.
+    """Global registry for recording and inspecting Falyx action executions.
 
     This class captures every `ExecutionContext` created by Falyx Actions,
     tracking metadata, results, exceptions, and performance metrics. It enables
@@ -96,8 +94,7 @@ class ExecutionRegistry:
 
     @classmethod
     def record(cls, context: ExecutionContext):
-        """
-        Record an execution context and assign a unique index.
+        """Record an execution context and assign a unique index.
 
         This method logs the context, appends it to the registry,
         and makes it available for future summary or filtering.
@@ -115,8 +112,7 @@ class ExecutionRegistry:
 
     @classmethod
     def get_all(cls) -> list[ExecutionContext]:
-        """
-        Return all recorded execution contexts in order of execution.
+        """Return all recorded execution contexts in order of execution.
 
         Returns:
             list[ExecutionContext]: All stored action contexts.
@@ -125,8 +121,7 @@ class ExecutionRegistry:
 
     @classmethod
     def get_by_name(cls, name: str) -> list[ExecutionContext]:
-        """
-        Retrieve all executions recorded under a given action name.
+        """Return all executions recorded under a given action name.
 
         Args:
             name (str): The name of the action.
@@ -138,8 +133,7 @@ class ExecutionRegistry:
 
     @classmethod
     def get_latest(cls) -> ExecutionContext:
-        """
-        Return the most recent execution context.
+        """Return the most recent execution context.
 
         Returns:
             ExecutionContext: The last recorded context.
@@ -148,8 +142,7 @@ class ExecutionRegistry:
 
     @classmethod
     def clear(cls):
-        """
-        Clear all stored execution data and reset internal indices.
+        """Clear all stored execution data and reset internal indices.
 
         This operation is destructive and cannot be undone.
         """
@@ -167,8 +160,7 @@ class ExecutionRegistry:
         last_result: bool = False,
         status: Literal["all", "success", "error"] = "all",
     ):
-        """
-        Display a formatted Rich table of recorded executions.
+        """Display a formatted Rich table of recorded executions.
 
         Supports filtering by action name, index, or execution status.
         Can optionally show only the last result or a specific indexed result.

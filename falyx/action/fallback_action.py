@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `FallbackAction`, a lightweight recovery Action used within `ChainedAction`
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `FallbackAction`, a lightweight recovery Action used within `ChainedAction`
 pipelines to gracefully handle errors or missing results from a preceding step.
 
 When placed immediately after a failing or null-returning Action, `FallbackAction`
@@ -46,8 +45,7 @@ from falyx.themes import OneColors
 
 
 class FallbackAction(Action):
-    """
-    FallbackAction provides a default value if the previous action failed or
+    """FallbackAction provides a default value if the previous action failed or
     returned None.
 
     It injects the last result and checks:

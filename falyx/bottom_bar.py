@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Provides the `BottomBar` class for managing a customizable bottom status bar in
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Provides the `BottomBar` class for managing a customizable bottom status bar in
 Falyx-based CLI applications.
 
 The bottom bar is rendered using `prompt_toolkit` and supports:

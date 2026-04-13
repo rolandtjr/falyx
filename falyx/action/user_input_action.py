@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `UserInputAction`, a Falyx Action that prompts the user for input using
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `UserInputAction`, a Falyx Action that prompts the user for input using
 Prompt Toolkit and returns the result as a string.
 
 This action is ideal for interactive CLI workflows that require user input mid-pipeline.
@@ -40,8 +39,7 @@ from falyx.themes.colors import OneColors
 
 
 class UserInputAction(BaseAction):
-    """
-    Prompts the user for textual input and returns their response.
+    """Prompts the user for textual input and returns their response.
 
     `UserInputAction` uses Prompt Toolkit to gather input with optional validation,
     lifecycle hook compatibility, and support for default text. If `inject_last_result`

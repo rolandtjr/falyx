@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `ChainedAction`, a core Falyx construct for executing a sequence of actions
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `ChainedAction`, a core Falyx construct for executing a sequence of actions
 in strict order, optionally injecting results from previous steps into subsequent ones.
 
 `ChainedAction` is designed for linear workflows where each step may depend on
@@ -86,8 +85,7 @@ from falyx.themes import OneColors
 
 
 class ChainedAction(BaseAction, ActionListMixin):
-    """
-    ChainedAction executes a sequence of actions one after another.
+    """ChainedAction executes a sequence of actions one after another.
 
     Features:
     - Supports optional automatic last_result injection (auto_inject).
@@ -276,8 +274,7 @@ class ChainedAction(BaseAction, ActionListMixin):
     async def _rollback(
         self, rollback_stack: list[tuple[Action, tuple[Any, ...], dict[str, Any]]]
     ):
-        """
-        Roll back all executed actions in reverse order.
+        """Roll back all executed actions in reverse order.
 
         Rollbacks run even if a fallback recovered from failure,
         ensuring consistent undo of all side effects.

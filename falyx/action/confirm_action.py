@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `ConfirmAction`, a Falyx Action that prompts the user for confirmation
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `ConfirmAction`, a Falyx Action that prompts the user for confirmation
 before continuing execution.
 
 `ConfirmAction` supports a wide range of confirmation strategies, including:
@@ -62,8 +61,7 @@ from falyx.validators import word_validator, words_validator
 
 
 class ConfirmAction(BaseAction):
-    """
-    Action to confirm an operation with the user.
+    """Action to confirm an operation with the user.
 
     There are several ways to confirm an action, such as using a simple
     yes/no prompt. You can also use a confirmation type that requires the user
@@ -97,8 +95,7 @@ class ConfirmAction(BaseAction):
         inject_last_result: bool = True,
         inject_into: str = "last_result",
     ):
-        """
-        Initialize the ConfirmAction.
+        """Initialize the ConfirmAction.
 
         Args:
             message (str): The confirmation message to display.

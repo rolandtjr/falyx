@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Utilities for enabling retry behavior across Falyx actions.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Utilities for enabling retry behavior across Falyx actions.
 
 This module provides a helper to recursively apply a `RetryPolicy` to an action and its
 nested children (e.g. `ChainedAction`, `ActionGroup`), and register the appropriate

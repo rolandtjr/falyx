@@ -1,4 +1,4 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
 """Command abstraction for the Falyx CLI framework.
 
 This module defines the `Command` class, which represents a single executable
@@ -302,14 +302,14 @@ class Command(BaseModel):
 
     @field_validator("action", mode="before")
     @classmethod
-    def wrap_callable_as_async(cls, action: Any) -> Any:
+    def _wrap_callable_as_async(cls, action: Any) -> Any:
         if isinstance(action, BaseAction):
             return action
         elif callable(action):
             return ensure_async(action)
         raise TypeError("Action must be a callable or an instance of BaseAction")
 
-    def get_argument_definitions(self) -> list[dict[str, Any]]:
+    def _get_argument_definitions(self) -> list[dict[str, Any]]:
         if self.arguments:
             return self.arguments
         elif callable(self.argument_config) and isinstance(
@@ -361,7 +361,7 @@ class Command(BaseModel):
                 program=self.program,
                 options_manager=self.options_manager,
             )
-            for arg_def in self.get_argument_definitions():
+            for arg_def in self._get_argument_definitions():
                 self.arg_parser.add_argument(*arg_def.pop("flags"), **arg_def)
 
         if isinstance(self.arg_parser, CommandArgumentParser) and self.execution_options:
@@ -429,7 +429,7 @@ class Command(BaseModel):
         if should_prompt_user(confirm=self.confirm, options=self.options_manager):
             if self.preview_before_confirm:
                 await self.preview()
-            if not await confirm_async(self.confirmation_prompt):
+            if not await confirm_async(self._confirmation_prompt):
                 logger.info("[Command:%s] Cancelled by user.", self.key)
                 raise CancelSignal(f"[Command:{self.key}] Cancelled by confirmation.")
 
@@ -458,7 +458,7 @@ class Command(BaseModel):
         return self._context.result if self._context else None
 
     @property
-    def confirmation_prompt(self) -> FormattedText:
+    def _confirmation_prompt(self) -> FormattedText:
         """Generate a styled prompt_toolkit FormattedText confirmation message."""
         if self.confirm_message and self.confirm_message != "Are you sure?":
             return FormattedText([("class:confirm", self.confirm_message)])

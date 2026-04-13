@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines reusable lifecycle hooks for Falyx Actions and Commands.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines reusable lifecycle hooks for Falyx Actions and Commands.
 
 This module includes:
 - `spinner_before_hook`: Automatically starts a spinner before an action runs.

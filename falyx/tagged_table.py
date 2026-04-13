@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Generates a Rich table view of Falyx commands grouped by their tags.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Generates a Rich table view of Falyx commands grouped by their tags.
 
 This module defines a utility function for rendering a custom CLI command
 table that organizes commands into groups based on their first tag. It is
@@ -37,7 +36,7 @@ def build_tagged_table(flx: Falyx) -> Table:
         table.add_row("")
 
     # Add bottom row
-    for row in flx.get_bottom_row():
+    for row in flx._get_bottom_row():
         table.add_row(row)
 
     return table

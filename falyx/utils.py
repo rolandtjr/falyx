@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-General-purpose utilities and helpers for the Falyx CLI framework.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""General-purpose utilities and helpers for the Falyx CLI framework.
 
 This module includes asynchronous wrappers, logging setup, formatting utilities,
 and small type-safe enhancements such as `CaseInsensitiveDict` and coroutine enforcement.
@@ -130,8 +129,7 @@ def setup_logging(
     file_log_level: int = logging.DEBUG,
     console_log_level: int = logging.WARNING,
 ):
-    """
-    Configure logging for Falyx with support for both CLI-friendly and structured
+    """Configure logging for Falyx with support for both CLI-friendly and structured
     JSON output.
 
     This function sets up separate logging handlers for console and file output,

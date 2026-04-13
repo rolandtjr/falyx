@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Input validators for use with Prompt Toolkit and interactive Falyx CLI workflows.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Input validators for use with Prompt Toolkit and interactive Falyx CLI workflows.
 
 This module defines reusable `Validator` instances and subclasses that enforce valid
 user input during prompts—especially for selection actions, confirmations, and
@@ -152,6 +151,8 @@ def word_validator(word: str) -> Validator:
 
 
 class MultiIndexValidator(Validator):
+    """Validator for multiple index selections (e.g. '1,2,3')."""
+
     def __init__(
         self,
         minimum: int,
@@ -202,6 +203,8 @@ class MultiIndexValidator(Validator):
 
 
 class MultiKeyValidator(Validator):
+    """Validator for multiple key selections (e.g. 'A,B,C')."""
+
     def __init__(
         self,
         keys: Sequence[str] | KeysView[str],

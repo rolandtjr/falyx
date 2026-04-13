@@ -1,7 +1,6 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `SelectionAction`, a highly flexible Falyx Action for interactive or headless
-selection from a list or dictionary of user-defined options.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `SelectionAction`, a highly flexible Falyx Action for interactive or
+headless selection from a list or dictionary of user-defined options.
 
 This module powers workflows that require prompting the user for input, selecting
 configuration presets, branching execution paths, or collecting multiple values
@@ -56,9 +55,8 @@ from falyx.themes import OneColors
 
 
 class SelectionAction(BaseAction):
-    """
-    A Falyx Action for interactively or programmatically selecting one or more items
-    from a list or dictionary of options.
+    """A Falyx Action for interactively or programmatically selecting one or more
+    items from a list or dictionary of options.
 
     `SelectionAction` supports both `list[str]` and `dict[str, SelectionOption]`
     inputs. It renders a prompt (unless `never_prompt=True`), validates user input

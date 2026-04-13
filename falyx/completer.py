@@ -1,4 +1,4 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
 """Prompt Toolkit completion support for routed Falyx command input.
 
 This module defines `FalyxCompleter`, the interactive completion layer used by
@@ -12,7 +12,7 @@ Completion behavior is split into two phases:
 1. Namespace completion
    While the user is still selecting a command or namespace entry, completion
    candidates are derived from the active namespace via
-   `iter_completion_names`. Namespace-level help flags such as `-h`, `--help`,
+   `completion_names`. Namespace-level help flags such as `-h`, `--help`,
    `-T`, and `--tldr` are also suggested when appropriate.
 
 2. Leaf-command completion
@@ -131,7 +131,7 @@ class FalyxCompleter(Completer):
             committed_tokens,
             stub=stub,
             cursor_at_end_of_token=cursor_at_end,
-            context=context,
+            invocation_context=context,
             is_preview=is_preview,
         )
 
@@ -190,7 +190,7 @@ class FalyxCompleter(Completer):
             list[str]: Matching namespace entry keys and aliases.
         """
         results: list[str] = []
-        for name in namespace.iter_completion_names:
+        for name in namespace.completion_names:
             if name.upper().startswith(prefix.upper()):
                 results.append(name.lower() if prefix.islower() else name)
         return results

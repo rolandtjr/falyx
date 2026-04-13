@@ -1,4 +1,4 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
 """Shared command execution engine for the Falyx CLI framework.
 
 This module defines `CommandExecutor`, a low-level execution service responsible

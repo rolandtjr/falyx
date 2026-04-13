@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `SignalAction`, a lightweight Falyx Action that raises a `FlowSignal`
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `SignalAction`, a lightweight Falyx Action that raises a `FlowSignal`
 (such as `BackSignal`, `QuitSignal`, or `BreakChainSignal`) during execution to
 alter or exit the CLI flow.
 
@@ -33,8 +32,7 @@ from falyx.themes import OneColors
 
 
 class SignalAction(Action):
-    """
-    A hook-compatible action that raises a control flow signal when invoked.
+    """A hook-compatible action that raises a control flow signal when invoked.
 
     `SignalAction` raises a `FlowSignal` (e.g., `BackSignal`, `QuitSignal`,
     `BreakChainSignal`) during execution. It is commonly used to exit menus,
@@ -59,8 +57,7 @@ class SignalAction(Action):
         super().__init__(name, action=self.raise_signal, hooks=hooks)
 
     async def raise_signal(self, *args, **kwargs):
-        """
-        Raises the configured `FlowSignal`.
+        """Raises the configured `FlowSignal`.
 
         This method is called internally by the Falyx runtime and is the core
         behavior of the action. All hooks surrounding execution are still triggered.
@@ -74,8 +71,7 @@ class SignalAction(Action):
 
     @signal.setter
     def signal(self, value: FlowSignal):
-        """
-        Validates that the provided value is a `FlowSignal`.
+        """Validates that the provided value is a `FlowSignal`.
 
         Raises:
             TypeError: If `value` is not an instance of `FlowSignal`.

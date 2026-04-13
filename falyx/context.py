@@ -1,4 +1,4 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
 """Context models for Falyx execution and invocation state.
 
 This module defines the core context objects used throughout Falyx to track both
@@ -229,9 +229,9 @@ class SharedContext(BaseModel):
         results (list[Any]): Captures results from each action, in order of execution.
         errors (list[tuple[int, BaseException]]): Indexed list of errors from failed actions.
         current_index (int): Index of the currently executing action (used in chains).
-        is_parallel (bool): Whether the context is used in parallel mode (ActionGroup).
+        is_concurrent (bool): Whether the context is used in concurrent mode (ActionGroup).
         shared_result (Any | None): Optional shared value available to all actions in
-                                    parallel mode.
+                                    concurrent mode.
         share (dict[str, Any]): Custom shared key-value store for user-defined
                                 communication
             between actions (e.g., flags, intermediate data, settings).
@@ -254,7 +254,7 @@ class SharedContext(BaseModel):
     results: list[Any] = Field(default_factory=list)
     errors: list[tuple[int, BaseException]] = Field(default_factory=list)
     current_index: int = -1
-    is_parallel: bool = False
+    is_concurrent: bool = False
     shared_result: Any | None = None
 
     share: dict[str, Any] = Field(default_factory=dict)
@@ -269,11 +269,11 @@ class SharedContext(BaseModel):
 
     def set_shared_result(self, result: Any) -> None:
         self.shared_result = result
-        if self.is_parallel:
+        if self.is_concurrent:
             self.results.append(result)
 
     def last_result(self) -> Any:
-        if self.is_parallel:
+        if self.is_concurrent:
             return self.shared_result
         return self.results[-1] if self.results else None
 
@@ -284,9 +284,9 @@ class SharedContext(BaseModel):
         self.share[key] = value
 
     def __str__(self) -> str:
-        parallel_label = "Parallel" if self.is_parallel else "Sequential"
+        concurrent_label = "Concurrent" if self.is_concurrent else "Sequential"
         return (
-            f"<{parallel_label}SharedContext '{self.name}' | "
+            f"<{concurrent_label}SharedContext '{self.name}' | "
             f"Results: {self.results} | "
             f"Errors: {self.errors}>"
         )

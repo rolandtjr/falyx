@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Type utilities and argument state models for Falyx's custom CLI argument parser.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Type utilities and argument state models for Falyx's custom CLI argument parser.
 
 This module provides specialized helpers and data structures used by
 the `CommandArgumentParser` to handle non-standard parsing behavior.

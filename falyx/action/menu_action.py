@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `MenuAction`, a one-shot, interactive menu-style Falyx Action that presents
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `MenuAction`, a one-shot, interactive menu-style Falyx Action that presents
 a set of labeled options to the user and executes the corresponding action based on
 their selection.
 
@@ -57,8 +56,7 @@ from falyx.utils import chunks
 
 
 class MenuAction(BaseAction):
-    """
-    MenuAction displays a one-time interactive menu of predefined options,
+    """MenuAction displays a one-time interactive menu of predefined options,
     each mapped to a corresponding Action.
 
     Unlike the main Falyx menu system, `MenuAction` is intended for scoped,

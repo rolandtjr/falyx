@@ -1,4 +1,4 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
 """CommandArgumentParser implementation for the Falyx CLI framework.
 
 This module provides a structured, extensible argument parsing system designed
@@ -273,8 +273,7 @@ class CommandArgumentParser:
             self._add_tldr()
 
     def add_tldr_examples(self, examples: list[TLDRInput]) -> None:
-        """
-        Add TLDR examples to the parser.
+        """Add TLDR examples to the parser.
 
         Args:
             examples (list[TLDRInput]): List of TLDRExample instances or (usage, description) tuples.
@@ -816,8 +815,7 @@ class CommandArgumentParser:
             self._register_argument(argument)
 
     def get_argument(self, dest: str) -> Argument | None:
-        """
-        Return the Argument object for a given destination name.
+        """Return the Argument object for a given destination name.
 
         Args:
             dest (str): Destination key of the argument.
@@ -830,8 +828,7 @@ class CommandArgumentParser:
         )
 
     def to_definition_list(self) -> list[dict[str, Any]]:
-        """
-        Convert argument metadata into a serializable list of dicts.
+        """Convert argument metadata into a serializable list of dicts.
 
         Returns:
             List of definitions for use in config introspection, documentation, or export.
@@ -844,12 +841,13 @@ class CommandArgumentParser:
                     "dest": arg.dest,
                     "action": arg.action,
                     "type": arg.type,
+                    "default": arg.default,
                     "choices": arg.choices,
                     "required": arg.required,
+                    "help": arg.help,
                     "nargs": arg.nargs,
                     "positional": arg.positional,
-                    "default": arg.default,
-                    "help": arg.help,
+                    "suggestions": arg.suggestions,
                     "group": arg.group,
                     "mutex_group": arg.mutex_group,
                 }
@@ -1995,8 +1993,7 @@ class CommandArgumentParser:
         return sorted(set(suggestions))
 
     def get_options_text(self) -> str:
-        """
-        Render all defined arguments as a help-style string.
+        """Render all defined arguments as a help-style string.
 
         Returns:
             str: A visual description of argument flags and structure.

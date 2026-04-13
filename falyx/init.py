@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Project and global initializer for Falyx CLI environments.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Project and global initializer for Falyx CLI environments.
 
 This module defines functions to bootstrap a new Falyx-based CLI project or
 create a global user-level configuration in `~/.config/falyx`.

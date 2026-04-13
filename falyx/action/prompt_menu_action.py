@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `PromptMenuAction`, a Falyx Action that prompts the user to choose from
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `PromptMenuAction`, a Falyx Action that prompts the user to choose from
 a list of labeled options using a single-line prompt input. Each option corresponds
 to a `MenuOption` that wraps a description and an executable action.
 
@@ -29,8 +28,7 @@ from falyx.themes import OneColors
 
 
 class PromptMenuAction(BaseAction):
-    """
-    Displays a single-line interactive prompt for selecting an option from a menu.
+    """Displays a single-line interactive prompt for selecting an option from a menu.
 
     `PromptMenuAction` is a lightweight alternative to `MenuAction`, offering a more
     compact selection interface. Instead of rendering a full table, it displays

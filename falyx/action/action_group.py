@@ -1,7 +1,6 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `ActionGroup`, a Falyx Action that executes multiple sub-actions concurrently
-using asynchronous parallelism.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `ActionGroup`, a Falyx Action that executes multiple sub-actions concurrently
+using asynchronous concurrency.
 
 `ActionGroup` is designed for workflows where several independent actions can run
 simultaneously to improve responsiveness and reduce latency. It ensures robust error
@@ -9,7 +8,7 @@ isolation, shared result tracking, and full lifecycle hook integration while pre
 Falyx's introspectability and chaining capabilities.
 
 Key Features:
-- Executes all actions in parallel via `asyncio.gather`
+- Executes all actions concurrently via `asyncio.gather`
 - Aggregates results as a list of `(name, result)` tuples
 - Collects and reports multiple errors without interrupting execution
 - Compatible with `SharedContext`, `OptionsManager`, and `last_result` injection
@@ -27,11 +26,11 @@ Raises:
 
 Example:
     ActionGroup(
-        name="ParallelChecks",
+        name="ConcurrentChecks",
         actions=[Action(...), Action(...), ChainedAction(...)],
     )
 
-This module complements `ChainedAction` by offering breadth-wise (parallel) execution
+This module complements `ChainedAction` by offering breadth-wise (concurrent) execution
 as opposed to depth-wise (sequential) execution.
 """
 import asyncio
@@ -54,14 +53,13 @@ from falyx.themes.colors import OneColors
 
 
 class ActionGroup(BaseAction, ActionListMixin):
-    """
-    ActionGroup executes multiple actions concurrently in parallel.
+    """ActionGroup executes multiple actions concurrently.
 
     It is ideal for independent tasks that can be safely run simultaneously,
     improving overall throughput and responsiveness of workflows.
 
     Core features:
-    - Parallel execution of all contained actions.
+    - Concurrent execution of all contained actions.
     - Shared last_result injection across all actions if configured.
     - Aggregated collection of individual results as (name, result) pairs.
     - Hook lifecycle support (before, on_success, on_error, after, on_teardown).
@@ -75,7 +73,7 @@ class ActionGroup(BaseAction, ActionListMixin):
 
     Best used for:
     - Batch processing multiple independent tasks.
-    - Reducing latency for workflows with parallelizable steps.
+    - Reducing latency for workflows with concurrent steps.
     - Isolating errors while maximizing successful execution.
 
     Args:
@@ -173,7 +171,7 @@ class ActionGroup(BaseAction, ActionListMixin):
         combined_args = args + self.args
         combined_kwargs = {**self.kwargs, **kwargs}
 
-        shared_context = SharedContext(name=self.name, action=self, is_parallel=True)
+        shared_context = SharedContext(name=self.name, action=self, is_concurrent=True)
         if self.shared_context:
             shared_context.set_shared_result(self.shared_context.last_result())
         updated_kwargs = self._maybe_inject_last_result(combined_kwargs)
@@ -229,7 +227,7 @@ class ActionGroup(BaseAction, ActionListMixin):
             action.register_hooks_recursively(hook_type, hook)
 
     async def preview(self, parent: Tree | None = None):
-        label = [f"[{OneColors.MAGENTA_b}]⏩ ActionGroup (parallel)[/] '{self.name}'"]
+        label = [f"[{OneColors.MAGENTA_b}]⏩ ActionGroup (concurrent)[/] '{self.name}'"]
         if self.inject_last_result:
             label.append(f" [dim](receives '{self.inject_into}')[/dim]")
         tree = parent.add("".join(label)) if parent else Tree("".join(label))

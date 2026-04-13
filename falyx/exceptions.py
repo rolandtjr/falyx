@@ -1,4 +1,4 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
 """Defines all custom exception classes used in the Falyx CLI framework.
 
 These exceptions provide structured error handling for common failure cases,

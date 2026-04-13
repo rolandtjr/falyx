@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines flow control signals used internally by the Falyx CLI framework.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines flow control signals used internally by the Falyx CLI framework.
 
 These signals are raised to interrupt or redirect CLI execution flow
 (e.g., returning to a menu, quitting, or displaying help) without

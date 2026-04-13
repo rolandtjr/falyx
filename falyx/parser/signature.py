@@ -1,6 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Provides utilities for introspecting Python callables and extracting argument
+"""Provides utilities for introspecting Python callables and extracting argument
 metadata compatible with Falyx's `CommandArgumentParser`.
 
 This module is primarily used to auto-generate command argument definitions from
@@ -20,8 +19,7 @@ def infer_args_from_func(
     func: Callable[[Any], Any] | None,
     arg_metadata: dict[str, str | dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """
-    Infer CLI-style argument definitions from a function signature.
+    """Infer CLI-style argument definitions from a function signature.
 
     This utility inspects the parameters of a function and returns a list of dictionaries,
     each of which can be passed to `CommandArgumentParser.add_argument()`.

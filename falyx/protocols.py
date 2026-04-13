@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines structural protocols for advanced Falyx features.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines structural protocols for advanced Falyx features.
 
 These runtime-checkable `Protocol` classes specify the expected interfaces for:
 - Factories that asynchronously return actions

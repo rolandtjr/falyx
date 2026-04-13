@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `MenuOption` and `MenuOptionMap`, core components used to construct
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `MenuOption` and `MenuOptionMap`, core components used to construct
 interactive menus within Falyx Actions such as `MenuAction` and `PromptMenuAction`.
 
 Each `MenuOption` represents a single actionable choice with a description,

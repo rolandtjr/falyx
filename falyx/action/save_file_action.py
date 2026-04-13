@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `SaveFileAction`, a Falyx Action for writing structured or unstructured data
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `SaveFileAction`, a Falyx Action for writing structured or unstructured data
 to a file in a variety of supported formats.
 
 Supports overwrite control, automatic directory creation, and full lifecycle hook
@@ -41,8 +40,7 @@ from falyx.themes import OneColors
 
 
 class SaveFileAction(BaseAction):
-    """
-    Saves data to a file in the specified format.
+    """Saves data to a file in the specified format.
 
     `SaveFileAction` serializes and writes input data to disk using the format
     defined by `file_type`. It supports plain text and structured formats like
@@ -101,8 +99,7 @@ class SaveFileAction(BaseAction):
         inject_last_result: bool = False,
         inject_into: str = "data",
     ):
-        """
-        SaveFileAction allows saving data to a file.
+        """SaveFileAction allows saving data to a file.
 
         Args:
             name (str): Name of the action.

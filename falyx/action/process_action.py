@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `ProcessAction`, a Falyx Action that executes a blocking or CPU-bound function
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `ProcessAction`, a Falyx Action that executes a blocking or CPU-bound function
 in a separate process using `concurrent.futures.ProcessPoolExecutor`.
 
 This is useful for offloading expensive computations or subprocess-compatible operations
@@ -54,8 +53,7 @@ from falyx.themes import OneColors
 
 
 class ProcessAction(BaseAction):
-    """
-    ProcessAction runs a function in a separate process using ProcessPoolExecutor.
+    """ProcessAction runs a function in a separate process using ProcessPoolExecutor.
 
     Features:
     - Executes CPU-bound or blocking tasks without blocking the main event loop.

@@ -1,4 +1,4 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
 """Configuration loader and schema definitions for the Falyx CLI framework.
 
 This module supports config-driven initialization of CLI commands and submenus

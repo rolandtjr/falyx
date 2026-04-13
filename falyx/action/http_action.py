@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines an Action subclass for making HTTP requests using aiohttp within Falyx workflows.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `HTTPAction` for making HTTP requests using aiohttp.
 
 Features:
 - Automatic reuse of aiohttp.ClientSession via SharedContext
@@ -32,8 +31,7 @@ async def close_shared_http_session(context: ExecutionContext) -> None:
 
 
 class HTTPAction(Action):
-    """
-    An Action for executing HTTP requests using aiohttp with shared session reuse.
+    """An Action for executing HTTP requests using aiohttp with shared session reuse.
 
     This action integrates seamlessly into Falyx pipelines, with automatic session
     management, result injection, and lifecycle hook support. It is ideal for CLI-driven

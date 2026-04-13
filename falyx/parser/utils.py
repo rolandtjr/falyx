@@ -1,6 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Contains value coercion and signature comparison utilities for Falyx argument parsing.
+"""Contains value coercion and signature comparison utilities for Falyx argument parsing.
 
 This module provides type coercion functions for converting string input into expected
 Python types, including `Enum`, `bool`, `datetime`, and `Literal`. It also supports
@@ -25,8 +24,7 @@ from falyx.parser.signature import infer_args_from_func
 
 
 def coerce_bool(value: str) -> bool:
-    """
-    Convert a string to a boolean.
+    """Convert a string to a boolean.
 
     Accepts various truthy and falsy representations such as 'true', 'yes', '0', 'off', etc.
 
@@ -47,8 +45,7 @@ def coerce_bool(value: str) -> bool:
 
 
 def coerce_enum(value: Any, enum_type: EnumMeta) -> Any:
-    """
-    Convert a raw value or string to an Enum instance.
+    """Convert a raw value or string to an Enum instance.
 
     Tries to resolve by name, value, or coerced base type.
 
@@ -81,8 +78,7 @@ def coerce_enum(value: Any, enum_type: EnumMeta) -> Any:
 
 
 def coerce_value(value: str, target_type: type) -> Any:
-    """
-    Attempt to convert a string to the given target type.
+    """Attempt to convert a string to the given target type.
 
     Handles complex typing constructs such as Union, Literal, Enum, and datetime.
 
@@ -133,8 +129,7 @@ def same_argument_definitions(
     actions: list[Any],
     arg_metadata: dict[str, str | dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]] | None:
-    """
-    Determine if multiple callables resolve to the same argument definitions.
+    """Determine if multiple callables resolve to the same argument definitions.
 
     This is used to infer whether actions in an ActionGroup or ProcessPool can share
     a unified argument parser.

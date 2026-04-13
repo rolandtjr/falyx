@@ -1,7 +1,6 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `LoadFileAction`, a Falyx Action for reading and parsing the contents of a file
-at runtime in a structured, introspectable, and lifecycle-aware manner.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `LoadFileAction`, a Falyx Action for reading and parsing the contents of a
+file at runtime in a structured, introspectable, and lifecycle-aware manner.
 
 This action supports multiple common file types—including plain text, structured data
 formats (JSON, YAML, TOML), tabular formats (CSV, TSV), XML, and raw Path objects—
@@ -57,8 +56,7 @@ from falyx.themes import OneColors
 
 
 class LoadFileAction(BaseAction):
-    """
-    LoadFileAction loads and parses the contents of a file at runtime.
+    """LoadFileAction loads and parses the contents of a file at runtime.
 
     This action supports multiple common file formats—including plain text, JSON,
     YAML, TOML, XML, CSV, and TSV—and returns a parsed representation of the file.

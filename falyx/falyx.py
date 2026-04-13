@@ -1,30 +1,62 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""Falyx CLI framework core module.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Core application runtime for the Falyx CLI framework.
 
-This module defines the `Falyx` class, the primary orchestration layer for
-building and running structured CLI applications. It integrates command
-registration, interactive menu handling, CLI parsing, execution lifecycle
-management, and option scoping into a unified runtime.
+This module defines `Falyx`, the top-level orchestration layer used to build,
+route, render, and execute Falyx applications. `Falyx` sits above individual
+`Command` objects and their local argument parsers.
 
-Core responsibilities:
-- Manage command registration, alias resolution, and dispatch
-- Coordinate interactive menu and non-interactive CLI execution modes
-- Integrate with `FalyxParser` for root-level argument parsing and routing
-- Apply execution-scoped overrides via `OptionsManager`
-- Drive lifecycle hooks (`before`, `on_success`, `on_error`, `after`, `on_teardown`)
-- Provide Rich-based rendering and Prompt Toolkit interaction
-- Maintain execution history via `ExecutionRegistry`
+Core Responsibilities:
+- Registration of commands, builtins, and nested namespaces
+- Root/session option parsing
+- Recursive namespace-aware routing
+- Interactive menu prompting and validation
+- Routed autocompletion
+- Namespace and command help/TLDR rendering
+- Execution dispatch through `CommandExecutor`
+- Shared option state and execution history
 
-Execution Flow:
-1. CLI arguments are parsed via `FalyxParser`
-2. A `ParseResult` determines the execution mode (menu, command, help, etc.)
-3. Execution options are applied through scoped namespaces
-4. Commands are resolved and executed via `Command` and `Action` abstractions
-5. Lifecycle hooks and context tracking are applied throughout execution
+Architecture:
+    Falyx is the routing boundary of the framework.
 
-This module serves as the entrypoint for most Falyx-based applications and
-coordinates all major subsystems including parsing, execution, rendering,
-and state management.
+    - `FalyxParser` parses only root-level/session flags and leaves the remaining
+      tokens untouched for routing.
+    - `Falyx.resolve_route()` walks the invocation path recursively across
+      nested `FalyxNamespace` entries until it reaches either a namespace help
+      target, a namespace menu target, an unknown entry, or a leaf `Command`.
+    - Once a leaf command is found, command-local parsing is delegated to that
+      command's `CommandArgumentParser` via `Command.resolve_args()`.
+    - Prepared inputs are then executed through `CommandExecutor`, which applies
+      shared outer execution behavior consistently across CLI and menu flows.
+
+Execution Model:
+    1. Root CLI/session flags are parsed.
+    2. The remaining tokens are routed across namespaces and commands.
+    3. If a leaf command is reached, its remaining argv is parsed locally.
+    4. The resolved route is rendered, previewed, or executed.
+    5. Shared hooks, option overrides, and execution tracking are applied.
+
+Interactive Features:
+    In menu mode, `Falyx` integrates Rich and Prompt Toolkit to provide a
+    structured interactive runtime with:
+
+    - persistent prompt history
+    - routed validation
+    - namespace-aware autocompletion
+    - bottom-bar rendering and key bindings
+    - preview flows and contextual help
+    - history and built-in utility commands
+
+Design Notes:
+    - `Falyx` owns routing; commands own leaf argument parsing; the executor owns
+      outer execution behavior.
+    - CLI mode and menu mode share the same routed execution semantics.
+    - Help, usage, and TLDR rendering are invocation-context aware so nested
+      namespaces display correctly scoped command paths.
+    - Builtins such as help, preview, version, history, and exit are registered
+      as first-class entries within the application runtime.
+
+This module is the primary entrypoint for assembling and running a Falyx
+application.
 """
 from __future__ import annotations
 
@@ -96,75 +128,98 @@ from falyx.version import __version__
 class Falyx:
     """Primary controller for Falyx CLI applications.
 
-    `Falyx` coordinates command registration, input parsing, execution dispatch,
-    and lifecycle management across both interactive (menu) and non-interactive
-    (CLI) modes.
+    `Falyx` manages the full runtime of a Falyx application, including command
+    registration, nested namespace traversal, interactive menu behavior, routed
+    help output, and execution dispatch.
 
     It acts as the central integration point between:
     - Command definitions (`Command`)
+    - Nested namespaces (`FalyxNamespace`)
+    - Root parser (`FalyxParser`)
+    - Leaf argument parsers (`CommandArgumentParser`)
+    - Execution dispatch (`CommandExecutor`)
     - Execution units (`Action`, `ChainedAction`, `ActionGroup`)
-    - CLI parsing (`FalyxParser`, `CommandArgumentParser`)
-    - Runtime configuration (`OptionsManager`)
+    - Shared runtime configuration (`OptionsManager`)
     - Lifecycle hooks (`HookManager`)
     - UI layers (Rich + Prompt Toolkit)
 
     Key Responsibilities:
-    - Maintain a registry of commands, aliases, and builtins
-    - Resolve user input to commands via exact match, prefix match, or fuzzy match
-    - Dispatch execution with full lifecycle hook support
+    - Maintain a registry of commands, aliases, builtins, and namespaces
+    - Parse root-level/session flags and delegate the rest to routing
+    - Resolve user input to a routed `RouteResult`
+    - Provide namespace-aware completion and validation
+    - Execute commands with full lifecycle hook support
+    - Provide prepared command executions through the shared executor
+    - Render help, usage, and TLDR output with invocation context
     - Apply execution-scoped option overrides (e.g. confirm, retries)
-    - Support both CLI-driven execution and interactive menu loops
-    - Provide structured help, preview, and history functionality
+    - Manage prompt session state, history, and bottom-bar integration
+    - Record and surface execution
 
-    Execution Modes:
-    - MENU: Interactive prompt loop using Prompt Toolkit
-    - COMMAND: Direct CLI command execution
-    - HELP: Render help output
-    - ERROR: Render error and exit
+    Routing Model:
+        `Falyx` performs recursive routing across visible entries in the current
+        namespace.
 
-    State Management:
-    - Uses `OptionsManager` with namespaced overrides (e.g. "execution")
-    - Tracks last executed command and execution context
-    - Integrates with `ExecutionRegistry` for history and summaries
+        - If no entry is selected, the route may target the current namespace
+          itself.
+        - If a help or TLDR flag is encountered before a leaf command, the route
+          targets namespace help for the current scope.
+        - If a namespace entry is selected, routing continues inside that nested
+          `Falyx` instance.
+        - If a leaf command is selected, the remaining argv is preserved and
+          delegated unchanged to that command's parser.
+
+        This keeps namespace traversal separate from command-local parsing and
+        ensures completion, validation, help rendering, and execution all share
+        the same routing semantics.
+
+    Execution Semantics:
+        `Falyx` does not parse command-local arguments itself once a leaf command
+        is resolved. Instead, it prepares the route, delegates leaf parsing to
+        the selected command, and forwards the prepared `(args, kwargs,
+        execution_args)` to `CommandExecutor`.
+
+        This separation preserves a clean boundary:
+
+        - `Falyx` routes
+        - `Command` parses
+        - `CommandExecutor` executes
+
+    Interactive Semantics:
+        In menu mode, `Falyx` provides a prompt-driven interface with routed
+        validation and completion. In CLI mode, it applies the same routing and
+        execution pipeline to raw argv-style input. Both modes therefore share
+        the same command behavior, help model, and execution lifecycle.
 
     Design Notes:
     - Commands are first-class and may encapsulate complex workflows
     - Execution options are parsed separately from command arguments
     - All execution passes through a unified hook lifecycle
-    - CLI and menu modes share the same execution semantics
 
-    Args:
-        title (str | Markdown): Title displayed for the menu.
-        program (str | None): CLI program name used in help output.
-        usage (str | None): Optional usage string override.
-        description (str | None): Program description for CLI help.
-        epilog (str | None): Additional help text.
-        version (str): Program version string.
-        program_style (str): Rich style for program name in help.
-        usage_style (str): Rich style for usage string in help.
-        description_style (str): Rich style for description in help.
-        epilog_style (str): Rich style for epilog in help.
-        version_style (str): Rich style for version in help.
-        prompt (str | StyleAndTextTuples): Input prompt.
-        columns (int): Number of columns in menu display.
-        bottom_bar (BottomBar | str | Callable | None): Bottom bar renderer.
-        welcome_message (str | Markdown | dict): Message shown on startup.
-        exit_message (str | Markdown | dict): Message shown on exit.
-        key_bindings (KeyBindings | None): Custom Prompt Toolkit key bindings.
-        include_history_command (bool): Whether to include history command.
-        never_prompt (bool): Default prompt suppression setting.
-        force_confirm (bool): Default confirmation behavior.
-        options (OptionsManager | None): Initial options manager.
-        render_menu (Callable | None): Custom menu renderer.
-        custom_table (Callable | Table | None): Custom table builder.
-        hide_menu_table (bool): Whether to hide menu table.
-        show_placeholder_menu (bool): Show placeholder suggestions.
-        prompt_history_base_dir (Path): Directory for prompt history.
-        enable_prompt_history (bool): Enable persistent history.
-        enable_help_tips (bool): Show random tips in help output.
+    Attributes:
+        title (str | Markdown): Display title for the interactive menu.
+        program (str): Program name used in CLI-facing help and invocation paths.
+        commands (dict[str, Command]): Registered user commands.
+        builtins (dict[str, Command]): Registered built-in commands such as help,
+            preview, and version.
+        namespaces (dict[str, FalyxNamespace]): Registered nested namespaces.
+        options (OptionsManager): Shared runtime option manager.
+        hooks (HookManager): Application-level hook manager.
+        console (Console): Rich console used for rendering output.
+        key_bindings (KeyBindings): Prompt Toolkit key bindings for menu mode.
+        bottom_bar (BottomBar | str | Callable | None): Bottom toolbar renderer.
+        history (FileHistory | None): Optional persistent prompt history backend.
 
     Raises:
         FalyxError: If invalid configuration or command registration occurs.
+        CommandAlreadyExistsError: If a command, alias, or namespace identifier
+            collides with an existing entry.
+
+    Notes:
+        - Entry names are resolved case-insensitively.
+        - Builtins and namespaces participate in the same routing surface as
+          normal commands.
+        - Help, TLDR, and usage rendering are scoped by `InvocationContext`,
+          which allows nested namespaces to render accurate command paths.
     """
 
     def __init__(
@@ -199,7 +254,91 @@ class Falyx:
         enable_prompt_history: bool = False,
         enable_help_tips: bool = True,
     ) -> None:
-        """Initializes the Falyx object."""
+        """Initialize a Falyx application runtime.
+
+        This constructor configures the top-level application object used to run a
+        Falyx CLI or interactive menu. It establishes the shared runtime state for
+        command registration, namespace routing, menu rendering, prompt behavior,
+        built-in command availability, and executor-backed dispatch.
+
+        During initialization, `Falyx`:
+
+        - stores application display metadata such as title, description, and version
+        - creates or validates the shared `OptionsManager`
+        - prepares key bindings, prompt rendering, and optional bottom-bar behavior
+        - initializes registries for commands, builtins, and namespaces
+        - registers default built-in commands such as help, preview, and version
+        - optionally enables persistent prompt history
+        - creates the shared `CommandExecutor` used for command dispatch
+
+        The resulting instance is ready to have commands and namespaces added before
+        being executed in CLI or menu mode.
+
+        Args:
+            title (str | Markdown): Title displayed for the interactive menu or top-level
+                application view.
+            program (str | None): Program name used in CLI usage text, invocation-path
+                rendering, and built-in help output. If `None`, an empty program name is
+                used.
+            usage (str | None): Optional usage override for namespace-level CLI help. When
+                omitted, usage text is derived from the current invocation context.
+            description (str | None): Short program description shown in top-level help
+                output.
+            epilog (str | None): Optional trailing help text rendered after the main help
+                sections.
+            version (str): Application version string used by the built-in version command.
+            program_style (str): Rich style used when rendering the program name.
+            usage_style (str): Rich style used for rendered usage text.
+            description_style (str): Rich style used for the program description.
+            epilog_style (str): Rich style used for the help epilog.
+            version_style (str): Rich style used for version output and version-related
+                rendering.
+            prompt (str | StyleAndTextTuples): Prompt text or Prompt Toolkit formatted text
+                shown in menu mode.
+            columns (int): Default column count used by menu-oriented UI components such as
+                the bottom bar.
+            bottom_bar (BottomBar | str | Callable[[], Any] | None): Bottom toolbar
+                configuration for menu mode. May be a `BottomBar` instance, a static
+                string, a callable renderer, or `None` to use the default bottom bar.
+            welcome_message (str | Markdown | dict[str, Any]): Optional welcome content
+                rendered when entering the interactive menu.
+            exit_message (str | Markdown | dict[str, Any]): Optional exit content rendered
+                when leaving the interactive menu.
+            key_bindings (KeyBindings | None): Optional Prompt Toolkit key bindings for
+                menu interaction. If omitted, a default `KeyBindings` object is created.
+            include_history_command (bool): Whether to register the built-in history
+                command.
+            never_prompt (bool): Default session-level value for the `never_prompt`
+                runtime option.
+            force_confirm (bool): Default session-level value for the `force_confirm`
+                runtime option.
+            options (OptionsManager | None): Shared options manager for the application.
+                If omitted, a new `OptionsManager` instance is created.
+            render_menu (Callable[[Falyx], None] | None): Optional custom menu renderer
+                used instead of the default table-based menu output.
+            custom_table (Callable[[Falyx], Table] | Table | None): Optional custom Rich
+                table or table factory used when rendering the default menu view.
+            hide_menu_table (bool): Whether the default menu table should be hidden.
+            show_placeholder_menu (bool): Whether prompt placeholder content should be
+                shown in the interactive prompt.
+            prompt_history_base_dir (Path): Base directory used to store persistent prompt
+                history files when history is enabled.
+            enable_prompt_history (bool): Whether to persist Prompt Toolkit input history
+                to disk.
+            enable_help_tips (bool): Whether to show contextual usage tips in rendered
+                help output.
+
+        Raises:
+            FalyxError: If the provided options object is invalid or other core runtime
+                configuration is inconsistent.
+
+        Notes:
+            - Initialization does not execute commands or parse user input.
+            - Default built-ins are registered immediately so they participate in routing,
+            completion, and help rendering from the start.
+            - The prompt session itself is created lazily, allowing UI-related state such
+            as bottom bars and key bindings to be finalized before first use.
+        """
         self.title: str | Markdown = title
         self.program: str = program or ""
         self.usage: str | None = usage
@@ -254,15 +393,34 @@ class Falyx:
             console=self.console,
         )
 
-    def _print_suggestions_message(self, key: str, suggestions: list[str]) -> None:
-        """Prints a message with suggestions for the user."""
+    def _print_suggestions_message(
+        self,
+        key: str,
+        suggestions: list[str],
+        message_context: str = "",
+    ) -> None:
+        """Render an unknown-entry message with optional suggestions.
+
+        This helper standardizes the user-facing output shown when a command or
+        namespace token cannot be resolved. When suggestions are available, it
+        renders a "did you mean" style message; otherwise it prints a direct
+        not-found error.
+
+        Args:
+            key (str): Raw token the user attempted to invoke.
+            suggestions (list[str]): Candidate entry names returned by resolution.
+            message_context (str): Optional label describing the lookup context, such as
+                "TLDR example".
+        """
+        if message_context:
+            message_context = f"'{message_context}' "
         if not suggestions:
             self.console.print(
-                f"[{OneColors.DARK_RED}]❌ No command, alias, or namespace found for '{key}'.[/]"
+                f"[{OneColors.DARK_RED}]❌ {message_context}No command or namespace found for '{key}'.[/]"
             )
             return None
         self.console.print(
-            f"[{OneColors.LIGHT_YELLOW}]⚠️  Unknown command, alias, or namespace '{key}'. Did you mean: [/]"
+            f"[{OneColors.LIGHT_YELLOW}]⚠️ {message_context}Unknown command or namespace '{key}'.\nDid you mean: [/]"
             f"{', '.join(suggestions)[:10]}"
         )
 
@@ -273,24 +431,54 @@ class Falyx:
         usage: str,
         description: str,
     ) -> None:
-        """Adds a TLDR example to the Falyx instance."""
+        """Register a single namespace-level TLDR example.
+
+        The referenced entry must resolve to a known command or namespace in the
+        current `Falyx` instance. Unknown entries are reported to the console and
+        are not added.
+
+        Args:
+            entry_key (str): Command or namespace key the example is associated with.
+            usage (str): Example usage fragment shown after the resolved invocation path.
+            description (str): Short explanation displayed alongside the example.
+        """
+        entry, suggestions = self.resolve_entry(entry_key)
+        if not entry:
+            self._print_suggestions_message(
+                entry_key, suggestions, message_context="TLDR example"
+            )
+            return None
         self._tldr_examples.append(
             FalyxTLDRExample(entry_key=entry_key, usage=usage, description=description)
         )
 
     def add_tldr_examples(self, examples: list[FalyxTLDRInput]) -> None:
-        """Adds TLDR examples to the Falyx instance."""
+        """Register multiple namespace-level TLDR examples.
+
+        Supports either `FalyxTLDRExample` objects or shorthand tuples of
+        `(entry_key, usage, description)`.
+
+        Args:
+            examples (list[FalyxTLDRInput]): Example definitions to validate and append.
+
+        Raises:
+            FalyxError: If an example has an unsupported shape.
+        """
         for example in examples:
             if isinstance(example, FalyxTLDRExample):
+                entry, suggestions = self.resolve_entry(example.entry_key)
+                if not entry:
+                    self._print_suggestions_message(
+                        example.entry_key, suggestions, message_context="TLDR example"
+                    )
+                    continue
                 self._tldr_examples.append(example)
             elif len(example) == 3:
                 entry_key, usage, description = example
-                self._tldr_examples.append(
-                    FalyxTLDRExample(
-                        entry_key=entry_key,
-                        usage=usage,
-                        description=description,
-                    )
+                self.add_tldr_example(
+                    entry_key=entry_key,
+                    usage=usage,
+                    description=description,
                 )
             else:
                 raise FalyxError(
@@ -300,7 +488,15 @@ class Falyx:
                 )
 
     def get_current_invocation_context(self) -> InvocationContext:
-        """Returns the current invocation context."""
+        """Build the default invocation context for this namespace.
+
+        The returned context starts at the current namespace root and reflects the
+        runtime mode stored in the shared options manager.
+
+        Returns:
+            InvocationContext: Fresh invocation context for help, routing, or
+            completion.
+        """
         return InvocationContext(
             program=self.program,
             program_style=self.program_style,
@@ -309,21 +505,40 @@ class Falyx:
         )
 
     @property
-    def is_cli_mode(self) -> bool:
-        """Checks if the current mode is a CLI mode."""
+    def _is_cli_mode(self) -> bool:
+        """Return whether the application is currently running outside menu mode.
+
+        Returns:
+            bool: `True` when the active mode is not `FalyxMode.MENU`.
+        """
         return self.options.get("mode") != FalyxMode.MENU
 
     def _validate_options(
         self,
         options: OptionsManager | None = None,
     ) -> None:
-        """Checks if the options are set correctly."""
+        """Validate and install the shared options manager.
+
+        If no options manager is provided, a new `OptionsManager` is created and
+        stored on the instance.
+
+        Args:
+            options (OptionsManager | None): Optional options manager to reuse.
+
+        Raises:
+            FalyxError: If `options` is provided but is not an `OptionsManager`.
+        """
         self.options: OptionsManager = options or OptionsManager()
         if not isinstance(self.options, OptionsManager):
             raise FalyxError("Options must be an instance of OptionsManager.")
 
     def _register_options(self) -> None:
-        """Registers default options if they are not already set."""
+        """Seed default application options and execution namespace values.
+
+        This method ensures that core runtime flags such as mode, prompt behavior,
+        menu visibility, and program display metadata exist in the shared options
+        manager.
+        """
         self.options.from_mapping(values={}, namespace_name="execution")
 
         if not self.options.get("never_prompt"):
@@ -341,11 +556,17 @@ class Falyx:
         if not self.options.get("program_style"):
             self.options.set("program_style", self.program_style)
 
-        if not self.options.get("invocation_path"):
-            self.options.set("invocation_path", self.program)
-
     @property
-    def iter_completion_names(self) -> list[str]:
+    def completion_names(self) -> list[str]:
+        """Return the visible names exposed for namespace completion.
+
+        The result includes command keys, command aliases, namespace keys,
+        namespace aliases, builtins, and special entries such as history and exit,
+        while deduplicating names case-insensitively.
+
+        Returns:
+            list[str]: Visible completion candidates for this namespace.
+        """
         names: list[str] = []
         seen: set[str] = set()
 
@@ -386,10 +607,18 @@ class Falyx:
 
     @property
     def _entry_map(self) -> dict[str, Command | FalyxNamespace]:
-        """Builds a mapping of all valid input names to Command objects.
+        """Build a case-insensitive lookup map for all resolvable entries.
 
-        If a collision occurs, logs a warning and keeps the first
-        registered command.
+        The map includes commands, namespaces, builtins, history, and exit
+        entries. Descriptions are also registered for commands and builtins to
+        support friendly lookup behavior.
+
+        Returns:
+            dict[str, Command | FalyxNamespace]: Normalized identifier-to-entry map.
+
+        Raises:
+            CommandAlreadyExistsError: If two distinct entries claim the same
+                normalized identifier.
         """
         mapping: dict[str, Command | FalyxNamespace] = {}
 
@@ -432,16 +661,15 @@ class Falyx:
 
         return mapping
 
-    def get_title(self) -> str:
-        """Returns the string title of the menu."""
-        if isinstance(self.title, str):
-            return self.title
-        elif isinstance(self.title, Markdown):
-            return self.title.markup
-        return self.title
-
     def _get_exit_command(self) -> Command:
-        """Returns the back command for the menu."""
+        """Create the default exit command for this namespace.
+
+        The default entry emits a `QuitSignal`, is excluded from history-sensitive
+        behavior, and is rendered with the namespace's shared options manager.
+
+        Returns:
+            Command: Configured exit command instance.
+        """
         exit_command = Command(
             key="X",
             description="Exit",
@@ -459,7 +687,14 @@ class Falyx:
         return exit_command
 
     def _get_history_command(self) -> Command:
-        """Returns the history command for the menu."""
+        """Create the built-in execution-history command.
+
+        The returned command wraps `ExecutionRegistry.summary` and includes a
+        purpose-built parser for history filtering, clearing, and result lookup.
+
+        Returns:
+            Command: Configured history command instance.
+        """
         parser = CommandArgumentParser(
             command_key="Y",
             command_description="History",
@@ -528,8 +763,15 @@ class Falyx:
         )
 
     def get_tip(self) -> str:
-        """Returns a random tip for the user about using Falyx."""
-        program = f"{self.program} " if self.is_cli_mode else ""
+        """Return a random usage tip appropriate for the current runtime mode.
+
+        Tips differ slightly between CLI and menu mode so the user sees examples
+        that match the active interface.
+
+        Returns:
+            str: One formatted help tip.
+        """
+        program = f"{self.program} " if self._is_cli_mode else ""
         tips = [
             f"Use '{program}?[COMMAND]' to preview a command.",
             "Every command supports aliases—try abbreviating the name!",
@@ -542,7 +784,7 @@ class Falyx:
             f"Run commands directly from the CLI: '{self.program} [COMMAND] [OPTIONS]'.",
             "All [COMMAND] keys and aliases are case-insensitive.",
         ]
-        if self.is_cli_mode:
+        if self._is_cli_mode:
             tips.extend(
                 [
                     f"Use '{self.program} help' to list all commands at any time.",
@@ -567,15 +809,24 @@ class Falyx:
     async def _render_command_tldr(
         self,
         command: Command,
-        context: InvocationContext | None = None,
+        invocation_context: InvocationContext | None = None,
     ) -> None:
-        """Renders the TLDR examples for a command, if available."""
+        """Render TLDR examples for a resolved command.
+
+        This helper validates that the supplied entry is a command, delegates TLDR
+        rendering to that command, and optionally appends a random usage tip.
+
+        Args:
+            command (Command): Command whose TLDR output should be shown.
+            invocation_context (InvocationContext | None): Optional routed invocation context used to scope the
+                rendered usage path.
+        """
         if not isinstance(command, Command):
             self.console.print(
                 f"Entry '{command.key}' is not a command.", style=OneColors.DARK_RED
             )
             return None
-        if command.render_tldr(invocation_context=context):
+        if command.render_tldr(invocation_context=invocation_context):
             if self.enable_help_tips:
                 self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
         else:
@@ -587,17 +838,26 @@ class Falyx:
         self,
         command: Command,
         tldr: bool = False,
-        context: InvocationContext | None = None,
+        invocation_context: InvocationContext | None = None,
     ) -> None:
-        """Renders the detailed help for a command, if available."""
+        """Render detailed help or TLDR output for a resolved command.
+
+        Args:
+            command (Command): Target command to render.
+            tldr (bool): When `True`, render TLDR output instead of full help.
+            invocation_context (InvocationContext | None): Optional routed invocation context used to scope the
+                rendered usage path.
+        """
         if not isinstance(command, Command):
             self.console.print(
                 f"Entry '{command.key}' is not a command.", style=OneColors.DARK_RED
             )
             return None
         if tldr:
-            await self._render_command_tldr(command, context=context)
-        elif command.render_help(invocation_context=context):
+            await self._render_command_tldr(
+                command, invocation_context=invocation_context
+            )
+        elif command.render_help(invocation_context=invocation_context):
             if self.enable_help_tips:
                 self.console.print(f"\n[bold]tip:[/bold] {self.get_tip()}")
         else:
@@ -606,7 +866,14 @@ class Falyx:
             )
 
     async def _render_tag_help(self, tag: str) -> None:
-        """Renders a list of commands matching a specific tag."""
+        """Render all visible commands associated with a tag.
+
+        Matching is case-insensitive and only searches user-registered commands,
+        not namespaces or builtins.
+
+        Args:
+            tag (str): Tag name to filter by.
+        """
         tag_lower = tag.lower()
         self.console.print(f"[bold]{tag_lower}:[/bold]")
         commands = [
@@ -629,7 +896,11 @@ class Falyx:
             self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
 
     async def _render_menu_help(self) -> None:
-        """Renders the main menu help menu with all commands and menu builtins."""
+        """Render the interactive menu-style help view for this namespace.
+
+        The menu help view displays user commands plus the special help, history,
+        and exit entries using panel-based Rich rendering.
+        """
         self.console.print("[bold]help:[/bold]")
         for command in self.commands.values():
             usage, description, tag = command.help_signature
@@ -671,23 +942,46 @@ class Falyx:
         if self.enable_help_tips:
             self.console.print(f"[bold]tip:[/bold] {self.get_tip()}")
 
-    def get_usage(self, context: InvocationContext) -> str:
+    def _get_usage(self, invocation_context: InvocationContext) -> str:
+        """Build the default namespace usage fragment for the given context.
+
+        Usage text is aware of whether the current namespace exposes nested
+        namespaces and whether rendering is happening in CLI or menu mode.
+
+        Args:
+            invocation_context (InvocationContext): Routed invocation context for the current help
+                target.
+
+        Returns:
+            str: Escaped usage fragment suitable for Rich output.
+        """
         has_namespaces = any(not ns.hidden for ns in self.namespaces.values())
         target = "command" if not has_namespaces else "command or namespace"
-        if not context.typed_path and context.is_cli_mode:
+        if not invocation_context.typed_path and invocation_context.is_cli_mode:
             return escape(f"[-h] [-T] [-v] [-d] [-n] <{target}> [args...]")
-        elif not context.typed_path:
+        elif not invocation_context.typed_path:
             return escape(f"[-h] [-T] <{target}> [args...]")
         return escape(f"<{target}> [args...]")
 
-    async def _render_namespace_tldr_help(self, context: InvocationContext) -> None:
+    async def _render_namespace_tldr_help(
+        self, invocation_context: InvocationContext
+    ) -> None:
+        """Render namespace-level TLDR examples for the current scope.
+
+        This prints usage, optional namespace description, and all registered TLDR
+        examples using the routed invocation path supplied by the context.
+
+        Args:
+            invocation_context (InvocationContext): Routed invocation context for the namespace being
+                rendered.
+        """
         if not self._tldr_examples:
             self.console.print(
-                f"[bold]No TLDR examples available for '{self.get_title()}'.[/bold]"
+                f"[bold]No TLDR examples available for '{self._get_title()}'.[/bold]"
             )
             return None
-        usage = self.usage or self.get_usage(context)
-        prefix = context.markup_path
+        usage = self.usage or self._get_usage(invocation_context)
+        prefix = invocation_context.markup_path
         self.console.print(
             f"[bold]usage:[/bold] {prefix} [{self.usage_style}]{usage}[/{self.usage_style}]"
         )
@@ -698,10 +992,10 @@ class Falyx:
         if self._tldr_examples:
             self.console.print("\n[bold]examples:[/bold]")
             for example in self._tldr_examples:
-                entry, _ = self.resolve_entry(example.entry_key)
+                entry, suggestions = self.resolve_entry(example.entry_key)
                 if not entry:
-                    self.console.print(
-                        f"[{OneColors.LIGHT_YELLOW}]⚠️  TLDR example references unknown entry '{example.entry_key}'.[/]"
+                    self._print_suggestions_message(
+                        example.entry_key, suggestions, message_context="TLDR example"
                     )
                     continue
                 command = f"[{entry.style}]{example.entry_key}[/{entry.style}]"
@@ -716,20 +1010,41 @@ class Falyx:
                 )
 
     async def render_namespace_help(
-        self, context: InvocationContext, tldr: bool = False
+        self,
+        invocation_context: InvocationContext | None = None,
+        tldr: bool = False,
     ) -> None:
+        """Render help for the current namespace.
+
+        Depending on the active mode and flags, this dispatches to namespace TLDR,
+        menu-style help, or CLI-style help rendering.
+
+        Args:
+            invocation_context (InvocationContext | None): Optional routed invocation context. When omitted, a
+                fresh root context is created.
+            tldr (bool): Whether to render namespace TLDR output instead of standard help.
+        """
+        invocation_context = invocation_context or self.get_current_invocation_context()
         if tldr:
-            await self._render_namespace_tldr_help(context)
-        elif context.mode is FalyxMode.MENU:
+            await self._render_namespace_tldr_help(invocation_context)
+        elif invocation_context.mode is FalyxMode.MENU:
             await self._render_menu_help()
         else:
-            await self._render_cli_help(context)
+            await self._render_cli_help(invocation_context)
 
-    async def _render_cli_help(self, context: InvocationContext) -> None:
-        """Renders the CLI help menu with all available commands and options."""
-        usage = self.usage or self.get_usage(context)
+    async def _render_cli_help(self, invocation_context: InvocationContext) -> None:
+        """Render the CLI-style help view for this namespace.
+
+        The output includes usage, description, global options, builtin commands,
+        user commands, and optional epilog content.
+
+        Args:
+            invocation_context (InvocationContext): Routed invocation context used to render the current
+                invocation path.
+        """
+        usage = self.usage or self._get_usage(invocation_context)
         self.console.print(
-            f"[bold]usage:[/bold] {context.markup_path} [{self.usage_style}]{usage}[/{self.usage_style}]"
+            f"[bold]usage:[/bold] {invocation_context.markup_path} [{self.usage_style}]{usage}[/{self.usage_style}]"
         )
         if self.description:
             self.console.print(
@@ -776,17 +1091,31 @@ class Falyx:
         if self.enable_help_tips:
             self.console.print(f"\n[bold]tip:[/bold] {self.get_tip()}")
 
-    def _help_target_base_context(self, context: InvocationContext) -> InvocationContext:
-        if not context.typed_path:
-            return context
+    def _help_target_base_context(
+        self, invocation_context: InvocationContext
+    ) -> InvocationContext:
+        """Normalize help context before rendering a nested target.
 
-        last_token = context.typed_path[-1]
+        This strips the trailing help-command segment from the routed path when the
+        help command itself is the active entry, preventing duplicated invocation
+        paths in nested help output.
+
+        Args:
+            invocation_context (InvocationContext): Routed help context to normalize.
+
+        Returns:
+            InvocationContext: Adjusted context for downstream help rendering.
+        """
+        if not invocation_context.typed_path:
+            return invocation_context
+
+        last_token = invocation_context.typed_path[-1]
         entry, _ = self.resolve_entry(last_token)
 
         if entry is self.help_command:
-            return context.without_last_path_segment()
+            return invocation_context.without_last_path_segment()
 
-        return context
+        return invocation_context
 
     async def render_help(
         self,
@@ -796,7 +1125,23 @@ class Falyx:
         namespace_tldr: bool = False,
         invocation_context: InvocationContext | None = None,
     ) -> None:
-        """Renders the help menu with command details, usage examples, and tips."""
+        """Render help for a namespace, tag, or specific entry.
+
+        This is the main help dispatcher for `Falyx`. It can render:
+
+        - namespace help for the current scope
+        - namespace TLDR output
+        - tag-filtered command help
+        - command help for a specific key
+        - namespace help for a specific nested namespace
+
+        Args:
+            tag (str): Optional tag filter for command help.
+            key (str | None): Optional command or namespace identifier to render directly.
+            tldr (bool): Whether targeted command help should use TLDR output.
+            namespace_tldr (bool): Whether top-level namespace help should use TLDR output.
+            invocation_context (InvocationContext | None): Optional routed invocation context.
+        """
         context = invocation_context or self.get_current_invocation_context()
         if key:
             base_context = self._help_target_base_context(context)
@@ -806,11 +1151,15 @@ class Falyx:
                 await self._render_command_help(
                     command=entry,
                     tldr=tldr,
-                    context=base_context.with_path_segment(key, style=entry.style),
+                    invocation_context=base_context.with_path_segment(
+                        key, style=entry.style
+                    ),
                 )
             elif isinstance(entry, FalyxNamespace):
                 await entry.namespace.render_namespace_help(
-                    context=base_context.with_path_segment(key, style=entry.style),
+                    invocation_context=base_context.with_path_segment(
+                        key, style=entry.style
+                    ),
                     tldr=tldr,
                 )
             else:
@@ -821,7 +1170,7 @@ class Falyx:
             await self._render_command_help(
                 self.help_command,
                 tldr,
-                context=context,
+                invocation_context=context,
             )
         elif tag:
             await self._render_tag_help(tag)
@@ -829,7 +1178,14 @@ class Falyx:
             await self.render_namespace_help(context, namespace_tldr)
 
     def _get_help_command(self) -> Command:
-        """Returns the help command for the menu."""
+        """Create the built-in help command for this namespace.
+
+        The returned command wraps `render_help()` and installs a dedicated parser
+        that supports tag filtering, targeted key help, and TLDR behavior.
+
+        Returns:
+            Command: Configured help command instance.
+        """
         parser = CommandArgumentParser(
             command_key="H",
             command_description="Help",
@@ -876,7 +1232,14 @@ class Falyx:
         )
 
     async def _preview(self, key: str) -> None:
-        """Previews the execution of a command without actually running it."""
+        """Render a preview for a specific command key.
+
+        Namespaces are rejected because preview is only meaningful at the leaf
+        command boundary.
+
+        Args:
+            key (str): Command key or alias to preview.
+        """
         entry, suggestions = self.resolve_entry(key)
         if isinstance(entry, FalyxNamespace):
             self.console.print(
@@ -890,7 +1253,14 @@ class Falyx:
             self._print_suggestions_message(key, suggestions)
 
     def _get_preview_command(self) -> Command:
-        """Returns the preview command for Falyx."""
+        """Create the built-in preview command.
+
+        The preview command accepts a command key or alias and delegates to
+        `_preview()`.
+
+        Returns:
+            Command: Configured preview command instance.
+        """
         preview_parser = CommandArgumentParser(
             command_key="preview",
             command_description="Preview",
@@ -922,11 +1292,15 @@ class Falyx:
         return preview_command
 
     async def _render_version(self) -> None:
-        """Renders the program version."""
+        """Render the program version string for this namespace."""
         self.console.print(f"[{self.version_style}]{self.program} v{self.version}[/]")
 
     def _get_version_command(self) -> Command:
-        """Returns the version command for Falyx."""
+        """Create the built-in version command.
+
+        Returns:
+            Command: Configured version command instance.
+        """
         version_command = Command(
             key="version",
             description="Version",
@@ -945,24 +1319,43 @@ class Falyx:
         return version_command
 
     def _add_builtin(self, command: Command) -> None:
-        """Adds a built-in command to Falyx."""
+        """Register a builtin command in the current namespace.
+
+        Args:
+            command (Command): Builtin command to register.
+
+        Raises:
+            CommandAlreadyExistsError: If the builtin key or aliases collide with an
+                existing identifier.
+        """
         self._validate_command_aliases(command.key, command.aliases)
         self.builtins[command.key.upper()] = command
         _ = self._entry_map
 
     def _register_default_builtins(self) -> None:
-        """Registers the default built-in commands for Falyx."""
+        """Register the default help, preview, and version builtins."""
         self._add_builtin(self.help_command)
         self._add_builtin(self._get_preview_command())
         self._add_builtin(self._get_version_command())
 
     def _get_completer(self) -> FalyxCompleter:
-        """Completer to provide auto-completion for the menu commands."""
+        """Create the Prompt Toolkit completer for this namespace.
+
+        Returns:
+            FalyxCompleter: Routing-aware completer bound to this `Falyx` instance.
+        """
         return FalyxCompleter(self)
 
     def _get_validator_error_message(self) -> str:
-        """Validator to check if the input is a valid command."""
-        visible = self.iter_visible_entries(
+        """Build the validation error message shown by the prompt session.
+
+        The message lists all currently visible entry keys and aliases that may be
+        invoked from the current namespace.
+
+        Returns:
+            str: User-facing validation error text.
+        """
+        visible = self._iter_visible_entries(
             include_help=True,
             include_history=True,
             include_exit=True,
@@ -982,19 +1375,35 @@ class Falyx:
         return error_message
 
     def _invalidate_prompt_session_cache(self):
-        """Forces the prompt session to be recreated on the next access."""
+        """Drop any cached prompt session so UI changes take effect.
+
+        This is used when bottom-bar configuration or other prompt-session state
+        changes and a fresh `PromptSession` must be built on next access.
+        """
         if hasattr(self, "prompt_session"):
             del self.prompt_session
         self._prompt_session = None
 
     @property
     def bottom_bar(self) -> BottomBar | str | Callable[[], Any] | None:
-        """Returns the bottom bar for the menu."""
+        """Return the configured bottom-bar definition for menu mode."""
         return self._bottom_bar
 
     @bottom_bar.setter
     def bottom_bar(self, bottom_bar: BottomBar | str | Callable[[], Any] | None) -> None:
-        """Sets the bottom bar for the menu."""
+        """Install or normalize the bottom-bar configuration.
+
+        `None` produces a default `BottomBar`. A `BottomBar` instance is rebound to
+        this namespace's key bindings. Strings and callables are stored directly as
+        alternate toolbar renderers.
+
+        Args:
+            bottom_bar (BottomBar | str | Callable[[], Any] | None): Toolbar
+                configuration to install.
+
+        Raises:
+            FalyxError: If the value is not a supported bottom-bar type.
+        """
         if bottom_bar is None:
             self._bottom_bar = BottomBar(self.columns, self.key_bindings)
         elif isinstance(bottom_bar, BottomBar):
@@ -1009,7 +1418,12 @@ class Falyx:
         self._invalidate_prompt_session_cache()
 
     def _get_bottom_bar_render(self) -> Callable[[], Any] | str | None:
-        """Returns the bottom bar for the menu."""
+        """Return the actual toolbar renderer used by the prompt session.
+
+        Returns:
+            Callable[[], Any] | str | None: Render callable, static toolbar string,
+            or `None` when no toolbar should be shown.
+        """
         if isinstance(self.bottom_bar, BottomBar) and self.bottom_bar.has_items:
             return self.bottom_bar.render
         elif callable(self.bottom_bar):
@@ -1020,7 +1434,15 @@ class Falyx:
 
     @cached_property
     def prompt_session(self) -> PromptSession:
-        """Returns the prompt session for the menu."""
+        """Create and cache the interactive prompt session.
+
+        The prompt session wires together completion, validation, history,
+        bottom-toolbar rendering, placeholder content, and quit behavior for menu
+        mode.
+
+        Returns:
+            PromptSession: Configured prompt session for interactive input.
+        """
         if self._prompt_session is None:
             placeholder = self.build_placeholder_menu()
             self._prompt_session = PromptSession(
@@ -1040,7 +1462,19 @@ class Falyx:
         return self._prompt_session
 
     def register_all_hooks(self, hook_type: HookType, hooks: Hook | list[Hook]) -> None:
-        """Registers hooks for all commands in the menu and actions recursively."""
+        """Register a hook across the namespace and all nested actions.
+
+        Hooks are attached to the application hook manager, every registered
+        command, and any nested `BaseAction` or nested `Falyx` runtime reachable
+        through command actions.
+
+        Args:
+            hook_type (HookType): Lifecycle slot to register against.
+            hooks (Hook | list[Hook]): Single hook or list of hooks to apply recursively.
+
+        Raises:
+            InvalidActionError: If any supplied hook is not callable.
+        """
         hook_list = hooks if isinstance(hooks, list) else [hooks]
         for hook in hook_list:
             if not callable(hook):
@@ -1054,15 +1488,25 @@ class Falyx:
                     command.action.register_hooks_recursively(hook_type, hook)
 
     def register_all_with_debug_hooks(self) -> None:
-        """Registers debug hooks for all commands in the menu and actions recursively."""
+        """Install the standard debug hook set across all commands and actions."""
         self.register_all_hooks(HookType.BEFORE, log_before)
         self.register_all_hooks(HookType.ON_SUCCESS, log_success)
         self.register_all_hooks(HookType.ON_ERROR, log_error)
         self.register_all_hooks(HookType.AFTER, log_after)
-        self.register_all_hooks(HookType.ON_TEARDOWN, log_after)
 
     def _validate_command_aliases(self, key: str, aliases: list[str] | None) -> None:
-        """Validates the command aliases to ensure they are unique."""
+        """Validate that a new command or namespace identifier set is unique.
+
+        Validation is case-insensitive and checks the proposed key and aliases
+        against existing commands, builtins, history, and exit entries.
+
+        Args:
+            key (str): Proposed primary key.
+            aliases (list[str] | None): Proposed aliases for the same entry.
+
+        Raises:
+            CommandAlreadyExistsError: If duplicates or collisions are found.
+        """
         key = key.upper()
         aliases = [alias.upper() for alias in (aliases or [])]
 
@@ -1109,7 +1553,24 @@ class Falyx:
         confirm_message: str = "Are you sure?",
         help_text: str = "Exit the program.",
     ) -> None:
-        """Updates the back command of the menu."""
+        """Replace the namespace exit command with a custom one.
+
+        This is commonly used by submenus to swap the default exit behavior for a
+        back-navigation command.
+
+        Args:
+            key (str): New command key.
+            description (str): User-facing description.
+            aliases (list[str] | None): Optional aliases for the exit command.
+            action (Callable[..., Any] | None): Optional callable to execute. Defaults to raising `QuitSignal`.
+            style (str): Rich style used for menu/help rendering.
+            confirm (bool): Whether the command should require confirmation.
+            confirm_message (str): Confirmation prompt text.
+            help_text (str): Help text shown in command listings and help output.
+
+        Raises:
+            InvalidActionError: If the supplied action is not callable.
+        """
         self._validate_command_aliases(key, aliases)
         action = action or SignalAction(description, QuitSignal())
         if not callable(action):
@@ -1140,7 +1601,23 @@ class Falyx:
         aliases: list[str] | None = None,
         help_text: str = "",
     ) -> None:
-        """Adds a submenu to the menu."""
+        """Register a nested `Falyx` instance as a namespace entry.
+
+        The submenu becomes part of routing, completion, and help output in the
+        current namespace. When the submenu still uses the default exit command, it
+        is converted to a back command automatically.
+
+        Args:
+            key (str): Namespace key used to enter the submenu.
+            description (str): User-facing namespace description.
+            submenu (Falyx): Nested `Falyx` instance to register.
+            style (str | None): Optional style override for the namespace entry.
+            aliases (list[str] | None): Optional aliases for the namespace.
+            help_text (str): Optional help text for namespace listings.
+
+        Raises:
+            NotAFalyxError: If `submenu` is not a `Falyx` instance.
+        """
         if not isinstance(submenu, Falyx):
             raise NotAFalyxError("submenu must be an instance of Falyx.")
 
@@ -1166,7 +1643,16 @@ class Falyx:
             )
 
     def add_commands(self, commands: list[Command] | list[dict]) -> None:
-        """Adds a list of Command instances or config dicts."""
+        """Register multiple commands from instances or config dictionaries.
+
+        Args:
+            commands (list[Command] | list[dict]): Sequence of `Command` objects or `add_command()` keyword
+                dictionaries.
+
+        Raises:
+            FalyxError: If an element is neither a `Command` nor a configuration
+                dictionary.
+        """
         for command in commands:
             if isinstance(command, dict):
                 self.add_command(**command)
@@ -1178,7 +1664,14 @@ class Falyx:
                 )
 
     def add_command_from_command(self, command: Command) -> None:
-        """Adds a command to the menu from an existing Command object."""
+        """Register an already-built `Command` object.
+
+        Args:
+            command (Command): Preconstructed command to add to this namespace.
+
+        Raises:
+            FalyxError: If `command` is not a `Command`.
+        """
         if not isinstance(command, Command):
             raise FalyxError("command must be an instance of Command.")
         self._validate_command_aliases(command.key, command.aliases)
@@ -1228,7 +1721,57 @@ class Falyx:
         simple_help_signature: bool = False,
         ignore_in_history: bool = False,
     ) -> Command:
-        """Adds an command to the menu, preventing duplicates."""
+        """Build and register a new command in the current namespace.
+
+        This is the main command-registration API for `Falyx`. It forwards the
+        supplied configuration to `Command.build()`, injects shared runtime state,
+        validates identifier uniqueness, and stores the resulting command.
+
+        Args:
+            key (str): Primary command key.
+            description (str): User-facing command description.
+            action (BaseAction | Callable[..., Any]): Underlying action or callable executed by the command.
+            args (tuple): Static positional arguments bound to the command.
+            kwargs (dict[str, Any] | None): Static keyword arguments bound to the command.
+            hidden (bool): Whether the command should be omitted from menu/help listings.
+            aliases (list[str] | None): Optional alternate invocation names.
+            help_text (str): Short help text shown in listings.
+            help_epilog (str): Extended help text shown in command help.
+            style (str): Rich style used for display.
+            confirm (bool): Whether confirmation should be required before execution.
+            confirm_message (str): Confirmation prompt text.
+            preview_before_confirm (bool): Whether preview should run before confirmation.
+            spinner (bool): Whether spinner hooks should be enabled.
+            spinner_message (str): Spinner label.
+            spinner_type (str): Rich spinner preset name.
+            spinner_style (str): Rich style for spinner output.
+            spinner_speed (float): Spinner speed multiplier.
+            hooks (HookManager | None): Optional command hook manager.
+            before_hooks (list[Callable] | None): Optional before hooks.
+            success_hooks (list[Callable] | None): Optional success hooks.
+            error_hooks (list[Callable] | None): Optional error hooks.
+            after_hooks (list[Callable] | None): Optional after hooks.
+            teardown_hooks (list[Callable] | None): Optional teardown hooks.
+            tags (list[str] | None): Optional tag labels for grouping and help filtering.
+            logging_hooks (bool): Whether debug hooks should be enabled.
+            retry (bool): Whether retry behavior should be enabled.
+            retry_all (bool): Whether retry should be applied recursively to nested actions.
+            retry_policy (RetryPolicy | None): Retry policy override.
+            arg_parser (CommandArgumentParser | None): Optional explicit command argument parser.
+            arguments (list[dict[str, Any]] | None): Optional declarative argument definitions.
+            argument_config (Callable[[CommandArgumentParser], None] | None): Optional callback that populates the parser.
+            execution_options (list[ExecutionOption | str] | None): Optional execution-level options to enable.
+            custom_parser (ArgParserProtocol | None): Optional parser override for full custom argument parsing.
+            custom_help (Callable[[], str | None] | None): Optional custom help renderer.
+            auto_args (bool): Whether argument inference should run automatically.
+            arg_metadata (dict[str, str | dict[str, Any]] | None): Optional metadata used during argument inference.
+            simple_help_signature (bool): Whether command listings should use compact help.
+            ignore_in_history (bool): Whether this command should be ignored by history-aware
+                result tracking.
+
+        Returns:
+            Command: The newly built and registered command.
+        """
         self._validate_command_aliases(key, aliases)
 
         command = Command.build(
@@ -1279,8 +1822,12 @@ class Falyx:
         _ = self._entry_map
         return command
 
-    def get_bottom_row(self) -> list[str]:
-        """Returns the bottom row of the table for displaying additional commands."""
+    def _get_bottom_row(self) -> list[str]:
+        """Build the special bottom-row entries for menu tables.
+
+        Returns:
+            list[str]: Rendered help, history, and exit command labels.
+        """
         bottom_row = []
         if self.help_command:
             bottom_row.append(
@@ -1298,7 +1845,7 @@ class Falyx:
         )
         return bottom_row
 
-    def iter_visible_entries(
+    def _iter_visible_entries(
         self,
         *,
         include_builtins: bool = False,
@@ -1306,6 +1853,17 @@ class Falyx:
         include_history: bool = False,
         include_exit: bool = False,
     ) -> list[Command | FalyxNamespace]:
+        """Collect visible entries for menu or validation message use.
+
+        Args:
+            include_builtins (bool): Whether normal builtin commands should be included.
+            include_help (bool): Whether the help command should be appended.
+            include_history (bool): Whether the history command should be appended.
+            include_exit (bool): Whether the exit command should be appended.
+
+        Returns:
+            list[Command | FalyxNamespace]: Visible entries in display order.
+        """
         visible: list[Command | FalyxNamespace] = []
         visible.extend([cmd for cmd in self.commands.values() if not cmd.hidden])
         visible.extend([ns for ns in self.namespaces.values() if not ns.hidden])
@@ -1320,25 +1878,33 @@ class Falyx:
         return visible
 
     def build_default_table(self) -> Table:
-        """Build the standard table layout.
+        """Build the standard Rich table used for menu display.
 
-        Developers can subclass or call this in custom tables.
+        Returns:
+            Table: Default menu table for the current namespace.
         """
         table = Table(title=self.title, show_header=False, box=box.SIMPLE)  # type: ignore[arg-type]
-        visible = self.iter_visible_entries()
+        visible = self._iter_visible_entries()
         for chunk in chunks(visible, self.columns):
             row = []
             for entry in chunk:
                 escaped_key = escape(f"[{entry.key}]")
                 row.append(f"{escaped_key} [{entry.style}]{entry.description}")
             table.add_row(*row)
-        bottom_row = self.get_bottom_row()
+        bottom_row = self._get_bottom_row()
         for row in chunks(bottom_row, self.columns):
             table.add_row(*row)
         return table
 
     def build_placeholder_menu(self) -> StyleAndTextTuples:
-        """Builds a menu placeholder for show_placeholder_menu."""
+        """Build placeholder text for the interactive prompt.
+
+        The placeholder summarizes visible commands and special bottom-row entries
+        and is used when `show_placeholder_menu` is enabled.
+
+        Returns:
+            StyleAndTextTuples: Prompt Toolkit-compatible formatted placeholder.
+        """
         visible_commands = [item for item in self.commands.items() if not item[1].hidden]
         if not visible_commands:
             return [("", "")]
@@ -1346,14 +1912,25 @@ class Falyx:
         placeholder: list[str] = []
         for key, command in visible_commands:
             placeholder.append(f"[{key}] [{command.style}]{command.description}[/]")
-        for command_str in self.get_bottom_row():
+        for command_str in self._get_bottom_row():
             placeholder.append(command_str)
 
         return rich_text_to_prompt_text(" ".join(placeholder))
 
     @property
     def table(self) -> Table:
-        """Creates or returns a custom table to display the menu commands."""
+        """Return the active menu table for this namespace.
+
+        When `custom_table` is callable, it is invoked and must return a Rich
+        `Table`. When `custom_table` is already a `Table`, that instance is reused.
+        Otherwise the default menu table is built.
+
+        Returns:
+            Table: Table used by menu rendering.
+
+        Raises:
+            FalyxError: If a custom table factory returns a non-`Table` value.
+        """
         if callable(self.custom_table):
             custom_table = self.custom_table(self)
             if not isinstance(custom_table, Table):
@@ -1366,16 +1943,25 @@ class Falyx:
         else:
             return self.build_default_table()
 
-    def parse_preview_command(self, input_str: str) -> tuple[bool, str]:
-        """Checks if the input is a preview command and returns the command key if so."""
-        if input_str.startswith("?"):
-            return True, input_str[1:].strip()
-        return False, input_str.strip()
-
     def resolve_entry(
         self,
         token: str,
     ) -> tuple[Command | FalyxNamespace | None, list[str]]:
+        """Resolve a token to a command or namespace entry.
+
+        Resolution is case-insensitive and proceeds in three stages:
+
+        1. Exact identifier match
+        2. Unique prefix match
+        3. Close-match suggestion lookup
+
+        Args:
+            token (str): Raw user token to resolve.
+
+        Returns:
+            tuple[Command | FalyxNamespace | None, list[str]]: Resolved entry, if
+            any, plus suggestion strings when resolution fails.
+        """
         normalized = token.upper().strip()
 
         # exact match
@@ -1393,6 +1979,7 @@ class Falyx:
         if len(prefix_matches) == 1:
             return prefix_matches[0], []
 
+        # close match suggestions
         suggestions = get_close_matches(
             normalized, list(self._entry_map.keys()), n=3, cutoff=0.7
         )
@@ -1405,6 +1992,27 @@ class Falyx:
         mode: FalyxMode | None = None,
         from_validate: bool = False,
     ) -> tuple[RouteResult | None, tuple, dict[str, Any], dict[str, Any]]:
+        """Tokenize input, resolve a route, and parse leaf-command arguments.
+
+        This is the main preparation boundary between raw user input and executable
+        command dispatch. It:
+
+        - tokenizes shell-style input
+        - detects preview-prefixed commands
+        - creates an initial `InvocationContext`
+        - resolves a `RouteResult` through namespace routing
+        - delegates leaf argument parsing to the resolved command when appropriate
+
+        Args:
+            raw_arguments (list[str] | str): Raw argv-style input as a string or token list.
+            mode (FalyxMode | None): Optional mode override for the initial invocation context.
+            from_validate (bool): Whether errors should be surfaced as prompt validation
+                errors instead of normal runtime output.
+
+        Returns:
+            tuple[RouteResult | None, tuple, dict[str, Any], dict[str, Any]]:
+                Resolved route, positional args, keyword args, and execution args.
+        """
         args: tuple = ()
         kwargs: dict[str, Any] = {}
         execution_args: dict[str, Any] = {}
@@ -1444,7 +2052,7 @@ class Falyx:
             is_preview=is_preview,
         )
 
-        route = await self.resolve_route(tokens, context=context)
+        route = await self.resolve_route(tokens, invocation_context=context)
 
         if is_preview:
             route.is_preview = True
@@ -1477,6 +2085,11 @@ class Falyx:
         return route, args, kwargs, execution_args
 
     async def _render_unknown_route(self, route: RouteResult) -> None:
+        """Render help plus suggestions for an unresolved route.
+
+        Args:
+            route (RouteResult): Unknown route returned by namespace resolution.
+        """
         context = route.context
         typed_key = context.typed_path[0].upper()
         await route.namespace.render_namespace_help(context)
@@ -1494,7 +2107,26 @@ class Falyx:
         wrap_errors: bool = True,
         summary_last_result: bool = False,
     ) -> Any | None:
+        """Dispatch a prepared route to help rendering, menu flow, or execution.
 
+        This method is the final route-handling stage after preparation. It knows
+        how to handle namespace menus, namespace help, namespace TLDR, unknown
+        routes, preview routes, and normal leaf-command execution.
+
+        Args:
+            route (RouteResult): Prepared route to dispatch.
+            args (tuple): Positional arguments prepared for a leaf command.
+            kwargs (dict[str, Any] | None): Keyword arguments prepared for a leaf command.
+            execution_args (dict[str, Any] | None): Execution-only arguments such as confirmation or retry
+                overrides.
+            raise_on_error (bool): Whether executor errors should be re-raised.
+            wrap_errors (bool): Whether executor errors should be wrapped as `FalyxError`.
+            summary_last_result (bool): Whether summary output should only have the last
+                result when supported.
+
+        Returns:
+            Any | None: Command result for executed leaf commands, otherwise `None`.
+        """
         if route.kind is RouteKind.NAMESPACE_MENU:
             await route.namespace.menu()
             return None
@@ -1568,8 +2200,6 @@ class Falyx:
             `execution_args` via `prepare_route()`.
             - Returns `None` when help output is triggered, argument parsing fails,
             the command cannot be found, or preview mode is requested.
-            - Raises `QuitSignal` if the resolved command is the configured exit
-            command.
             - For normal execution, forwards the resolved command and execution
             options to `_executor.execute()`.
 
@@ -1582,6 +2212,7 @@ class Falyx:
                 `FalyxError` by the underlying executor before being raised.
             summary_last_result (bool): Whether summary output should include the last
                 result when execution summary reporting is requested.
+            mode (FalyxMode): Runtime mode used while preparing the route.
 
         Returns:
             Any | None: The command result returned by the underlying executor, or
@@ -1625,18 +2256,27 @@ class Falyx:
         *,
         stub: str,
         cursor_at_end_of_token: bool,
-        context: InvocationContext,
+        invocation_context: InvocationContext,
         is_preview: bool = False,
     ) -> CompletionRoute:
-        """Route only until the leaf-command boundary.
+        """Resolve partial input for autocompletion.
 
-        Unlike resolve_route(), this method tolerates incomplete trailing input.
-        It stops either:
-        - inside a namespace, where the next token should be an entry, or
-        - at a leaf command, where remaining tokens belong to that command's argv.
+        Unlike full routing, completion routing tolerates incomplete trailing input.
+        It stops at the first point where completion must either suggest namespace
+        entries or delegate the remaining input to a leaf command's argument parser.
+
+        Args:
+            committed_tokens (list[str]): Tokens fully committed before the active stub.
+            stub (str): Current token fragment under the cursor.
+            cursor_at_end_of_token (bool): Whether the cursor sits at a token boundary.
+            invocation_context (InvocationContext): Current routed invocation context.
+            is_preview (bool): Whether the input is preview-prefixed.
+
+        Returns:
+            CompletionRoute: Partial route used by the completer.
         """
         namespace = self
-        route_context = context
+        route_context = invocation_context
         remaining = list(committed_tokens)
 
         while remaining:
@@ -1691,14 +2331,31 @@ class Falyx:
         self,
         tokens: list[str],
         *,
-        context: InvocationContext,
+        invocation_context: InvocationContext,
     ) -> RouteResult:
+        """Resolve an invocation path across namespaces until a leaf boundary.
+
+        Routing is recursive and namespace-aware. It stops when one of the
+        following occurs:
+
+        - no tokens remain, targeting the current namespace menu
+        - a namespace-level help or TLDR flag is encountered
+        - an unknown token is found
+        - a leaf command is reached
+
+        Args:
+            tokens (list[str]): Remaining tokens to route.
+            invocation_context (InvocationContext): Routed context accumulated so far.
+
+        Returns:
+            RouteResult: Final routed result for the supplied token path.
+        """
         # 1. No more tokens -> this namespace itself was targeted
         if not tokens:
             return RouteResult(
                 kind=RouteKind.NAMESPACE_MENU,
                 namespace=self,
-                context=context,
+                context=invocation_context,
             )
 
         head, *tail = tokens
@@ -1708,14 +2365,14 @@ class Falyx:
             return RouteResult(
                 kind=RouteKind.NAMESPACE_HELP,
                 namespace=self,
-                context=context,
+                context=invocation_context,
             )
 
         if head in {"-T", "--tldr"}:
             return RouteResult(
                 kind=RouteKind.NAMESPACE_TLDR,
                 namespace=self,
-                context=context,
+                context=invocation_context,
             )
 
         # 3. Resolve the next entry in this namespace
@@ -1724,15 +2381,17 @@ class Falyx:
             return RouteResult(
                 kind=RouteKind.UNKNOWN,
                 namespace=self,
-                context=context,
+                context=invocation_context,
                 suggestions=suggestions,
             )
 
-        route_context = context.with_path_segment(head, style=entry.style)
+        route_context = invocation_context.with_path_segment(head, style=entry.style)
 
         # 4. Namespace entry -> recurse with remaining tokens
         if isinstance(entry, FalyxNamespace):
-            return await entry.namespace.resolve_route(tail, context=route_context)
+            return await entry.namespace.resolve_route(
+                tail, invocation_context=route_context
+            )
 
         # 5. Leaf command -> stop routing; leave tail untouched for leaf parser
         return RouteResult(
@@ -1743,8 +2402,12 @@ class Falyx:
             leaf_argv=tail,
         )
 
-    async def process_command(self) -> None:
-        """Processes the action of the selected command."""
+    async def _process_command(self) -> None:
+        """Read one prompt input from the interactive session and execute it.
+
+        This helper refreshes the Prompt Toolkit app, collects raw input from the
+        cached prompt session, and forwards that input to `execute_command()`.
+        """
         app = get_app()
         await asyncio.sleep(0.1)
         app.invalidate()
@@ -1757,8 +2420,16 @@ class Falyx:
             summary_last_result=True,
         )
 
-    def print_message(self, message: str | Markdown | dict[str, Any]) -> None:
-        """Prints a message to the console."""
+    def _print_message(self, message: str | Markdown | dict[str, Any]) -> None:
+        """Print a startup or exit message using the configured console.
+
+        Args:
+            message (str | Markdown | dict[str, Any]): Plain string, `Markdown`,
+                or a Rich-print argument dictionary.
+
+        Raises:
+            TypeError: If the message is not a supported type.
+        """
         if isinstance(message, (str, Markdown)):
             self.console.print(message)
         elif isinstance(message, dict):
@@ -1771,12 +2442,32 @@ class Falyx:
                 "Message must be a string, Markdown, or dictionary with args and kwargs."
             )
 
+    def _get_title(self) -> str:
+        """Return the menu title as plain text.
+
+        This normalizes string and `Markdown` title inputs into a single text value
+        for logging and display helpers.
+
+        Returns:
+            str: Plain-text title for the current namespace.
+        """
+        if isinstance(self.title, str):
+            return self.title
+        elif isinstance(self.title, Markdown):
+            return self.title.markup
+        return self.title
+
     async def menu(self) -> None:
-        """Runs the menu and handles user input."""
-        logger.info("Starting menu: %s", self.get_title())
+        """Run the interactive menu loop for this namespace.
+
+        The menu loop renders the current table view, reads commands from the prompt
+        session, handles navigation and cancellation signals, and prints optional
+        welcome and exit messages.
+        """
+        logger.info("Starting menu: %s", self._get_title())
         self.options.set("mode", FalyxMode.MENU)
         if self.welcome_message:
-            self.print_message(self.welcome_message)
+            self._print_message(self.welcome_message)
         try:
             while True:
                 if not self.options.get("hide_menu_table", self._hide_menu_table):
@@ -1785,7 +2476,7 @@ class Falyx:
                     else:
                         self.console.print(self.table, justify="center")
                 try:
-                    await self.process_command()
+                    await self._process_command()
                 except (EOFError, KeyboardInterrupt):
                     logger.info("EOF or KeyboardInterrupt. Exiting menu.")
                     break
@@ -1799,12 +2490,19 @@ class Falyx:
                 except asyncio.CancelledError:
                     logger.info("[asyncio.CancelledError]. <- Returning to the menu.")
         finally:
-            logger.info("Exiting menu: %s", self.get_title())
+            logger.info("Exiting menu: %s", self._get_title())
             if self.exit_message:
-                self.print_message(self.exit_message)
+                self._print_message(self.exit_message)
 
     def _apply_parse_result(self, result: RootParseResult) -> None:
-        """Applies the parsed CLI arguments to the menu options."""
+        """Apply parsed root/session options to runtime state.
+
+        This updates the active mode, logging verbosity, debug-hook registration,
+        and prompt behavior based on the root parse result.
+
+        Args:
+            result (RootParseResult): Parsed root CLI result to apply.
+        """
         self.options.set("mode", result.mode)
 
         if result.verbose:
@@ -1830,9 +2528,15 @@ class Falyx:
     ) -> None:
         """Execute the Falyx application using CLI-driven dispatch.
 
-        This method is the primary entrypoint for Falyx applications. It parses
-        CLI arguments, configures runtime state, and dispatches execution based
-        on the resolved mode.
+        This method is the primary entrypoint for Falyx applications.
+
+        - parses root CLI flags using `FalyxParser`
+        - optionally invokes a post-parse callback
+        - applies session/runtime options
+        - renders help immediately when requested
+        - prepares and dispatches the routed command
+        - exits with CLI-appropriate status codes
+        - optionally falls through to interactive menu mode
 
         Callback Behavior:
         - If provided, `callback` is executed after parsing but before dispatch
@@ -1842,9 +2546,9 @@ class Falyx:
         Args:
             callback (Callable[..., Any] | None):
                 Optional function invoked after CLI parsing with the `ParseResult`.
-            always_start_menu (bool):
-                If True, launches the interactive menu after command execution
-                instead of exiting.
+            always_start_menu (bool): Whether to enter menu mode after a successful
+                command dispatch when the route itself does not already target help
+                or a namespace menu.
 
         Raises:
             FalyxError:
@@ -1856,7 +2560,6 @@ class Falyx:
             - Most CLI execution paths terminate via `sys.exit()`
             - Interactive mode continues via `menu()`
             - Execution options are applied in a scoped "execution" namespace
-            - Preview mode (`?command`) bypasses execution and renders a preview
 
         Example:
             ```

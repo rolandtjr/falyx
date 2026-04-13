@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `ActionFactory`, a dynamic Falyx Action that defers the construction of its
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `ActionFactory`, a dynamic Falyx Action that defers the construction of its
 underlying logic to runtime using a user-defined factory function.
 
 This pattern is useful when the specific Action to execute cannot be determined until
@@ -46,8 +45,7 @@ from falyx.utils import ensure_async
 
 
 class ActionFactory(BaseAction):
-    """
-    Dynamically creates and runs another Action at runtime using a factory function.
+    """Dynamically creates and runs another Action at runtime using a factory function.
 
     This is useful for generating context-specific behavior (e.g., dynamic HTTPActions)
     where the structure of the next action depends on runtime values.

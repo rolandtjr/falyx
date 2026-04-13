@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Core action system for Falyx.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Core action system for Falyx.
 
 This module defines the building blocks for executable actions and workflows,
 providing a structured way to compose, execute, recover, and manage sequences of
@@ -14,13 +13,13 @@ Core guarantees:
 - Consistent timing and execution context tracking for each run.
 - Unified, predictable result handling and error propagation.
 - Optional last_result injection to enable flexible, data-driven workflows.
-- Built-in support for retries, rollbacks, parallel groups, chaining, and fallback
+- Built-in support for retries, rollbacks, concurrent groups, chaining, and fallback
   recovery.
 
 Key components:
 - Action: wraps a function or coroutine into a standard executable unit.
 - ChainedAction: runs actions sequentially, optionally injecting last results.
-- ActionGroup: runs actions in parallel and gathers results.
+- ActionGroup: runs actions concurrently and gathers results.
 - ProcessAction: executes CPU-bound functions in a separate process.
 - LiteralInputAction: injects static values into workflows.
 - FallbackAction: gracefully recovers from failures or missing data.
@@ -46,8 +45,7 @@ from falyx.themes import OneColors
 
 
 class BaseAction(ABC):
-    """
-    Base class for actions. Actions can be simple functions or more
+    """Base class for actions. Actions can be simple functions or more
     complex actions like `ChainedAction` or `ActionGroup`. They can also
     be run independently or as part of Falyx.
 
@@ -115,8 +113,8 @@ class BaseAction(ABC):
 
     @abstractmethod
     def get_infer_target(self) -> tuple[Callable[..., Any] | None, dict[str, Any] | None]:
-        """
-        Returns the callable to be used for argument inference.
+        """Returns the callable to be used for argument inference.
+
         By default, it returns None.
         """
         raise NotImplementedError("get_infer_target must be implemented by subclasses")
@@ -128,9 +126,7 @@ class BaseAction(ABC):
         self.shared_context = shared_context
 
     def get_option(self, option_name: str, default: Any = None) -> Any:
-        """
-        Resolve an option from the OptionsManager if present, otherwise use the fallback.
-        """
+        """Resolve an option from the OptionsManager if present, else default."""
         if self.options_manager:
             return self.options_manager.get(option_name, default)
         return default
@@ -158,8 +154,8 @@ class BaseAction(ABC):
     def prepare(
         self, shared_context: SharedContext, options_manager: OptionsManager | None = None
     ) -> BaseAction:
-        """
-        Prepare the action specifically for sequential (ChainedAction) execution.
+        """Prepare the action specifically for sequential (ChainedAction) execution.
+
         Can be overridden for chain-specific logic.
         """
         self.set_shared_context(shared_context)

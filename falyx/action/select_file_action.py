@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `SelectFileAction`, a Falyx Action that allows users to select one or more
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `SelectFileAction`, a Falyx Action that allows users to select one or more
 files from a target directory and optionally return either their content or path,
 parsed based on a selected `FileType`.
 
@@ -72,8 +71,7 @@ from falyx.themes import OneColors
 
 
 class SelectFileAction(BaseAction):
-    """
-    SelectFileAction allows users to select a file(s) from a directory and return:
+    """SelectFileAction allows users to select a file(s) from a directory and return:
     - file content (as text, JSON, CSV, etc.)
     - or the file path itself.
 

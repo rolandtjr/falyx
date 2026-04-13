@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines the `Argument` dataclass used by `CommandArgumentParser` to represent
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines the `Argument` dataclass used by `CommandArgumentParser` to represent
 individual command-line parameters in a structured, introspectable format.
 
 Each `Argument` instance describes one CLI input, including its flags, type,
@@ -42,8 +41,7 @@ from falyx.parser.argument_action import ArgumentAction
 
 @dataclass
 class Argument:
-    """
-    Represents a command-line argument.
+    """Represents a command-line argument.
 
     Attributes:
         flags (tuple[str, ...]): Short and long flags for the argument.

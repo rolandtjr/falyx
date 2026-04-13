@@ -1,4 +1,4 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
 """Manages global or scoped CLI options across namespaces for Falyx commands.
 
 The `OptionsManager` provides a centralized interface for retrieving, setting, toggling,

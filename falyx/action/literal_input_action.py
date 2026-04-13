@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `LiteralInputAction`, a lightweight Falyx Action that injects a static,
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `LiteralInputAction`, a lightweight Falyx Action that injects a static,
 predefined value into a `ChainedAction` workflow.
 
 This Action is useful for embedding literal values (e.g., strings, numbers,
@@ -43,8 +42,7 @@ from falyx.themes import OneColors
 
 
 class LiteralInputAction(Action):
-    """
-    LiteralInputAction injects a static value into a ChainedAction.
+    """LiteralInputAction injects a static value into a ChainedAction.
 
     This allows embedding hardcoded values mid-pipeline, useful when:
     - Providing default or fallback inputs.

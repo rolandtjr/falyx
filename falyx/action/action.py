@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `Action`, the core atomic unit in the Falyx CLI framework, used to wrap and
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `Action`, the core atomic unit in the Falyx CLI framework, used to wrap and
 execute a single callable or coroutine with structured lifecycle support.
 
 An `Action` is the simplest building block in Falyx's execution model, enabling
@@ -50,8 +49,7 @@ from falyx.utils import ensure_async
 
 
 class Action(BaseAction):
-    """
-    Action wraps a simple function or coroutine into a standard executable unit.
+    """Action wraps a simple function or coroutine into a standard executable unit.
 
     It supports:
     - Optional retry logic.
@@ -148,8 +146,8 @@ class Action(BaseAction):
             self.enable_retry()
 
     def get_infer_target(self) -> tuple[Callable[..., Any], None]:
-        """
-        Returns the callable to be used for argument inference.
+        """Returns the callable to be used for argument inference.
+
         By default, it returns the action itself.
         """
         return self.action, None

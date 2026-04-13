@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-A Python module that integrates the Nord color palette with the Rich library.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""A Python module that integrates the Nord color palette with the Rich library.
 It defines a metaclass-based NordColors class allowing dynamic attribute lookups
 (e.g., NORD12bu -> "#D08770 bold underline") and provides a comprehensive Nord-based
 Theme that customizes Rich's default styles.
@@ -26,8 +25,7 @@ from rich.theme import Theme
 
 
 class ColorsMeta(type):
-    """
-    A metaclass that catches attribute lookups like `NORD12buidrs` or `ORANGE_b` and returns
+    """A metaclass that catches attribute lookups like `NORD12buidrs` or `ORANGE_b` and returns
     a string combining the base color + bold/italic/underline/dim/reverse/strike flags.
 
     The color values are required to be uppercase with optional underscores and digits,
@@ -152,8 +150,7 @@ class OneColors(metaclass=ColorsMeta):
 
 
 class NordColors(metaclass=ColorsMeta):
-    """
-    Defines the Nord color palette as class attributes.
+    """Defines the Nord color palette as class attributes.
 
     Each color is labeled by its canonical Nord name (NORD0-NORD15)
     and also has useful aliases grouped by theme:
@@ -212,8 +209,7 @@ class NordColors(metaclass=ColorsMeta):
 
     @classmethod
     def as_dict(cls):
-        """
-        Returns a dictionary mapping every NORD* attribute
+        """Returns a dictionary mapping every NORD* attribute
         (e.g. 'NORD0') to its hex code.
         """
         return {
@@ -224,8 +220,7 @@ class NordColors(metaclass=ColorsMeta):
 
     @classmethod
     def aliases(cls):
-        """
-        Returns a dictionary of *all* other aliases
+        """Returns a dictionary of *all* other aliases
         (Polar Night, Snow Storm, Frost, Aurora).
         """
         skip_prefixes = ("NORD", "__")
@@ -462,9 +457,7 @@ NORD_THEME_STYLES: dict[str, Style] = {
 
 
 def get_nord_theme() -> Theme:
-    """
-    Returns a Rich Theme for the Nord color palette.
-    """
+    """Returns a Rich Theme for the Nord color palette."""
     return Theme(NORD_THEME_STYLES)
 
 

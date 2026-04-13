@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Provides interactive selection utilities for Falyx CLI actions.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Provides interactive selection utilities for Falyx CLI actions.
 
 This module defines `SelectionOption` objects, selection maps, and rich-powered
 rendering functions to build interactive selection prompts using `prompt_toolkit`.
@@ -46,9 +45,7 @@ class SelectionOption:
 
 
 class SelectionOptionMap(CaseInsensitiveDict):
-    """
-    Manages selection options including validation and reserved key protection.
-    """
+    """Manages selection options including validation and reserved key protection."""
 
     RESERVED_KEYS: set[str] = set()
 
@@ -118,6 +115,7 @@ def render_table_base(
     highlight: bool = True,
     column_names: Sequence[str] | None = None,
 ) -> Table:
+    """Render the base table for selection prompts."""
     table = Table(
         title=title,
         caption=caption,
@@ -288,6 +286,7 @@ async def prompt_for_index(
     allow_duplicates: bool = False,
     cancel_key: str = "",
 ) -> int | list[int]:
+    """Prompt the user to select an index from a table of options. Return the selected index."""
     prompt_session = prompt_session or PromptSession()
 
     if show_table:

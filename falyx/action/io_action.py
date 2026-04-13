@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-BaseIOAction: A base class for stream- or buffer-based IO-driven Actions.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""BaseIOAction: A base class for stream- or buffer-based IO-driven Actions.
 
 This module defines `BaseIOAction`, a specialized variant of `BaseAction`
 that interacts with standard input and output, enabling command-line pipelines,
@@ -29,8 +28,7 @@ from falyx.themes import OneColors
 
 
 class BaseIOAction(BaseAction):
-    """
-    Base class for IO-driven Actions that operate on stdin/stdout input streams.
+    """Base class for IO-driven Actions that operate on stdin/stdout input streams.
 
     Designed for use in shell pipelines or programmatic workflows that pass data
     through chained commands. It handles reading input, transforming it, and

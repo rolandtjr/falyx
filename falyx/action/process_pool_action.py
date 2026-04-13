@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `ProcessPoolAction`, a parallelized action executor that distributes
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `ProcessPoolAction`, a parallelized action executor that distributes
 tasks across multiple processes using Python's `concurrent.futures.ProcessPoolExecutor`.
 
 This module enables structured execution of CPU-bound tasks in parallel while
@@ -37,8 +36,7 @@ from falyx.themes import OneColors
 
 @dataclass
 class ProcessTask:
-    """
-    Represents a callable task with its arguments for parallel execution.
+    """Represents a callable task with its arguments for parallel execution.
 
     This lightweight container is used to queue individual tasks for execution
     inside a `ProcessPoolAction`.
@@ -62,8 +60,7 @@ class ProcessTask:
 
 
 class ProcessPoolAction(BaseAction):
-    """
-    Executes a set of independent tasks in parallel using a process pool.
+    """Executes a set of independent tasks in parallel using a process pool.
 
     `ProcessPoolAction` is ideal for CPU-bound tasks that benefit from
     concurrent execution in separate processes. Each task is wrapped in a
@@ -147,7 +144,7 @@ class ProcessPoolAction(BaseAction):
     async def _run(self, *args, **kwargs) -> Any:
         if not self.actions:
             raise EmptyPoolError(f"[{self.name}] No actions to execute.")
-        shared_context = SharedContext(name=self.name, action=self, is_parallel=True)
+        shared_context = SharedContext(name=self.name, action=self, is_concurrent=True)
         if self.shared_context:
             shared_context.set_shared_result(self.shared_context.last_result())
         if self.inject_last_result and self.shared_context:

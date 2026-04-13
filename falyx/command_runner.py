@@ -1,4 +1,4 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
 """Standalone command runner for the Falyx CLI framework.
 
 This module defines `CommandRunner`, a developer-facing convenience wrapper for

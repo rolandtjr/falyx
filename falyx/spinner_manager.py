@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Centralized spinner rendering for Falyx CLI.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Centralized spinner rendering for Falyx CLI.
 
 This module provides the `SpinnerManager` class, which manages a collection of
 Rich spinners that can be displayed concurrently during long-running tasks.
@@ -55,8 +54,7 @@ from falyx.themes import OneColors
 
 
 class SpinnerData:
-    """
-    Holds the configuration and Rich spinner object for a single task.
+    """Holds the configuration and Rich spinner object for a single task.
 
     This class is a lightweight container for spinner metadata, storing the
     message text, spinner type, style, and speed. It also initializes the
@@ -92,8 +90,7 @@ class SpinnerData:
 
 
 class SpinnerManager:
-    """
-    Manages multiple Rich spinners and handles their terminal rendering.
+    """Manages multiple Rich spinners and handles their terminal rendering.
 
     SpinnerManager maintains a registry of active spinners and a single
     Rich `Live` display loop to render them. When the first spinner is added,

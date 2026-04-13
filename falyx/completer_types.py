@@ -1,3 +1,4 @@
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
 """Completion route models for routed Falyx autocompletion.
 
 This module defines `CompletionRoute`, a lightweight value object used by the

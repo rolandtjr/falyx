@@ -1,4 +1,4 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
 """Execute shell commands with input substitution."""
 
 from __future__ import annotations
@@ -16,8 +16,7 @@ from falyx.themes import OneColors
 
 
 class ShellAction(BaseIOAction):
-    """
-    ShellAction wraps a shell command template for CLI pipelines.
+    """ShellAction wraps a shell command template for CLI pipelines.
 
     This Action takes parsed input (from stdin, literal, or last_result),
     substitutes it into the provided shell command template, and executes

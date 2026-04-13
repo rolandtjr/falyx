@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Utilities for user interaction prompts in the Falyx CLI framework.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Utilities for user interaction prompts in the Falyx CLI framework.
 
 Provides asynchronous confirmation dialogs and helper logic to determine
 whether a user should be prompted based on command-line options.
@@ -38,6 +37,15 @@ def should_prompt_user(
     flags that may override the need for confirmation, such as `--never-prompt`,
     `--force-confirm`, or `--skip-confirm`. The `override_namespace` is checked
     first for any explicit overrides, followed by the main `namespace` for defaults.
+
+    Args:
+        confirm (bool): The initial confirmation flag (e.g., from a command argument).
+        options (OptionsManager): The options manager to check for override flags.
+        namespace (str): The primary namespace to check for options (default: "default").
+        override_namespace (str): The secondary namespace for overrides (default: "execution").
+
+    Returns:
+        bool: True if the user should be prompted, False if confirmation can be bypassed.
     """
     never_prompt = options.get("never_prompt", None, override_namespace)
     if never_prompt is None:
@@ -74,9 +82,16 @@ async def confirm_async(
 
 
 def rich_text_to_prompt_text(text: Text | str | StyleAndTextTuples) -> StyleAndTextTuples:
-    """
-    Convert a Rich Text object to a list of (style, text) tuples
-    compatible with prompt_toolkit.
+    """Convert a Rich Text object to prompt_toolkit formatted text.
+
+    This function takes a Rich `Text` object (or a string or already formatted text)
+    and converts it in to a list of (style, text) tuples compatible with prompt_toolkit.
+
+    Args:
+        text (Text | str | StyleAndTextTuples): The input text to convert.
+
+    Returns:
+        StyleAndTextTuples: A list of (style, text) tuples for prompt_toolkit.
     """
     if isinstance(text, list):
         if all(isinstance(pair, tuple) and len(pair) == 2 for pair in text):

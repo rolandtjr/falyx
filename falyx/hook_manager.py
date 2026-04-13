@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines the `HookManager` and `HookType` used in the Falyx CLI framework to manage
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines the `HookManager` and `HookType` used in the Falyx CLI framework to manage
 execution lifecycle hooks around actions and commands.
 
 The hook system enables structured callbacks for important stages in a Falyx action's
@@ -31,8 +30,7 @@ Hook = Union[
 
 
 class HookType(Enum):
-    """
-    Enum for supported hook lifecycle phases in Falyx.
+    """Enum for supported hook lifecycle phases in Falyx.
 
     HookType is used to classify lifecycle events that can be intercepted
     with user-defined callbacks.
@@ -91,8 +89,7 @@ class HookType(Enum):
 
 
 class HookManager:
-    """
-    Manages lifecycle hooks for a command or action.
+    """Manages lifecycle hooks for a command or action.
 
     `HookManager` tracks user-defined callbacks to be run at key points in a command's
     lifecycle: before execution, on success, on error, after completion, and during
@@ -114,8 +111,7 @@ class HookManager:
         }
 
     def register(self, hook_type: HookType | str, hook: Hook):
-        """
-        Register a new hook for a given lifecycle phase.
+        """Register a new hook for a given lifecycle phase.
 
         Args:
             hook_type (HookType | str): The hook category (e.g. "before", "on_success").
@@ -128,8 +124,7 @@ class HookManager:
         self._hooks[hook_type].append(hook)
 
     def clear(self, hook_type: HookType | None = None):
-        """
-        Clear registered hooks for one or all hook types.
+        """Clear registered hooks for one or all hook types.
 
         Args:
             hook_type (HookType | None): If None, clears all hooks.
@@ -141,8 +136,7 @@ class HookManager:
                 self._hooks[ht] = []
 
     async def trigger(self, hook_type: HookType, context: ExecutionContext):
-        """
-        Invoke all hooks registered for a given lifecycle phase.
+        """Invoke all hooks registered for a given lifecycle phase.
 
         Args:
             hook_type (HookType): The lifecycle phase to trigger.
