@@ -20,7 +20,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from falyx.console import console
-from falyx.prompt_utils import rich_text_to_prompt_text
+from falyx.prompt_utils import prompt_session_context, rich_text_to_prompt_text
 from falyx.themes import OneColors
 from falyx.utils import CaseInsensitiveDict, chunks
 from falyx.validators import MultiIndexValidator, MultiKeyValidator
@@ -292,18 +292,31 @@ async def prompt_for_index(
     if show_table:
         console.print(table, justify="center")
 
-    selection = await prompt_session.prompt_async(
-        message=rich_text_to_prompt_text(prompt_message),
-        validator=MultiIndexValidator(
-            min_index,
-            max_index,
-            number_selections,
-            separator,
-            allow_duplicates,
-            cancel_key,
-        ),
-        default=default_selection,
+    number_selections_str = (
+        f"{number_selections} " if isinstance(number_selections, int) else ""
     )
+
+    plural = "s" if number_selections != 1 else ""
+    placeholder = (
+        f"Enter {number_selections_str}selection{plural} separated by '{separator}'"
+        if number_selections != 1
+        else "Enter selection"
+    )
+
+    with prompt_session_context(prompt_session) as session:
+        selection = await session.prompt_async(
+            message=rich_text_to_prompt_text(prompt_message),
+            validator=MultiIndexValidator(
+                min_index,
+                max_index,
+                number_selections,
+                separator,
+                allow_duplicates,
+                cancel_key,
+            ),
+            default=default_selection,
+            placeholder=placeholder,
+        )
 
     if selection.strip() == cancel_key:
         return int(cancel_key)
@@ -331,13 +344,26 @@ async def prompt_for_selection(
     if show_table:
         console.print(table, justify="center")
 
-    selected = await prompt_session.prompt_async(
-        message=rich_text_to_prompt_text(prompt_message),
-        validator=MultiKeyValidator(
-            keys, number_selections, separator, allow_duplicates, cancel_key
-        ),
-        default=default_selection,
+    number_selections_str = (
+        f"{number_selections} " if isinstance(number_selections, int) else ""
     )
+
+    plural = "s" if number_selections != 1 else ""
+    placeholder = (
+        f"Enter {number_selections_str}selection{plural} separated by '{separator}'"
+        if number_selections != 1
+        else "Enter selection"
+    )
+
+    with prompt_session_context(prompt_session) as session:
+        selected = await session.prompt_async(
+            message=rich_text_to_prompt_text(prompt_message),
+            validator=MultiKeyValidator(
+                keys, number_selections, separator, allow_duplicates, cancel_key
+            ),
+            default=default_selection,
+            placeholder=placeholder,
+        )
 
     if selected.strip() == cancel_key:
         return cancel_key

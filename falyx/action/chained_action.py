@@ -115,6 +115,7 @@ class ChainedAction(BaseAction, ActionListMixin):
         name: str,
         actions: (
             Sequence[BaseAction | Callable[..., Any] | Callable[..., Awaitable[Any]]]
+            | Any
             | None
         ) = None,
         *,

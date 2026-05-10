@@ -8,6 +8,8 @@ Includes:
 - `should_prompt_user()` for conditional prompt logic.
 - `confirm_async()` for interactive yes/no confirmation.
 """
+from contextlib import contextmanager
+from typing import Iterator
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import (
@@ -24,11 +26,25 @@ from falyx.themes import OneColors
 from falyx.validators import yes_no_validator
 
 
+@contextmanager
+def prompt_session_context(session: PromptSession) -> Iterator[PromptSession]:
+    """Temporary override for prompt session management"""
+    message = session.message
+    validator = session.validator
+    placeholder = session.placeholder
+    try:
+        yield session
+    finally:
+        session.message = message
+        session.validator = validator
+        session.placeholder = placeholder
+
+
 def should_prompt_user(
     *,
     confirm: bool,
     options: OptionsManager,
-    namespace: str = "default",
+    namespace: str = "root",
     override_namespace: str = "execution",
 ) -> bool:
     """Determine whether to prompt the user for confirmation.
@@ -41,7 +57,7 @@ def should_prompt_user(
     Args:
         confirm (bool): The initial confirmation flag (e.g., from a command argument).
         options (OptionsManager): The options manager to check for override flags.
-        namespace (str): The primary namespace to check for options (default: "default").
+        namespace (str): The primary namespace to check for options (default: "root").
         override_namespace (str): The secondary namespace for overrides (default: "execution").
 
     Returns:

@@ -39,7 +39,7 @@ Design Notes:
       duplication across Falyx runtime entrypoints.
 
 Typical Usage:
-    executor = CommandExecutor(options=options, hooks=hooks, console=console)
+    executor = CommandExecutor(options=options, hooks=hooks)
     result = await executor.execute(
         command=command,
         args=args,
@@ -51,8 +51,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from rich.console import Console
-
 from falyx.action import Action
 from falyx.command import Command
 from falyx.context import ExecutionContext
@@ -61,7 +59,6 @@ from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
 from falyx.logger import logger
 from falyx.options_manager import OptionsManager
-from falyx.themes import OneColors
 
 
 class CommandExecutor:
@@ -81,15 +78,13 @@ class CommandExecutor:
         - Apply scoped runtime overrides using `OptionsManager`
         - Trigger executor-level hooks before and after command execution
         - Create and manage an executor-level `ExecutionContext`
-        - Render execution errors to the configured console
-        - Control whether errors are raised, wrapped, or suppressed
+        - Control whether errors are raised or wrapped
         - Emit optional execution summaries
 
     Attributes:
         options (OptionsManager): Shared options manager used to apply scoped
             execution overrides.
         hooks (HookManager): Hook manager for executor-level lifecycle hooks.
-        console (Console): Rich console used for user-facing error output.
     """
 
     def __init__(
@@ -97,11 +92,9 @@ class CommandExecutor:
         *,
         options: OptionsManager,
         hooks: HookManager,
-        console: Console,
     ) -> None:
         self.options = options
         self.hooks = hooks
-        self.console = console
 
     def _debug_hooks(self, command: Command) -> None:
         """Log executor-level and command-level hook registrations for debugging.
@@ -112,7 +105,7 @@ class CommandExecutor:
         Args:
             command (Command): The command about to be executed.
         """
-        logger.debug("Executor hooks:\n%s", str(self.hooks))
+        logger.debug("executor hooks:\n%s", str(self.hooks))
         logger.debug("['%s'] hooks:\n%s", command.key, str(command.hooks))
 
     def _apply_retry_overrides(
@@ -164,7 +157,7 @@ class CommandExecutor:
         else:
             logger.warning(
                 "[%s] Retry requested, but action is not an Action instance.",
-                command.description,
+                command.key,
             )
 
     def _execution_option_overrides(
@@ -188,30 +181,6 @@ class CommandExecutor:
             "force_confirm": execution_args.get("force_confirm", False),
             "skip_confirm": execution_args.get("skip_confirm", False),
         }
-
-    async def _handle_action_error(
-        self, selected_command: Command, error: Exception
-    ) -> None:
-        """Render and log a command execution error.
-
-        This helper logs the full exception details for debugging and prints a
-        user-facing error message to the configured console.
-
-        Args:
-            selected_command (Command): The command that failed.
-            error (Exception): The exception raised during command execution.
-        """
-        logger.debug(
-            "[%s] '%s' failed with error: %s",
-            selected_command.key,
-            selected_command.description,
-            error,
-            exc_info=True,
-        )
-        self.console.print(
-            f"[{OneColors.DARK_RED}]An error occurred while executing "
-            f"{selected_command.description}:[/] {error}"
-        )
 
     async def execute(
         self,
@@ -277,6 +246,11 @@ class CommandExecutor:
             - Summary output is only emitted when the `summary` execution option is
             present in `execution_args`.
         """
+        if not (raise_on_error or wrap_errors):
+            raise FalyxError(
+                "CommandExecutor.execute() requires either raise_on_error=True "
+                "or wrap_errors=True."
+            )
         self._debug_hooks(command)
         self._apply_retry_overrides(command, execution_args)
         overrides = self._execution_option_overrides(execution_args)
@@ -307,24 +281,25 @@ class CommandExecutor:
         except (KeyboardInterrupt, EOFError) as error:
             logger.info(
                 "[execute] '%s' interrupted by user.",
-                command.description,
+                command.key,
             )
             if wrap_errors:
                 raise FalyxError(
-                    f"[execute] ⚠️ '{command.description}' interrupted by user."
+                    f"[execute] '{command.key}' interrupted by user."
                 ) from error
-            if raise_on_error:
-                raise error
+            raise error
         except Exception as error:
+            logger.debug(
+                "[execute] '%s' failed: %s",
+                command.key,
+                error,
+                exc_info=True,
+            )
             context.exception = error
             await self.hooks.trigger(HookType.ON_ERROR, context)
-            await self._handle_action_error(command, error)
             if wrap_errors:
-                raise FalyxError(
-                    f"[execute] '{command.description}' failed: {error}"
-                ) from error
-            if raise_on_error:
-                raise error
+                raise FalyxError(f"[execute] '{command.key}' failed: {error}") from error
+            raise error
         finally:
             context.stop_timer()
             await self.hooks.trigger(HookType.AFTER, context)

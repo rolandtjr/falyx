@@ -69,14 +69,14 @@ async def test_resolve_args_raises_on_conflicting_execution_option():
         execution_options=["summary"],
     )
     with pytest.raises(
-        CommandArgumentError, match="Destination 'summary' is already defined"
+        CommandArgumentError, match="destination 'summary' is already defined"
     ):
         command.arg_parser.add_argument(
             "--summary", action="store_true", help="A conflicting argument."
         )
 
     with pytest.raises(
-        CommandArgumentError, match="Destination 'summary' is already defined"
+        CommandArgumentError, match="destination 'summary' is already defined"
     ):
         command.arg_parser.enable_execution_options(frozenset({ExecutionOption.SUMMARY}))
 

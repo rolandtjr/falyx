@@ -88,7 +88,12 @@ class SelectionAction(BaseAction):
         allow_duplicates (bool): Whether duplicate selections are allowed.
         inject_last_result (bool): If True, attempts to inject the last result as default.
         inject_into (str): The keyword name for injected value (default: "last_result").
-        return_type (SelectionReturnType | str): The type of result to return.
+        return_type (SelectionReturnType | str): The type of result to return. Options:
+            - KEY: Return the selected key(s) only.
+            - VALUE: Return the value(s) associated with the selected key(s).
+            - DESCRIPTION: Return the description(s) of the selected item(s).
+            - DESCRIPTION_VALUE: Return a dict of {description: value} pairs.
+            - ITEMS: Return full `SelectionOption` objects as a dict {key: SelectionOption}.
         prompt_session (PromptSession | None): Reused or customized prompt_toolkit session.
         never_prompt (bool): If True, skips prompting and uses default_selection or last_result.
         show_table (bool): Whether to render the selection table before prompting.

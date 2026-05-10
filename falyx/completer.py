@@ -140,12 +140,11 @@ class FalyxCompleter(Completer):
             suggestions = self._suggest_namespace_entries(route.namespace, route.stub)
 
             # Only here should namespace-level help/TLDR be suggested.
-            if not route.command and (not route.stub or route.stub.startswith("-")):
-                suggestions.extend(
-                    flag
-                    for flag in ("-h", "--help", "-T", "--tldr")
-                    if flag.startswith(route.stub)
-                )
+            # TODO: better completer in FalyxParser
+            if not route.command:  # and (not route.stub or route.stub.startswith("-")):
+                for flag in route.namespace.parser._options_by_dest:
+                    if flag.startswith(route.stub):
+                        suggestions.append(flag)
 
             if route.is_preview:
                 suggestions = [f"?{s}" for s in suggestions]

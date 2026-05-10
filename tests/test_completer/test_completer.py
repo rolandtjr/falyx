@@ -120,6 +120,19 @@ def test_get_completions_namespace_boundary_suggests_help_flags(falyx):
 
     assert "-h" in texts
     assert "--help" in texts
+    assert "-T" not in texts
+    assert "--tldr" not in texts
+
+    falyx.add_tldr_example(
+        entry_key="R",
+        usage="",
+        description="This is a TLDR example for the R command.",
+    )
+    results = list(completer.get_completions(Document("-"), None))
+    texts = completion_texts(results)
+
+    assert "-h" in texts
+    assert "--help" in texts
     assert "-T" in texts
     assert "--tldr" in texts
 
@@ -247,3 +260,46 @@ def test_ensure_quote_wraps_whitespace(falyx):
 
     assert completer._ensure_quote("hello world") == '"hello world"'
     assert completer._ensure_quote("hello") == "hello"
+
+
+def test_command_suggestions_are_case_insensitive(falyx):
+    completer = FalyxCompleter(falyx)
+
+    results = list(completer.get_completions(Document("r"), None))
+    texts = completion_texts(results)
+
+    assert "r" in texts
+    assert "run" in texts
+
+    results = list(completer.get_completions(Document("R"), None))
+    texts = completion_texts(results)
+
+    assert "R" in texts
+    assert "RUN" in texts
+
+
+def test_namespace_suggestions_are_case_insensitive(falyx):
+    completer = FalyxCompleter(falyx)
+
+    results = list(completer.get_completions(Document("op"), None))
+    texts = completion_texts(results)
+
+    assert "ops" in texts
+    assert "operations" in texts
+
+    results = list(completer.get_completions(Document("OP"), None))
+    texts = completion_texts(results)
+
+    assert "OPS" in texts
+    assert "OPERATIONS" in texts
+
+
+def test_command_completions_after_namespace(falyx):
+    completer = FalyxCompleter(falyx)
+
+    results = list(completer.get_completions(Document("OPS D --"), None))
+    texts = completion_texts(results)
+
+    assert "--target" in texts
+    assert "--region" in texts
+    assert "--help" in texts

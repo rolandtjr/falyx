@@ -1,5 +1,5 @@
 # Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
-"""CommandArgumentParser implementation for the Falyx CLI framework.
+"""CommandArgumentParser for the Falyx CLI framework.
 
 This module provides a structured, extensible argument parsing system designed
 specifically for Falyx commands. It replaces traditional argparse usage with a
@@ -49,17 +49,26 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Generator, Iterable, Sequence
+from typing import Any, Generator, Iterable
 
 from rich.console import Console
 from rich.markup import escape
 from rich.padding import Padding
 from rich.panel import Panel
+from rich.style import StyleType
 
 from falyx.action.base_action import BaseAction
 from falyx.console import console
 from falyx.context import InvocationContext
-from falyx.exceptions import CommandArgumentError, NotAFalyxError
+from falyx.exceptions import (
+    ArgumentGroupError,
+    ArgumentParsingError,
+    CommandArgumentError,
+    InvalidValueError,
+    MissingValueError,
+    NotAFalyxError,
+    UnrecognizedOptionError,
+)
 from falyx.execution_option import ExecutionOption
 from falyx.mode import FalyxMode
 from falyx.options_manager import OptionsManager
@@ -73,8 +82,10 @@ from falyx.parser.parser_types import (
     false_none,
     true_none,
 )
-from falyx.parser.utils import coerce_value
+from falyx.parser.utils import coerce_value, get_type_name
 from falyx.signals import HelpSignal
+
+builtin_type = type
 
 
 class _GroupBuilder:
@@ -99,14 +110,51 @@ class _GroupBuilder:
         self.parser = parser
         self.group_name = group_name
         self.mutex_name = mutex_name
+        if group_name and mutex_name:
+            raise ArgumentGroupError("cannot specify both group_name and mutex_name")
+        if not group_name and not mutex_name:
+            raise ArgumentGroupError("must specify either group_name or mutex_name")
 
-    def add_argument(self, *flags, **kwargs) -> None:
+    def add_argument(
+        self,
+        *flags,
+        action: str | ArgumentAction = "store",
+        nargs: int | str | None = None,
+        default: Any = None,
+        type: Any = str,
+        choices: Iterable | None = None,
+        required: bool = False,
+        help: str = "",
+        dest: str | None = None,
+        resolver: BaseAction | None = None,
+        lazy_resolver: bool = True,
+        suggestions: list[str] | None = None,
+    ) -> None:
         self.parser.add_argument(
             *flags,
+            action=action,
+            nargs=nargs,
+            default=default,
+            type=type,
+            choices=choices,
+            required=required,
+            help=help,
+            dest=dest,
+            resolver=resolver,
+            lazy_resolver=lazy_resolver,
+            suggestions=suggestions,
             group=self.group_name,
             mutex_group=self.mutex_name,
-            **kwargs,
         )
+
+    def __str__(self) -> str:
+        if self.group_name:
+            return f"GroupBuilder(group='{self.group_name}')"
+        elif self.mutex_name:
+            return f"GroupBuilder(mutex_group='{self.mutex_name}')"
+        assert (
+            False
+        ), "Invalid GroupBuilder state: neither group_name nor mutex_name is set"
 
 
 class CommandArgumentParser:
@@ -136,7 +184,7 @@ class CommandArgumentParser:
         self,
         command_key: str = "",
         command_description: str = "",
-        command_style: str = "bold",
+        command_style: StyleType = "bold",
         help_text: str = "",
         help_epilog: str = "",
         aliases: list[str] | None = None,
@@ -148,7 +196,7 @@ class CommandArgumentParser:
         self.console: Console = console
         self.command_key: str = command_key
         self.command_description: str = command_description
-        self.command_style: str = command_style
+        self.command_style: StyleType = command_style
         self.help_text: str = help_text
         self.help_epilog: str = help_epilog
         self.aliases: list[str] = aliases or []
@@ -172,10 +220,21 @@ class CommandArgumentParser:
         if tldr_examples:
             self.add_tldr_examples(tldr_examples)
         self.options_manager: OptionsManager = options_manager or OptionsManager()
+        self._is_runner_mode: bool = False
 
     def mark_as_help_command(self) -> None:
         """Mark this parser as the help command parser."""
         self._is_help_command = True
+
+    @property
+    def is_runner_mode(self) -> bool:
+        """Check if the parser is being used in a CommandRunner context."""
+        return self._is_runner_mode
+
+    @is_runner_mode.setter
+    def is_runner_mode(self, is_runner_mode: bool) -> None:
+        """Set whether the parser is being used in a CommandRunner context."""
+        self._is_runner_mode = is_runner_mode
 
     def set_options_manager(self, options_manager: OptionsManager) -> None:
         """Set the options manager for the parser."""
@@ -238,7 +297,7 @@ class CommandArgumentParser:
         """Register a destination as an execution argument."""
         if dest in self._execution_dests:
             raise CommandArgumentError(
-                f"Destination '{dest}' is already registered as an execution argument"
+                f"destination '{dest}' is already registered as an execution argument"
             )
         self._execution_dests.add(dest)
 
@@ -288,9 +347,9 @@ class CommandArgumentParser:
                 )
             else:
                 raise CommandArgumentError(
-                    f"Invalid TLDR example format: {example}. "
-                    "Examples must be either TLDRExample instances "
-                    "or tuples of (usage, description)."
+                    f"invalid TLDR example format: {example}.",
+                    hint="examples must be either TLDRExample instances "
+                    "or tuples of (usage, description).",
                 )
 
         if "tldr" not in self._dest_set:
@@ -302,7 +361,7 @@ class CommandArgumentParser:
         description: str = "",
     ) -> _GroupBuilder:
         if name in self._argument_groups:
-            raise CommandArgumentError(f"Argument group '{name}' already exists")
+            raise ArgumentGroupError(f"argument group '{name}' already exists")
         self._argument_groups[name] = ArgumentGroup(name=name, description=description)
         return _GroupBuilder(self, group_name=name)
 
@@ -314,7 +373,7 @@ class CommandArgumentParser:
         description: str = "",
     ) -> _GroupBuilder:
         if name in self._mutex_groups:
-            raise CommandArgumentError(f"Mutex group '{name}' already exists")
+            raise ArgumentGroupError(f"mutex group '{name}' already exists")
         self._mutex_groups[name] = MutuallyExclusiveGroup(
             name=name,
             required=required,
@@ -329,7 +388,7 @@ class CommandArgumentParser:
             positional = True
 
         if positional and len(flags) > 1:
-            raise CommandArgumentError("Positional arguments cannot have multiple flags")
+            raise CommandArgumentError("positional arguments cannot have multiple flags")
         return positional
 
     def _validate_groups(
@@ -342,22 +401,23 @@ class CommandArgumentParser:
         """Validate that the specified groups exist and are compatible."""
         if group is not None:
             if group not in self._argument_groups:
-                raise CommandArgumentError(f"Argument group '{group}' does not exist")
+                raise ArgumentGroupError(f"argument group '{group}' does not exist")
 
         if mutex_group is not None:
             if mutex_group not in self._mutex_groups:
-                raise CommandArgumentError(
-                    f"Mutually exclusive group '{mutex_group}' does not exist"
+                raise ArgumentGroupError(
+                    f"mutually exclusive group '{mutex_group}' does not exist"
                 )
+
         if positional and mutex_group is not None:
-            raise CommandArgumentError(
-                "Positional arguments cannot belong to a mutually exclusive group"
+            raise ArgumentGroupError(
+                "positional arguments cannot belong to a mutually exclusive group"
             )
 
         if required and mutex_group is not None:
-            raise CommandArgumentError(
-                "Arguments inside a mutually exclusive group should not be individually required; "
-                "make the group required instead."
+            raise ArgumentGroupError(
+                "arguments inside a mutually exclusive group cannot be individually required",
+                hint="make the group required instead",
             )
 
     def _get_dest_from_flags(self, flags: tuple[str, ...], dest: str | None) -> str:
@@ -365,27 +425,31 @@ class CommandArgumentParser:
         if dest:
             if not dest.replace("_", "").isalnum():
                 raise CommandArgumentError(
-                    "dest must be a valid identifier (letters, digits, and underscores only)"
+                    f"invalid dest '{dest}' must be a valid identifier (letters, digits, and underscores only)"
                 )
             if dest[0].isdigit():
-                raise CommandArgumentError("dest must not start with a digit")
+                raise CommandArgumentError(
+                    f"invalid dest '{dest}': cannot start with a digit"
+                )
             return dest
         dest = None
         for flag in flags:
             if flag.startswith("--"):
-                dest = flag.lstrip("-").replace("-", "_").lower()
+                dest = flag.lstrip("-").replace("-", "_")
                 break
             elif flag.startswith("-"):
-                dest = flag.lstrip("-").replace("-", "_").lower()
+                dest = flag.lstrip("-").replace("-", "_")
             else:
-                dest = flag.replace("-", "_").lower()
+                dest = flag.replace("-", "_")
         assert dest is not None, "dest should not be None"
         if not dest.replace("_", "").isalnum():
             raise CommandArgumentError(
-                "dest must be a valid identifier (letters, digits, and underscores only)"
+                f"invalid dest '{dest}': must be a valid identifier (letters, digits, and underscores only)"
             )
         if dest[0].isdigit():
-            raise CommandArgumentError("dest must not start with a digit")
+            raise CommandArgumentError(
+                f"invalid dest '{dest}': cannot start with a digit"
+            )
         return dest
 
     def _determine_required(
@@ -405,7 +469,7 @@ class CommandArgumentParser:
                 ArgumentAction.TLDR,
             ):
                 raise CommandArgumentError(
-                    f"Argument with action {action} cannot be required"
+                    f"argument with action '{action}' cannot be required"
                 )
             return True
         if positional:
@@ -441,7 +505,7 @@ class CommandArgumentParser:
         ):
             if nargs is not None:
                 raise CommandArgumentError(
-                    f"nargs cannot be specified for {action} actions"
+                    f"nargs cannot be specified for '{action}' actions"
                 )
             return None
         if nargs is None:
@@ -452,7 +516,7 @@ class CommandArgumentParser:
                 raise CommandArgumentError("nargs must be a positive integer")
         elif isinstance(nargs, str):
             if nargs not in allowed_nargs:
-                raise CommandArgumentError(f"Invalid nargs value: {nargs}")
+                raise CommandArgumentError(f"invalid nargs value: {nargs}")
         else:
             raise CommandArgumentError(f"nargs must be an int or one of {allowed_nargs}")
         return nargs
@@ -461,14 +525,16 @@ class CommandArgumentParser:
         self, choices: Iterable | None, expected_type: Any, action: ArgumentAction
     ) -> list[Any]:
         """Normalize and validate choices for the argument."""
-        if choices is not None:
+        if choices is None:
+            choices = []
+        else:
             if action in (
                 ArgumentAction.STORE_TRUE,
                 ArgumentAction.STORE_FALSE,
                 ArgumentAction.STORE_BOOL_OPTIONAL,
             ):
                 raise CommandArgumentError(
-                    f"choices cannot be specified for {action} actions"
+                    f"choices cannot be specified for '{action}' actions"
                 )
             if isinstance(choices, dict):
                 raise CommandArgumentError("choices cannot be a dict")
@@ -478,14 +544,13 @@ class CommandArgumentParser:
                 raise CommandArgumentError(
                     "choices must be iterable (like list, tuple, or set)"
                 ) from error
-        else:
-            choices = []
         for choice in choices:
             try:
                 coerce_value(choice, expected_type)
             except Exception as error:
+                type_name = get_type_name(expected_type)
                 raise CommandArgumentError(
-                    f"Invalid choice {choice!r}: not coercible to {expected_type.__name__} error: {error}"
+                    f"invalid choice {choice!r}: cannot be coerced to {type_name} error: {error}"
                 ) from error
         return choices
 
@@ -493,26 +558,30 @@ class CommandArgumentParser:
         self, default: Any, expected_type: type, dest: str
     ) -> None:
         """Validate the default value type."""
-        if default is not None:
-            try:
-                coerce_value(default, expected_type)
-            except Exception as error:
-                raise CommandArgumentError(
-                    f"Default value {default!r} for '{dest}' cannot be coerced to {expected_type.__name__} error: {error}"
-                ) from error
+        if default is None:
+            return None
+        try:
+            coerce_value(default, expected_type)
+        except Exception as error:
+            type_name = get_type_name(expected_type)
+            raise CommandArgumentError(
+                f"invalid default value {default!r} for '{dest}' cannot be coerced to {type_name} error: {error}"
+            ) from error
 
     def _validate_default_list_type(
         self, default: list[Any], expected_type: type, dest: str
     ) -> None:
         """Validate the default value type for a list."""
-        if isinstance(default, list):
-            for item in default:
-                try:
-                    coerce_value(item, expected_type)
-                except Exception as error:
-                    raise CommandArgumentError(
-                        f"Default list value {default!r} for '{dest}' cannot be coerced to {expected_type.__name__} error: {error}"
-                    ) from error
+        if not isinstance(default, list):
+            return None
+        for item in default:
+            try:
+                coerce_value(item, expected_type)
+            except Exception as error:
+                type_name = get_type_name(expected_type)
+                raise CommandArgumentError(
+                    f"invalid default list value {default!r} for '{dest}' cannot be coerced to {type_name} error: {error}"
+                ) from error
 
     def _validate_resolver(
         self, action: ArgumentAction, resolver: BaseAction | None
@@ -524,7 +593,7 @@ class CommandArgumentParser:
             raise CommandArgumentError("resolver must be provided for ACTION action")
         elif action != ArgumentAction.ACTION and resolver is not None:
             raise CommandArgumentError(
-                f"resolver should not be provided for action {action}"
+                f"resolver should not be provided for action '{action}'"
             )
 
         if not isinstance(resolver, BaseAction):
@@ -540,7 +609,8 @@ class CommandArgumentParser:
                 action = ArgumentAction(action)
             except ValueError as error:
                 raise CommandArgumentError(
-                    f"Invalid action '{action}' is not a valid ArgumentAction"
+                    f"invalid action '{action}' is not a valid ArgumentAction",
+                    hint=f"valid actions are: {', '.join([a.value for a in ArgumentAction])}",
                 ) from error
         if action in (
             ArgumentAction.STORE_TRUE,
@@ -552,7 +622,7 @@ class CommandArgumentParser:
         ):
             if positional:
                 raise CommandArgumentError(
-                    f"Action '{action}' cannot be used with positional arguments"
+                    f"action '{action}' cannot be used with positional arguments"
                 )
 
         return action
@@ -579,49 +649,55 @@ class CommandArgumentParser:
                 return []
             else:
                 return None
-        elif action in (
-            ArgumentAction.STORE_TRUE,
-            ArgumentAction.STORE_FALSE,
-            ArgumentAction.STORE_BOOL_OPTIONAL,
-        ):
+        elif action is ArgumentAction.STORE_TRUE and default is not False:
             raise CommandArgumentError(
-                f"Default value cannot be set for action {action}. It is a boolean flag."
+                f"default value for '{action}' action must be False or None, got {default!r}"
+            )
+        elif action is ArgumentAction.STORE_FALSE and default is not True:
+            raise CommandArgumentError(
+                f"default value for '{action}' action must be True or None, got {default!r}"
+            )
+        elif action is ArgumentAction.STORE_BOOL_OPTIONAL:
+            raise CommandArgumentError(
+                f"default value for '{action}' action must be None, got {default!r}"
             )
         elif action in (ArgumentAction.HELP, ArgumentAction.TLDR, ArgumentAction.COUNT):
             raise CommandArgumentError(
-                f"Default value cannot be set for action {action}."
+                f"default value cannot be set for action '{action}'."
             )
 
         if action in (ArgumentAction.APPEND, ArgumentAction.EXTEND) and not isinstance(
             default, list
         ):
+            type_name = get_type_name(default)
             raise CommandArgumentError(
-                f"Default value for action {action} must be a list, got {type(default).__name__}"
+                f"default value for action '{action}' must be a list, got {type_name}"
             )
         if isinstance(nargs, int) and nargs == 1:
             if not isinstance(default, list):
                 default = [default]
         if isinstance(nargs, int) or nargs in ("*", "+"):
             if not isinstance(default, list):
+                type_name = get_type_name(default)
                 raise CommandArgumentError(
-                    f"Default value for action {action} with nargs {nargs} must be a list, got {type(default).__name__}"
+                    f"default value for action '{action}' with nargs {nargs} must be a list, got {type_name}"
                 )
         return default
 
     def _validate_flags(self, flags: tuple[str, ...]) -> None:
         """Validate the flags provided for the argument."""
         if not flags:
-            raise CommandArgumentError("No flags provided")
+            raise CommandArgumentError("no flags provided for argument")
         for flag in flags:
             if not isinstance(flag, str):
-                raise CommandArgumentError(f"Flag '{flag}' must be a string")
+                raise CommandArgumentError(f"invalid flag '{flag}' must be a string")
             if flag.startswith("--") and len(flag) < 3:
                 raise CommandArgumentError(
-                    f"Flag '{flag}' must be at least 3 characters long"
+                    f"invalid flag '{flag}': long flags must have at least one character after '--'"
                 )
             if flag.startswith("-") and not flag.startswith("--") and len(flag) > 2:
                 raise CommandArgumentError(
-                    f"Flag '{flag}' must be a single character or start with '--'"
+                    f"invalid flag '{flag}': short flags must be a single character"
                 )
 
     def _register_store_bool_optional(
@@ -654,7 +730,6 @@ class CommandArgumentParser:
             group=group,
             mutex_group=mutex_group,
         )
-
         negated_argument = Argument(
             flags=(negated_flag,),
             dest=dest,
@@ -677,7 +752,7 @@ class CommandArgumentParser:
             if flag in self._flag_map and not bypass_validation:
                 existing = self._flag_map[flag]
                 raise CommandArgumentError(
-                    f"Flag '{flag}' is already used by argument '{existing.dest}'"
+                    f"flag '{flag}' is already used by argument '{existing.dest}'"
                 )
 
         for flag in argument.flags:
@@ -719,8 +794,7 @@ class CommandArgumentParser:
         group: str | None = None,
         mutex_group: str | None = None,
     ) -> None:
-        """
-        Define a new argument for the parser.
+        """Define a new argument for the parser.
 
         Supports positional and flagged arguments, type coercion, default values,
         validation rules, and optional resolution via `BaseAction`.
@@ -741,19 +815,18 @@ class CommandArgumentParser:
             group (str | None): Optional argument group name for help organization.
             mutex_group (str | None): Optional mutually exclusive group name.
         """
-        expected_type = type
         self._validate_flags(flags)
         positional = self._is_positional(flags)
         dest = self._get_dest_from_flags(flags, dest)
-        if dest in self._dest_set:
-            raise CommandArgumentError(
-                f"Destination '{dest}' is already defined.\n"
-                "Merging multiple arguments into the same dest (e.g. positional + flagged) "
-                "is not supported. Define a unique 'dest' for each argument."
-            )
         if dest in self.RESERVED_DESTS:
             raise CommandArgumentError(
-                f"Destination '{dest}' is reserved and cannot be used."
+                f"invalid dest '{dest}': '{dest}' is reserved and cannot be used."
+            )
+        if dest in self._dest_set:
+            raise CommandArgumentError(
+                f"destination '{dest}' is already defined.",
+                hint="merging multiple arguments into the same dest (e.g. positional + flagged) "
+                "is not supported. Define a unique 'dest' for each argument.",
             )
 
         self._validate_groups(group, mutex_group, positional, required)
@@ -768,51 +841,58 @@ class CommandArgumentParser:
             and default is not None
         ):
             if isinstance(default, list):
-                self._validate_default_list_type(default, expected_type, dest)
+                self._validate_default_list_type(default, type, dest)
             else:
-                self._validate_default_type(default, expected_type, dest)
-        choices = self._normalize_choices(choices, expected_type, action)
+                self._validate_default_type(default, type, dest)
+        choices = self._normalize_choices(choices, type, action)
         if default is not None and choices:
+            choices_str = ", ".join((str(choice) for choice in choices))
             if isinstance(default, list):
                 if not all(choice in choices for choice in default):
                     raise CommandArgumentError(
-                        f"Default list value {default!r} for '{dest}' must be a subset of choices: {choices}"
+                        f"default list value {default!r} for '{dest}' must be a subset of choices: {choices_str}"
                     )
             elif default not in choices:
                 # If default is not in choices, raise an error
                 raise CommandArgumentError(
-                    f"Default value '{default}' not in allowed choices: {choices}"
+                    f"default value '{default}' not in allowed choices: {choices_str}"
                 )
         required = self._determine_required(required, positional, nargs, action)
-        if not isinstance(suggestions, Sequence) and suggestions is not None:
+        if suggestions is not None and not isinstance(suggestions, list):
+            type_name = get_type_name(suggestions)
             raise CommandArgumentError(
-                f"suggestions must be a list or None, got {type(suggestions)}"
+                f"suggestions must be a list or None, got {type_name}"
             )
+        if isinstance(suggestions, list) and not all(
+            isinstance(suggestion, str) for suggestion in suggestions
+        ):
+            raise CommandArgumentError("suggestions must be a list of strings")
         if not isinstance(lazy_resolver, bool):
+            type_name = get_type_name(lazy_resolver)
             raise CommandArgumentError(
-                f"lazy_resolver must be a boolean, got {type(lazy_resolver)}"
+                f"lazy_resolver must be a boolean, got {type_name}"
             )
         if action == ArgumentAction.STORE_BOOL_OPTIONAL:
             self._register_store_bool_optional(flags, dest, help, group, mutex_group)
-        else:
-            argument = Argument(
-                flags=flags,
-                dest=dest,
-                action=action,
-                type=expected_type,
-                default=default,
-                choices=choices,
-                required=required,
-                help=help,
-                nargs=nargs,
-                positional=positional,
-                resolver=resolver,
-                lazy_resolver=lazy_resolver,
-                suggestions=suggestions,
-                group=group,
-                mutex_group=mutex_group,
-            )
-            self._register_argument(argument)
+            return None
+        argument = Argument(
+            flags=flags,
+            dest=dest,
+            action=action,
+            type=type,
+            default=default,
+            choices=choices,
+            required=required,
+            help=help,
+            nargs=nargs,
+            positional=positional,
+            resolver=resolver,
+            lazy_resolver=lazy_resolver,
+            suggestions=suggestions,
+            group=group,
+            mutex_group=mutex_group,
+        )
+        self._register_argument(argument)
 
     def get_argument(self, dest: str) -> Argument | None:
         """Return the Argument object for a given destination name.
@@ -871,8 +951,9 @@ class CommandArgumentParser:
             return None
         arg_states[spec.dest].reset()
         arg_states[spec.dest].has_invalid_choice = True
-        raise CommandArgumentError(
-            f"Invalid value for '{spec.dest}': must be one of {{{', '.join(spec.choices)}}}"
+        raise InvalidValueError(
+            dest=spec.dest,
+            choices=spec.choices,
         )
 
     def _raise_remaining_args_error(
@@ -888,14 +969,7 @@ class CommandArgumentParser:
             if arg.dest not in consumed_dests and flag.startswith(token)
         ]
 
-        if remaining_flags:
-            raise CommandArgumentError(
-                f"Unrecognized option '{token}'. Did you mean one of: {', '.join(remaining_flags)}?"
-            )
-        else:
-            raise CommandArgumentError(
-                f"Unrecognized option '{token}'. Use --help to see available options."
-            )
+        raise UnrecognizedOptionError(token=token, remaining_flags=remaining_flags)
 
     def _consume_nargs(
         self, args: list[str], index: int, spec: Argument
@@ -910,13 +984,19 @@ class CommandArgumentParser:
         values = []
         if isinstance(spec.nargs, int):
             if index + spec.nargs > len(args):
-                raise CommandArgumentError(
-                    f"Expected {spec.nargs} value(s) for '{spec.dest}' but got {len(args) - index}"
+                raise MissingValueError(
+                    spec.dest,
+                    expected_count=spec.nargs,
+                    actual_count=len(args) - index,
                 )
+                # raise CommandArgumentError(
+                #     f"Expected {spec.nargs} value(s) for '{spec.dest}' but got {len(args) - index}"
+                # )
             values = args[index : index + spec.nargs]
             return values, index + spec.nargs
         elif spec.nargs == "+":
             if index >= len(args):
+                raise MissingValueError(spec.dest, expected_count=1)
                 raise CommandArgumentError(
                     f"Expected at least one value for '{spec.dest}'"
                 )
@@ -1002,21 +1082,28 @@ class CommandArgumentParser:
                 else:
                     arg_states[spec.dest].reset()
                     arg_states[spec.dest].has_invalid_choice = True
-                    raise CommandArgumentError(
-                        f"Invalid value for '{spec.dest}': {error}"
-                    ) from error
+                    raise InvalidValueError(dest=spec.dest, error=error) from error
             if spec.action == ArgumentAction.ACTION:
                 assert isinstance(
                     spec.resolver, BaseAction
                 ), "resolver should be an instance of BaseAction"
                 if spec.nargs == "+" and len(typed) == 0:
-                    raise CommandArgumentError(
-                        f"Argument '{spec.dest}' requires at least one value"
+                    raise MissingValueError(
+                        dest=spec.dest,
+                        expected_count=1,
                     )
+                    # raise CommandArgumentError(
+                    #     f"Argument '{spec.dest}' requires at least one value"
+                    # )
                 if isinstance(spec.nargs, int) and len(typed) != spec.nargs:
-                    raise CommandArgumentError(
-                        f"Argument '{spec.dest}' requires exactly {spec.nargs} value(s)"
+                    raise MissingValueError(
+                        spec.dest,
+                        expected_count=spec.nargs,
+                        actual_count=len(typed),
                     )
+                    # raise CommandArgumentError(
+                    #     f"Argument '{spec.dest}' requires exactly {spec.nargs} value(s)"
+                    # )
                 if not spec.lazy_resolver or not from_validate:
                     try:
                         result[spec.dest] = await spec.resolver(*typed)
@@ -1094,7 +1181,7 @@ class CommandArgumentParser:
                 flag = f"-{char}"
                 arg = self._flag_map.get(flag)
                 if not arg:
-                    raise CommandArgumentError(f"Unrecognized option: {flag}")
+                    raise UnrecognizedOptionError(flag)
                 expanded.append(flag)
         else:
             return token
@@ -1129,8 +1216,9 @@ class CommandArgumentParser:
             )
         elif spec.nargs is None:
             try:
+                type_name = get_type_name(spec.type)
                 raise CommandArgumentError(
-                    f"Enter a {spec.type.__name__} value for '{spec.dest}'. {help_text}"
+                    f"Enter a {type_name} value for '{spec.dest}'. {help_text}"
                 )
             except AttributeError as error:
                 raise CommandArgumentError(
@@ -1161,7 +1249,7 @@ class CommandArgumentParser:
 
             if action == ArgumentAction.HELP:
                 if not from_validate:
-                    self.render_help(invocation_context=invocation_context)
+                    self.render_help(invocation_context)
                 arg_states[spec.dest].set_consumed()
                 raise HelpSignal()
             elif action == ArgumentAction.TLDR:
@@ -1171,7 +1259,7 @@ class CommandArgumentParser:
                     consumed_indices.add(index)
                     index += 1
                 elif not from_validate:
-                    self.render_tldr(invocation_context=invocation_context)
+                    self.render_tldr(invocation_context)
                     arg_states[spec.dest].set_consumed()
                     raise HelpSignal()
                 else:
@@ -1187,9 +1275,7 @@ class CommandArgumentParser:
                 except ValueError as error:
                     arg_states[spec.dest].reset()
                     arg_states[spec.dest].has_invalid_choice = True
-                    raise CommandArgumentError(
-                        f"Invalid value for '{spec.dest}': {error}"
-                    ) from error
+                    raise InvalidValueError(dest=spec.dest, error=error) from error
                 if not spec.lazy_resolver or not from_validate:
                     try:
                         result[spec.dest] = await spec.resolver(*typed_values)
@@ -1228,9 +1314,7 @@ class CommandArgumentParser:
                 except ValueError as error:
                     arg_states[spec.dest].reset()
                     arg_states[spec.dest].has_invalid_choice = True
-                    raise CommandArgumentError(
-                        f"Invalid value for '{spec.dest}': {error}"
-                    ) from error
+                    raise InvalidValueError(dest=spec.dest, error=error) from error
                 if not typed_values:
                     self._raise_suggestion_error(spec)
                 if spec.nargs is None:
@@ -1247,9 +1331,7 @@ class CommandArgumentParser:
                 except ValueError as error:
                     arg_states[spec.dest].reset()
                     arg_states[spec.dest].has_invalid_choice = True
-                    raise CommandArgumentError(
-                        f"Invalid value for '{spec.dest}': {error}"
-                    ) from error
+                    raise InvalidValueError(dest=spec.dest, error=error) from error
                 result[spec.dest].extend(typed_values)
                 consumed_indices.update(range(index, new_index))
                 index = new_index
@@ -1260,9 +1342,7 @@ class CommandArgumentParser:
                 except ValueError as error:
                     arg_states[spec.dest].reset()
                     arg_states[spec.dest].has_invalid_choice = True
-                    raise CommandArgumentError(
-                        f"Invalid value for '{spec.dest}': {error}"
-                    ) from error
+                    raise InvalidValueError(dest=spec.dest, error=error) from error
                 if not typed_values and spec.nargs not in ("*", "?"):
                     self._raise_suggestion_error(spec)
                 if spec.nargs in (None, 1, "?"):
@@ -1497,26 +1577,29 @@ class CommandArgumentParser:
             if isinstance(spec.nargs, int) and spec.nargs > 1:
                 assert isinstance(
                     result.get(spec.dest), list
-                ), f"Invalid value for '{spec.dest}': expected a list"
+                ), f"invalid value for '{spec.dest}': expected a list"
                 if not result[spec.dest] and not spec.required:
                     continue
                 if spec.action == ArgumentAction.APPEND:
                     for group in result[spec.dest]:
                         if len(group) % spec.nargs != 0:
                             arg_states[spec.dest].reset()
-                            raise CommandArgumentError(
-                                f"Invalid number of values for '{spec.dest}': expected a multiple of {spec.nargs}"
+                            raise InvalidValueError(
+                                dest=spec.dest,
+                                error=f"invalid number of values: expected a multiple of {spec.nargs}",
                             )
                 elif spec.action == ArgumentAction.EXTEND:
                     if len(result[spec.dest]) % spec.nargs != 0:
                         arg_states[spec.dest].reset()
-                        raise CommandArgumentError(
-                            f"Invalid number of values for '{spec.dest}': expected a multiple of {spec.nargs}"
+                        raise InvalidValueError(
+                            dest=spec.dest,
+                            error=f"invalid number of values: expected a multiple of {spec.nargs}",
                         )
                 elif len(result[spec.dest]) != spec.nargs:
                     arg_states[spec.dest].reset()
-                    raise CommandArgumentError(
-                        f"Invalid number of values for '{spec.dest}': expected {spec.nargs}, got {len(result[spec.dest])}"
+                    raise InvalidValueError(
+                        dest=spec.dest,
+                        error=f"invalid number of values: expected {spec.nargs}, got {len(result[spec.dest])}",
                     )
 
             if isinstance(spec.nargs, str) and spec.nargs == "+":
@@ -2047,6 +2130,8 @@ class CommandArgumentParser:
             program_style = (
                 self.options_manager.get("program_style") or self.command_style
             )
+            if self.is_runner_mode:
+                return f"[{program_style}]{program}[/{program_style}]"
             return f"[{program_style}]{program}[/{program_style}] {command_keys}"
 
         if invocation_context.is_cli_mode:
@@ -2066,6 +2151,19 @@ class CommandArgumentParser:
         prefix = self._get_invocation_prefix(invocation_context)
         options_text = self.get_options_text()
         return f"{prefix} {options_text}".strip() if options_text else prefix
+
+    def render_usage(
+        self,
+        invocation_context: InvocationContext | None = None,
+    ) -> None:
+        """Render the usage string for this parser.
+
+        Args:
+            invocation_context (InvocationContext | None): Optional routed invocation
+                context used to scope the rendered usage path.
+        """
+        usage = self.get_usage(invocation_context)
+        self.console.print(f"[bold]usage:[/bold] {usage}")
 
     def _iter_keyword_help_sections(
         self,
@@ -2093,7 +2191,6 @@ class CommandArgumentParser:
 
     def render_help(
         self,
-        *,
         invocation_context: InvocationContext | None = None,
     ) -> None:
         """Render full help output for the command.
@@ -2112,15 +2209,14 @@ class CommandArgumentParser:
         - Supports argument grouping and mutually exclusive groups
         - Applies styling based on configured command style
         """
-        usage = self.get_usage(invocation_context)
-        self.console.print(f"[bold]usage: {usage}[/bold]\n")
+        self.render_usage(invocation_context)
 
         if self.help_text:
-            self.console.print(self.help_text + "\n")
+            self.console.print(f"\n{self.help_text}")
 
         if self._arguments:
             if self._positional:
-                self.console.print("[bold]positional:[/bold]")
+                self.console.print("\n[bold]positional:[/bold]")
                 for arg in self._positional.values():
                     flags = arg.get_positional_text()
                     arg_line = f"  {flags:<30} "
@@ -2167,7 +2263,7 @@ class CommandArgumentParser:
         if self.help_epilog:
             self.console.print("\n" + self.help_epilog, style="dim")
 
-    def render_tldr(self, *, invocation_context: InvocationContext | None = None) -> None:
+    def render_tldr(self, invocation_context: InvocationContext | None = None) -> None:
         """Render concise example usage (TLDR) for the command.
 
         This method displays a minimal, example-driven view of how to invoke
@@ -2185,13 +2281,12 @@ class CommandArgumentParser:
             )
             return
         prefix = self._get_invocation_prefix(invocation_context)
-        usage = self.get_usage(invocation_context)
-        self.console.print(f"[bold]usage:[/] {usage}\n")
+        self.render_usage(invocation_context)
 
         if self.help_text:
-            self.console.print(f"{self.help_text}\n")
+            self.console.print(f"\n{self.help_text}")
 
-        self.console.print("[bold]examples:[/bold]")
+        self.console.print("\n[bold]examples:[/bold]")
         for example in self._tldr_examples:
             usage = f"{prefix} {example.usage.strip()}"
             description = example.description.strip()

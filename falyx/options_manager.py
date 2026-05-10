@@ -1,32 +1,39 @@
 # Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
-"""Manages global or scoped CLI options across namespaces for Falyx commands.
+"""Option state management for Falyx CLI runtimes.
 
-The `OptionsManager` provides a centralized interface for retrieving, setting, toggling,
-and introspecting options defined in `argparse.Namespace` objects. It is used internally
-by Falyx to pass and resolve runtime flags like `--verbose`, `--force-confirm`, etc.
+This module defines `OptionsManager`, a small utility responsible for
+storing, retrieving, and temporarily overriding runtime option values across
+named namespaces.
 
-Each option is stored under a namespace key (e.g., "default", "user_config") to
-support multiple sources of configuration.
+Falyx uses this manager to hold global session- and execution-scoped flags such
+as verbosity, prompt suppression, confirmation behavior, and other mutable
+runtime settings. Options are stored in isolated namespace dictionaries so
+different layers of the runtime can share one manager without clobbering each
+other's state.
 
-Key Features:
-- Safe getter/setter for typed option resolution
-- Toggle support for boolean options (used by bottom bar toggles, etc.)
-- Callable getter/toggler wrappers for dynamic UI bindings
-- Namespace merging via `from_namespace`
+In addition to basic get/set operations, the manager provides helpers for:
 
-Typical Usage:
+- toggling boolean flags
+- exposing option access as zero-argument callables for UI bindings
+- temporarily overriding a namespace within a context manager
+- holding a shared `SpinnerManager` for spinner lifecycle integration
+
+Typical usage:
+    ```
     options = OptionsManager()
-    options.from_namespace(args, namespace_name="default")
+    options.from_mapping({"verbose": True})
     if options.get("verbose"):
         ...
-    options.toggle("force_confirm")
-    value_fn = options.get_value_getter("dry_run")
-    toggle_fn = options.get_toggle_function("debug")
 
-Used by:
-- Falyx CLI runtime configuration
-- Bottom bar toggles
-- Dynamic flag injection into commands and actions
+    with options.override_namespace({"skip_confirm": True}, "execution"):
+        ...
+    ```
+
+Attributes:
+    options (defaultdict[str, dict[str, Any]]): Mapping of namespace names to
+        option dictionaries.
+    spinners (SpinnerManager): Shared spinner manager available to runtime
+        components that need coordinated spinner rendering.
 """
 from collections import defaultdict
 from contextlib import contextmanager
@@ -37,17 +44,40 @@ from falyx.spinner_manager import SpinnerManager
 
 
 class OptionsManager:
-    """Manages CLI option state across multiple argparse namespaces.
+    """Manage mutable option values across named runtime namespaces.
 
-    Allows dynamic retrieval, setting, toggling, and introspection of command-line
-    options. Supports named namespaces (e.g., "default") and is used throughout
-    Falyx for runtime configuration and bottom bar toggle integration.
+    `OptionsManager` is the central store for Falyx runtime flags. Each option
+    is stored under a namespace name such as `"default"` or `"execution"`,
+    allowing global settings and temporary execution-scoped overrides to
+    coexist in one shared object.
+
+    The manager supports direct reads and writes, boolean toggling, namespace
+    snapshots, and temporary override contexts. It also exposes small callable
+    wrappers that are useful when integrating option reads or toggles into UI
+    components such as bottom-bar controls or key bindings.
+
+    Args:
+        namespaces (list[tuple[str, dict[str, Any]]] | None): Optional initial
+            namespace/value pairs to preload into the manager.
+
+    Attributes:
+        options (defaultdict[str, dict[str, Any]]): Internal namespace-to-option
+            mapping.
+        spinners (SpinnerManager): Shared spinner manager used by other Falyx
+            runtime components.
     """
 
     def __init__(
         self,
         namespaces: list[tuple[str, dict[str, Any]]] | None = None,
     ) -> None:
+        """Initialize the option manager.
+
+        Args:
+            namespaces (list[tuple[str, dict[str, Any]]] | None): Optional list
+                of `(namespace_name, values)` pairs to load during
+                initialization.
+        """
         self.options: defaultdict = defaultdict(dict)
         self.spinners = SpinnerManager()
         if namespaces:
@@ -59,7 +89,16 @@ class OptionsManager:
         values: Mapping[str, Any],
         namespace_name: str = "default",
     ) -> None:
-        """Load options from a mapping, optionally with a prefix for namespacing."""
+        """Merge option values into a namespace.
+
+        Existing keys in the target namespace are updated in place. Missing
+        namespaces are created automatically.
+
+        Args:
+            values (Mapping[str, Any]): Mapping of option names to values.
+            namespace_name (str): Target namespace to update. Defaults to
+                `"default"`.
+        """
         self.options[namespace_name].update(dict(values))
 
     def get(
@@ -68,7 +107,18 @@ class OptionsManager:
         default: Any = None,
         namespace_name: str = "default",
     ) -> Any:
-        """Get the value of an option."""
+        """Return an option value from a namespace.
+
+        Args:
+            option_name (str): Name of the option to retrieve.
+            default (Any): Value to return when the option is not present.
+                Defaults to `None`.
+            namespace_name (str): Namespace to read from. Defaults to
+                `"default"`.
+
+        Returns:
+            Any: The stored option value if present, otherwise `default`.
+        """
         return self.options[namespace_name].get(option_name, default)
 
     def set(
@@ -77,7 +127,13 @@ class OptionsManager:
         value: Any,
         namespace_name: str = "default",
     ) -> None:
-        """Set the value of an option."""
+        """Store an option value in a namespace.
+
+        Args:
+            option_name (str): Name of the option to set.
+            value (Any): Value to store.
+            namespace_name (str): Namespace to update. Defaults to `"default"`.
+        """
         self.options[namespace_name][option_name] = value
 
     def has_option(
@@ -85,7 +141,16 @@ class OptionsManager:
         option_name: str,
         namespace_name: str = "default",
     ) -> bool:
-        """Check if an option exists in the namespace."""
+        """Return whether an option exists in a namespace.
+
+        Args:
+            option_name (str): Name of the option to check.
+            namespace_name (str): Namespace to inspect. Defaults to `"default"`.
+
+        Returns:
+            bool: `True` if the option exists in the namespace, otherwise
+            `False`.
+        """
         return option_name in self.options[namespace_name]
 
     def toggle(
@@ -93,7 +158,16 @@ class OptionsManager:
         option_name: str,
         namespace_name: str = "default",
     ) -> None:
-        """Toggle a boolean option."""
+        """Invert a boolean option in place.
+
+        Args:
+            option_name (str): Name of the option to toggle.
+            namespace_name (str): Namespace containing the option. Defaults to
+                `"default"`.
+
+        Raises:
+            TypeError: If the target option is missing or is not a boolean.
+        """
         current = self.get(option_name, namespace_name=namespace_name)
         if not isinstance(current, bool):
             raise TypeError(
@@ -109,7 +183,20 @@ class OptionsManager:
         option_name: str,
         namespace_name: str = "default",
     ) -> Callable[[], Any]:
-        """Get the value of an option as a getter function."""
+        """Return a zero-argument callable that reads an option value.
+
+        This is useful for UI integrations that expect a callback instead of an
+        eagerly evaluated value.
+
+        Args:
+            option_name (str): Name of the option to read.
+            namespace_name (str): Namespace to read from. Defaults to
+                `"default"`.
+
+        Returns:
+            Callable[[], Any]: Function that returns the current option value
+            when called.
+        """
 
         def _getter() -> Any:
             return self.get(option_name, namespace_name=namespace_name)
@@ -121,7 +208,19 @@ class OptionsManager:
         option_name: str,
         namespace_name: str = "default",
     ) -> Callable[[], None]:
-        """Get the toggle function for a boolean option."""
+        """Return a zero-argument callable that toggles a boolean option.
+
+        This is useful for key bindings, bottom-bar toggles, or other UI hooks
+        that need a callable action.
+
+        Args:
+            option_name (str): Name of the boolean option to toggle.
+            namespace_name (str): Namespace containing the option. Defaults to
+                `"default"`.
+
+        Returns:
+            Callable[[], None]: Function that toggles the option when called.
+        """
 
         def _toggle() -> None:
             self.toggle(option_name, namespace_name=namespace_name)
@@ -129,7 +228,17 @@ class OptionsManager:
         return _toggle
 
     def get_namespace_dict(self, namespace_name: str) -> dict[str, Any]:
-        """Return all options in a namespace as a dictionary."""
+        """Return a shallow copy of one namespace's option dictionary.
+
+        Args:
+            namespace_name (str): Namespace to snapshot.
+
+        Returns:
+            dict[str, Any]: Copy of the namespace's stored options.
+
+        Raises:
+            ValueError: If the requested namespace does not exist.
+        """
         if namespace_name not in self.options:
             raise ValueError(f"Namespace '{namespace_name}' not found.")
         return dict(self.options[namespace_name])
@@ -140,7 +249,24 @@ class OptionsManager:
         overrides: Mapping[str, Any],
         namespace_name: str = "execution",
     ) -> Iterator[None]:
-        """Temporarily override options in a namespace within a context."""
+        """Temporarily apply option overrides within a namespace.
+
+        The current namespace contents are copied before the overrides are
+        applied. When the context exits, the original namespace state is
+        restored, even if an exception is raised inside the context block.
+
+        Args:
+            overrides (Mapping[str, Any]): Temporary option values to merge into
+                the namespace.
+            namespace_name (str): Namespace to override. Defaults to
+                `"execution"`.
+
+        Yields:
+            None: Control is yielded to the wrapped context block.
+
+        Raises:
+            ValueError: If the namespace does not already exist.
+        """
         original = self.get_namespace_dict(namespace_name)
         try:
             self.from_mapping(values=overrides, namespace_name=namespace_name)

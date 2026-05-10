@@ -8,12 +8,12 @@ from .argument import Argument
 from .argument_action import ArgumentAction
 from .command_argument_parser import CommandArgumentParser
 from .falyx_parser import FalyxParser
-from .parse_result import RootParseResult
+from .parse_result import ParseResult
 
 __all__ = [
     "Argument",
     "ArgumentAction",
     "CommandArgumentParser",
     "FalyxParser",
-    "RootParseResult",
+    "ParseResult",
 ]

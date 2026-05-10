@@ -57,7 +57,13 @@ from falyx.action import BaseAction
 from falyx.command import Command
 from falyx.command_executor import CommandExecutor
 from falyx.console import console as falyx_console
-from falyx.exceptions import CommandArgumentError, FalyxError, NotAFalyxError
+from falyx.console import error_console, print_error
+from falyx.exceptions import (
+    CommandArgumentError,
+    FalyxError,
+    InvalidHookError,
+    NotAFalyxError,
+)
 from falyx.execution_option import ExecutionOption
 from falyx.hook_manager import HookManager
 from falyx.logger import logger
@@ -85,6 +91,7 @@ class CommandRunner:
 
     Attributes:
         command (Command): The command executed by this runner.
+        program (str): Program name used in CLI usage text and help output.
         options (OptionsManager): Shared options manager used by the command,
             parser, and executor.
         runner_hooks (HookManager): Executor-level hooks used during execution.
@@ -97,6 +104,7 @@ class CommandRunner:
         self,
         command: Command,
         *,
+        program: str | None = None,
         options: OptionsManager | None = None,
         runner_hooks: HookManager | None = None,
         console: Console | None = None,
@@ -109,6 +117,9 @@ class CommandRunner:
 
         Args:
             command (Command): The command to execute.
+            program (str | None): Program name used in CLI usage text, invocation-path
+                rendering, and built-in help output. If `None`, an empty program name is
+                used.
             options (OptionsManager | None): Optional shared options manager. If
                 omitted, a new `OptionsManager` is created.
             runner_hooks (HookManager | None): Optional executor-level hook manager. If
@@ -117,16 +128,22 @@ class CommandRunner:
                 the default Falyx console is used.
         """
         self.command = command
+        self.program = program or ""
         self.options = self._get_options(options)
         self.runner_hooks = self._get_hooks(runner_hooks)
         self.console = self._get_console(console)
+        self.error_console = error_console
         self.command.options_manager = self.options
+        if program:
+            self.command.program = program
         if isinstance(self.command.arg_parser, CommandArgumentParser):
             self.command.arg_parser.set_options_manager(self.options)
+            self.command.arg_parser.is_runner_mode = True
+            if program:
+                self.command.arg_parser.program = program
         self.executor = CommandExecutor(
             options=self.options,
             hooks=self.runner_hooks,
-            console=self.console,
         )
         self.options.from_mapping(values={}, namespace_name="execution")
 
@@ -152,7 +169,7 @@ class CommandRunner:
         elif isinstance(hooks, HookManager):
             return hooks
         else:
-            raise NotAFalyxError("hooks must be an instance of HookManager or None.")
+            raise InvalidHookError("hooks must be an instance of HookManager or None.")
 
     async def run(
         self,
@@ -253,10 +270,10 @@ class CommandRunner:
             sys.exit(0)
         except CommandArgumentError as error:
             self.command.render_help()
-            self.console.print(f"[{OneColors.DARK_RED}]❌ ['{self.command.key}'] {error}")
+            print_error(message=error)
             sys.exit(2)
         except FalyxError as error:
-            self.console.print(f"[{OneColors.DARK_RED}]❌ Error: {error}[/]")
+            print_error(message=error)
             sys.exit(1)
         except QuitSignal:
             logger.info("[QuitSignal]. <- Exiting run.")
@@ -276,6 +293,7 @@ class CommandRunner:
         cls,
         command: Command,
         *,
+        program: str | None = None,
         runner_hooks: HookManager | None = None,
         options: OptionsManager | None = None,
         console: Console | None = None,
@@ -288,6 +306,9 @@ class CommandRunner:
 
         Args:
             command (Command): Existing command instance to wrap.
+            program (str | None): Program name used in CLI usage text, invocation-path
+                rendering, and built-in help output. If `None`, an empty program name is
+                used.
             runner_hooks (HookManager | None): Optional executor-level hook manager
                 for the runner.
             options (OptionsManager | None): Optional shared options manager.
@@ -303,9 +324,10 @@ class CommandRunner:
         if not isinstance(command, Command):
             raise NotAFalyxError("command must be an instance of Command.")
         if runner_hooks and not isinstance(runner_hooks, HookManager):
-            raise NotAFalyxError("runner_hooks must be an instance of HookManager.")
+            raise InvalidHookError("runner_hooks must be an instance of HookManager.")
         return cls(
             command=command,
+            program=program,
             options=options,
             runner_hooks=runner_hooks,
             console=console,
@@ -318,6 +340,7 @@ class CommandRunner:
         description: str,
         action: BaseAction | Callable[..., Any],
         *,
+        program: str | None = None,
         runner_hooks: HookManager | None = None,
         args: tuple = (),
         kwargs: dict[str, Any] | None = None,
@@ -352,6 +375,8 @@ class CommandRunner:
         execution_options: list[ExecutionOption | str] | None = None,
         custom_parser: ArgParserProtocol | None = None,
         custom_help: Callable[[], str | None] | None = None,
+        custom_tldr: Callable[[], str | None] | None = None,
+        custom_usage: Callable[[], str | None] | None = None,
         auto_args: bool = True,
         arg_metadata: dict[str, str | dict[str, Any]] | None = None,
         simple_help_signature: bool = False,
@@ -369,6 +394,9 @@ class CommandRunner:
             description (str): Short description of the command.
             action (BaseAction | Callable[..., Any]): Underlying execution logic for
                 the command.
+            program (str | None): Program name used in CLI usage text, invocation-path
+                rendering, and built-in help output. If `None`, an empty program name is
+                used.
             runner_hooks (HookManager | None): Optional executor-level hooks for the
                 runner.
             args (tuple): Static positional arguments applied to the command.
@@ -418,6 +446,10 @@ class CommandRunner:
                 implementation.
             custom_help (Callable[[], str | None] | None): Optional custom help
                 renderer.
+            custom_tldr (Callable[[], str | None] | None): Optional custom TLDR
+                renderer.
+            custom_usage (Callable[[], str | None] | None): Optional custom usage
+                renderer.
             auto_args (bool): Whether to infer arguments automatically from the
                 action signature.
             arg_metadata (dict[str, str | dict[str, Any]] | None): Optional
@@ -432,8 +464,9 @@ class CommandRunner:
             CommandRunner: A runner wrapping the newly built command.
 
         Raises:
-            NotAFalyxError: If `runner_hooks` is provided but is not a
-                `HookManager` instance.
+            NotAFalyxError: If `arg_parser` is provided but is not a
+                `CommandArgumentParser` instance.
+            InvalidHookError: If `runner_hooks` is provided but is not a `HookManager`
 
         Notes:
             - This method is intended as a standalone convenience factory.
@@ -445,6 +478,7 @@ class CommandRunner:
             key=key,
             description=description,
             action=action,
+            program=program,
             args=args,
             kwargs=kwargs,
             hidden=hidden,
@@ -478,6 +512,8 @@ class CommandRunner:
             argument_config=argument_config,
             custom_parser=custom_parser,
             custom_help=custom_help,
+            custom_tldr=custom_tldr,
+            custom_usage=custom_usage,
             auto_args=auto_args,
             arg_metadata=arg_metadata,
             simple_help_signature=simple_help_signature,
@@ -485,7 +521,7 @@ class CommandRunner:
         )
 
         if runner_hooks and not isinstance(runner_hooks, HookManager):
-            raise NotAFalyxError("runner_hooks must be an instance of HookManager.")
+            raise InvalidHookError("runner_hooks must be an instance of HookManager.")
 
         return cls(
             command=command,

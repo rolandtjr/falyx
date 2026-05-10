@@ -1,5 +1,6 @@
 # test_command.py
 import pytest
+from pydantic import ValidationError
 
 from falyx.action import Action, BaseIOAction, ChainedAction
 from falyx.command import Command
@@ -172,3 +173,15 @@ def test_command_bad_action():
     with pytest.raises(TypeError) as exc_info:
         Command(key="TEST", description="Test Command", action="not_callable")
     assert str(exc_info.value) == "Action must be a callable or an instance of BaseAction"
+
+
+def test_command_bad_options_manager():
+    """Test if Command raises an exception when options_manager is not a dict or callable."""
+    with pytest.raises(ValidationError) as exc_info:
+        Command(
+            key="TEST",
+            description="Test Command",
+            action=dummy_action,
+            options_manager="not_a_dict_or_callable",
+        )
+    assert "Input should be an instance of OptionsManager" in str(exc_info.value)

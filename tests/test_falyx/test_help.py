@@ -2,7 +2,7 @@ import pytest
 from rich.text import Text
 
 from falyx import Falyx
-from falyx.console import console
+from falyx.exceptions import CommandArgumentError
 
 
 @pytest.mark.asyncio
@@ -82,17 +82,14 @@ async def test_help_command_by_tag(capsys):
 
 
 @pytest.mark.asyncio
-async def test_help_command_empty_tags(capsys):
+async def test_help_command_bad_argument(capsys):
     flx = Falyx()
 
     async def untagged_command(falyx: Falyx):
         pass
 
-    flx.add_command(
-        "U", "Untagged Command", untagged_command, help_text="This command has no tags."
-    )
-    await flx.execute_command("H nonexistent_tag")
-
-    captured = capsys.readouterr()
-    text = Text.from_ansi(captured.out)
-    assert "Unexpected positional argument: nonexistent_tag" in text.plain
+    flx.add_command("U", "Untagged Command", untagged_command)
+    with pytest.raises(
+        CommandArgumentError, match="Unexpected positional argument: nonexistent_tag"
+    ):
+        await flx.execute_command("H nonexistent_tag")

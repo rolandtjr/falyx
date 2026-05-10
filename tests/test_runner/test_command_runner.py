@@ -9,7 +9,13 @@ from falyx.action import Action
 from falyx.command import Command
 from falyx.command_runner import CommandRunner
 from falyx.console import console as falyx_console
-from falyx.exceptions import CommandArgumentError, FalyxError, NotAFalyxError
+from falyx.console import error_console
+from falyx.exceptions import (
+    CommandArgumentError,
+    FalyxError,
+    InvalidHookError,
+    NotAFalyxError,
+)
 from falyx.hook_manager import HookManager, HookType
 from falyx.options_manager import OptionsManager
 from falyx.signals import BackSignal, CancelSignal, HelpSignal, QuitSignal
@@ -123,8 +129,10 @@ async def test_command_runner_initialization(
     command_with_no_parser,
     command_with_custom_parser,
 ):
-    runner = CommandRunner(command_with_parser)
+    runner = CommandRunner(command_with_parser, program="test_program")
     assert runner.command == command_with_parser
+    assert runner.program == "test_program"
+    assert runner.command.arg_parser.program == "test_program"
     assert isinstance(runner.options, OptionsManager)
     assert isinstance(runner.runner_hooks, HookManager)
     assert runner.console == falyx_console
@@ -133,7 +141,6 @@ async def test_command_runner_initialization(
     assert runner.command.options_manager == runner.options
     assert runner.executor.options == runner.options
     assert runner.executor.hooks == runner.runner_hooks
-    assert runner.executor.console == runner.console
     assert runner.options.get("summary", namespace_name="execution") is None
 
     runner_no_parser = CommandRunner(command_with_no_parser)
@@ -166,7 +173,6 @@ def test_command_runner_initialization_with_custom_console(command_with_parser):
     custom_console = Console()
     runner = CommandRunner(command_with_parser, console=custom_console)
     assert runner.console == custom_console
-    assert runner.executor.console == custom_console
 
 
 def test_command_runner_initialization_with_custom_hooks(command_with_parser):
@@ -199,7 +205,9 @@ def test_command_runner_initialization_with_all_bad_components(command_with_pars
             console=custom_console,
         )
 
-    with pytest.raises(NotAFalyxError, match="hooks must be an instance of HookManager"):
+    with pytest.raises(
+        InvalidHookError, match="hooks must be an instance of HookManager"
+    ):
         CommandRunner(
             command_with_parser,
             runner_hooks=custom_hooks,
@@ -236,8 +244,6 @@ async def test_command_runner_run_with_failing_action(command_with_failing_actio
     with pytest.raises(FalyxError, match="boom"):
         await runner.run("--foo 42", wrap_errors=True)
 
-    assert await runner.run("--foo 42", wrap_errors=False, raise_on_error=False) is None
-
 
 @pytest.mark.asyncio
 async def test_command_runner_debug_statement(command_with_parser, caplog):
@@ -270,6 +276,22 @@ async def test_command_runner_run_with_retries_with_action(
 
     with pytest.raises(ValueError, match="This is a ValueError."):
         await runner.run("ValueError --retries 2")
+
+    assert "[throw_error] Retry attempt 1/2 failed due to 'ValueError'." in caplog.text
+    assert "[throw_error] Retry attempt 2/2 failed due to 'ValueError'." in caplog.text
+    assert "[throw_error] All 2 retries failed." in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_command_runner_run_with_retries_delay_with_action(
+    command_throwing_error, caplog
+):
+    runner = CommandRunner(command_throwing_error)
+    with pytest.raises(asyncio.CancelledError, match="An error occurred in the action."):
+        await runner.run("Other")
+
+    with pytest.raises(ValueError, match="This is a ValueError."):
+        await runner.run("ValueError --retries 2 --retry-delay 1.0 --retry-backoff 2.0")
 
     assert "[throw_error] Retry attempt 1/2 failed due to 'ValueError'." in caplog.text
     assert "[throw_error] Retry attempt 2/2 failed due to 'ValueError'." in caplog.text
@@ -313,7 +335,7 @@ async def test_command_runner_from_command_bad_command():
         CommandRunner.from_command("Not a Command")
 
     with pytest.raises(
-        NotAFalyxError, match="runner_hooks must be an instance of HookManager"
+        InvalidHookError, match="runner_hooks must be an instance of HookManager"
     ):
         CommandRunner.from_command(
             Command(
@@ -360,7 +382,7 @@ async def test_command_runner_build_with_bad_execution_options():
 @pytest.mark.asyncio
 async def test_command_runner_build_with_bad_runner_hooks():
     with pytest.raises(
-        NotAFalyxError, match="runner_hooks must be an instance of HookManager"
+        InvalidHookError, match="runner_hooks must be an instance of HookManager"
     ):
         CommandRunner.build(
             key="T",
@@ -438,7 +460,7 @@ async def test_command_runner_cli_with_failing_action(command_with_failing_actio
             await runner.cli(["--help"])
     captured = Text.from_ansi(capture.get()).plain
 
-    assert "usage: falyx T" in captured
+    assert "usage: falyx" in captured
     assert "--foo" in captured
     assert "summary" in captured
     assert "retries" in captured
@@ -453,54 +475,48 @@ async def test_command_runner_cli_exceptions(command_throwing_error):
         with pytest.raises(SystemExit, match="0"):
             await runner.cli(["--help"])
     captured = Text.from_ansi(capture.get()).plain
-    assert "falyx E [--help]" in captured
+    assert "falyx [--help]" in captured
     assert "usage:" in captured
     assert "positional:" in captured
     assert "options:" in captured
-    assert "❌" not in captured
 
     with falyx_console.capture() as capture:
         with pytest.raises(SystemExit, match="2"):
             await runner.cli(["--not-an-arg"])
     captured = Text.from_ansi(capture.get()).plain
-    assert "falyx E [--help]" in captured
+    assert "falyx [--help]" in captured
     assert "usage:" in captured
     assert "positional:" in captured
     assert "options:" in captured
-    assert "❌" in captured
     falyx_console.clear()
 
-    with falyx_console.capture() as capture:
+    with error_console.capture() as capture:
         with pytest.raises(SystemExit, match="1"):
             await runner.cli(["FalyxError"])
     captured = Text.from_ansi(capture.get()).plain
     assert "This is a FalyxError." in captured
-    assert "❌ Error:" in captured
+    assert "error:" in captured
     falyx_console.clear()
 
     with falyx_console.capture() as capture:
         with pytest.raises(SystemExit, match="130"):
             await runner.cli(["QuitSignal"])
     captured = Text.from_ansi(capture.get()).plain
-    assert "❌" not in captured
 
     with falyx_console.capture() as capture:
         with pytest.raises(SystemExit, match="1"):
             await runner.cli(["BackSignal"])
     captured = Text.from_ansi(capture.get()).plain
-    assert "❌" not in captured
 
     with falyx_console.capture() as capture:
         with pytest.raises(SystemExit, match="1"):
             await runner.cli(["CancelSignal"])
     captured = Text.from_ansi(capture.get()).plain
-    assert "❌" not in captured
 
     with falyx_console.capture() as capture:
         with pytest.raises(SystemExit, match="1"):
             await runner.cli(["Other"])
     captured = Text.from_ansi(capture.get()).plain
-    assert "❌" not in captured
 
 
 @pytest.mark.asyncio
@@ -514,3 +530,12 @@ async def test_command_runner_cli_uses_sys_argv(command_with_parser, monkeypatch
     assert "Action executed with args:" in captured
     assert "and kwargs:" in captured
     assert "{'foo': 42}" in captured
+
+
+@pytest.mark.asyncio
+async def test_command_runner_run_error(command_with_parser):
+    runner = CommandRunner(command_with_parser)
+    with pytest.raises(FalyxError, match="requires either"):
+        await runner.run(["--foo", "42"], raise_on_error=False, wrap_errors=False)
+    await runner.run(["--foo", "42"], raise_on_error=False, wrap_errors=True)
+    await runner.run(["--foo", "42"], raise_on_error=True, wrap_errors=False)

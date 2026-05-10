@@ -40,6 +40,7 @@ async def test_command_validator_is_preview():
     fake_falyx = AsyncMock()
     fake_route = SimpleNamespace()
     fake_route.is_preview = True
+    fake_route.command = SimpleNamespace()
     fake_falyx.prepare_route.return_value = (fake_route, (), {}, {})
     validator = CommandValidator(fake_falyx, "Invalid!")
 

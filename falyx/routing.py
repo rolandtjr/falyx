@@ -78,6 +78,8 @@ class RouteResult:
             specific nested namespace.
         leaf_argv: Remaining argv that should be delegated to the resolved
             command's local parser.
+        current_head: The current head token that routing is evaluating, used for
+            generating suggestions.
         suggestions: Suggested entry names for unresolved input.
         is_preview: Whether the routed invocation is in preview mode.
     """
@@ -88,5 +90,6 @@ class RouteResult:
     command: "Command | None" = None
     namespace_entry: FalyxNamespace | None = None
     leaf_argv: list[str] = field(default_factory=list)
+    current_head: str = ""
     suggestions: list[str] = field(default_factory=list)
     is_preview: bool = False

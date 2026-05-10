@@ -10,8 +10,6 @@ It provides:
     - `SharedContext` for transient shared state across grouped or chained
       actions, including propagated results, indexed errors, and arbitrary
       shared data.
-    - `InvocationSegment` for representing a single styled token within a
-      rendered invocation path.
     - `InvocationContext` for capturing the current routed command path as an
       immutable value object that supports both plain-text and Rich-markup
       rendering.
@@ -30,8 +28,10 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 from rich.console import Console
 from rich.markup import escape
+from rich.style import Style
 
 from falyx.console import console
+from falyx.display_types import StyledSegment
 from falyx.mode import FalyxMode
 
 
@@ -292,24 +292,6 @@ class SharedContext(BaseModel):
         )
 
 
-class InvocationSegment(BaseModel):
-    """Styled path segment used to build an invocation display path.
-
-    `InvocationSegment` represents a single token within an `InvocationContext`,
-    such as a namespace key, command key, or alias. It stores the raw display
-    text and an optional Rich style so invocation paths can be rendered either
-    as plain text or styled markup.
-
-    Attributes:
-        text (str): Display text for this path segment.
-        style (str | None): Optional Rich style applied when rendering this
-            segment in markup output.
-    """
-
-    text: str
-    style: str | None = None
-
-
 class InvocationContext(BaseModel):
     """Immutable invocation-path context for routed Falyx help and execution.
 
@@ -324,11 +306,11 @@ class InvocationContext(BaseModel):
 
     Attributes:
         program (str): Root program name used in CLI-mode help and usage output.
-        program_style (str): Rich style applied to the program name when rendering
+        program_style (Style | str): Rich style applied to the program name when rendering
             `markup_path`.
         typed_path (list[str]): Raw invocation tokens collected during routing,
             excluding the root program name.
-        segments (list[InvocationSegment]): Styled path segments used to render the
+        segments (list[StyledSegment]): Styled path segments used to render the
             invocation path with Rich markup.
         mode (FalyxMode): Active Falyx mode for this invocation context. This is
             used to determine whether the path should include the program name.
@@ -337,11 +319,13 @@ class InvocationContext(BaseModel):
     """
 
     program: str = ""
-    program_style: str = ""
+    program_style: Style | str = ""
     typed_path: list[str] = Field(default_factory=list)
-    segments: list[InvocationSegment] = Field(default_factory=list)
+    segments: list[StyledSegment] = Field(default_factory=list)
     mode: FalyxMode = FalyxMode.MENU
     is_preview: bool = False
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @property
     def is_cli_mode(self) -> bool:
@@ -357,7 +341,7 @@ class InvocationContext(BaseModel):
         self,
         token: str,
         *,
-        style: str | None = None,
+        style: Style | str | None = None,
     ) -> InvocationContext:
         """Return a new context with one additional path segment appended.
 
@@ -377,7 +361,7 @@ class InvocationContext(BaseModel):
             program=self.program,
             program_style=self.program_style,
             typed_path=[*self.typed_path, token],
-            segments=[*self.segments, InvocationSegment(text=token, style=style)],
+            segments=[*self.segments, StyledSegment(text=token, style=style)],
             mode=self.mode,
             is_preview=self.is_preview,
         )
@@ -427,7 +411,7 @@ class InvocationContext(BaseModel):
 
         In CLI mode, the root program name is included and styled with
         `program_style` when provided. Each path segment is escaped and styled
-        using its associated `InvocationSegment.style` value when present.
+        using its associated `StyledSegment.style` value when present.
 
         Returns:
             str: Rich-markup invocation path suitable for help and usage rendering.

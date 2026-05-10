@@ -55,7 +55,12 @@ class CommandValidator(Validator):
                 message=self.error_message,
                 cursor_position=len(text),
             )
-        if route.is_preview:
+        if route.is_preview and route.command is None:
+            raise ValidationError(
+                message=self.error_message,
+                cursor_position=len(text),
+            )
+        elif route.is_preview:
             return None
         if route.kind in {
             RouteKind.NAMESPACE_MENU,

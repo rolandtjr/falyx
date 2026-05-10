@@ -185,6 +185,7 @@ class LoadFileAction(BaseAction):
 
         except Exception as error:
             logger.error("Failed to parse %s: %s", self.file_path.name, error)
+            raise
         return value
 
     async def _run(self, *args, **kwargs) -> Any:
@@ -241,7 +242,7 @@ class LoadFileAction(BaseAction):
                     for line in preview_lines:
                         content_tree.add(f"[dim]{line}[/]")
                 elif self.file_type in {FileType.JSON, FileType.YAML, FileType.TOML}:
-                    raw = self.load_file()
+                    raw = await self.load_file()
                     if raw is not None:
                         preview_str = (
                             json.dumps(raw, indent=2)

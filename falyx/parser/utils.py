@@ -23,6 +23,16 @@ from falyx.logger import logger
 from falyx.parser.signature import infer_args_from_func
 
 
+def get_type_name(type_: Any) -> str:
+    if hasattr(type_, "__name__"):
+        return type_.__name__
+    elif not isinstance(type_, type):
+        parent_type = type(type_)
+        if hasattr(parent_type, "__name__"):
+            return parent_type.__name__
+    return str(type_)
+
+
 def coerce_bool(value: str) -> bool:
     """Convert a string to a boolean.
 

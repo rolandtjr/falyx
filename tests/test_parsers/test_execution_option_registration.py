@@ -31,6 +31,21 @@ def test_enable_execution_options_registers_retry_flags():
     assert "retry_backoff" in parser._execution_dests
 
 
+def test_enable_execution_options_invalid_double_registration_raises():
+    parser = CommandArgumentParser()
+    parser.enable_execution_options(frozenset({ExecutionOption.SUMMARY}))
+    with pytest.raises(
+        CommandArgumentError, match="destination 'summary' is already defined"
+    ):
+        parser.enable_execution_options(frozenset({ExecutionOption.SUMMARY}))
+
+    with pytest.raises(
+        CommandArgumentError,
+        match="destination 'summary' is already registered as an execution argument",
+    ):
+        parser._register_execution_dest("summary")
+
+
 def test_enable_execution_options_registers_confirm_flags():
     parser = CommandArgumentParser()
     parser.enable_execution_options(frozenset({ExecutionOption.CONFIRM}))
@@ -48,12 +63,12 @@ def test_register_execution_dest_rejects_duplicates():
     parser = CommandArgumentParser()
     parser.enable_execution_options(frozenset({ExecutionOption.SUMMARY}))
     with pytest.raises(
-        CommandArgumentError, match="Destination 'summary' is already defined"
+        CommandArgumentError, match="destination 'summary' is already defined"
     ):
         parser.add_argument("--summary", action="store_true")
 
     with pytest.raises(
-        CommandArgumentError, match="Destination 'summary' is already defined"
+        CommandArgumentError, match="destination 'summary' is already defined"
     ):
         parser.enable_execution_options(frozenset({ExecutionOption.SUMMARY}))
 
@@ -138,6 +153,6 @@ async def test_parse_args_split_with_conflicting_execution_option_raises():
     parser = CommandArgumentParser()
     parser.add_argument("--summary", action="store_true", help="A conflicting argument.")
     with pytest.raises(
-        CommandArgumentError, match="Destination 'summary' is already defined"
+        CommandArgumentError, match="destination 'summary' is already defined"
     ):
         parser.enable_execution_options(frozenset({ExecutionOption.SUMMARY}))

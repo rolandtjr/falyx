@@ -46,6 +46,7 @@ from typing import Any, Awaitable, Callable
 
 from prompt_toolkit.formatted_text import FormattedText
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+from rich.style import Style
 from rich.tree import Tree
 
 from falyx.action.action import Action
@@ -53,7 +54,7 @@ from falyx.action.base_action import BaseAction
 from falyx.console import console
 from falyx.context import ExecutionContext, InvocationContext
 from falyx.debug import register_debug_hooks
-from falyx.exceptions import CommandArgumentError, NotAFalyxError
+from falyx.exceptions import CommandArgumentError, InvalidHookError, NotAFalyxError
 from falyx.execution_option import ExecutionOption
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
@@ -121,14 +122,14 @@ class Command(BaseModel):
         aliases (list[str], optional): Alternate names for invocation.
         help_text (str): Help description shown in CLI/menu.
         help_epilog (str): Additional help content.
-        style (str): Rich style used for rendering.
+        style (Style | str): Rich style used for rendering.
         confirm (bool): Whether confirmation is required before execution.
         confirm_message (str): Confirmation prompt text.
         preview_before_confirm (bool): Whether to preview before confirmation.
         spinner (bool): Enable spinner during execution.
         spinner_message (str): Spinner message text.
         spinner_type (str): Rich Spinner animation type (e.g., dots, line, etc.).
-        spinner_style (str): Rich style for the spinner.
+        spinner_style (Style | str): Rich style for the spinner.
         spinner_speed (float): Spinner speed multiplier.
         hooks (HookManager | None): Hook manager for lifecycle events.
         tags (list[str], optional): Tags for grouping and filtering.
@@ -150,6 +151,8 @@ class Command(BaseModel):
             Override help rendering.
         custom_tldr (Callable[[], str | None] | None):
             Override TLDR rendering.
+        custom_usage (Callable[[], str | None] | None):
+            Override usage rendering.
         auto_args (bool): Auto-generate arguments from action signature.
         arg_metadata (dict[str, Any], optional): Metadata for arguments.
         simple_help_signature (bool): Use simplified help formatting.
@@ -179,14 +182,14 @@ class Command(BaseModel):
     aliases: list[str] = Field(default_factory=list)
     help_text: str = ""
     help_epilog: str = ""
-    style: str = OneColors.WHITE
+    style: Style | str = OneColors.WHITE
     confirm: bool = False
     confirm_message: str = "Are you sure?"
     preview_before_confirm: bool = True
     spinner: bool = False
     spinner_message: str = "Processing..."
     spinner_type: str = "dots"
-    spinner_style: str = OneColors.CYAN
+    spinner_style: Style | str = OneColors.CYAN
     spinner_speed: float = 1.0
     hooks: "HookManager" = Field(default_factory=HookManager)
     retry: bool = False
@@ -200,8 +203,9 @@ class Command(BaseModel):
     arguments: list[dict[str, Any]] = Field(default_factory=list)
     argument_config: Callable[[CommandArgumentParser], None] | None = None
     custom_parser: ArgParserProtocol | None = None
-    custom_help: Callable[[], None] | None = None
-    custom_tldr: Callable[[], None] | None = None
+    custom_help: Callable[[], str | None] | None = None
+    custom_tldr: Callable[[], str | None] | None = None
+    custom_usage: Callable[[], str | None] | None = None
     auto_args: bool = True
     arg_metadata: dict[str, str | dict[str, Any]] = Field(default_factory=dict)
     simple_help_signature: bool = False
@@ -483,6 +487,13 @@ class Command(BaseModel):
         return FormattedText(prompt)
 
     @property
+    def primary_alias(self) -> str:
+        """Get the primary alias for the command, used in help displays."""
+        if self.aliases:
+            return self.aliases[0].lower()
+        return self.key
+
+    @property
     def usage(self) -> str:
         """Generate a help string for the command arguments."""
         if not self.arg_parser:
@@ -527,7 +538,7 @@ class Command(BaseModel):
             - Formatting may vary depending on CLI vs menu mode.
         """
         if self.arg_parser and not self.simple_help_signature:
-            usage = self.arg_parser.get_usage(invocation_context=invocation_context)
+            usage = self.arg_parser.get_usage(invocation_context)
             description = f"[dim]{self.help_text or self.description}[/dim]"
             if self.tags:
                 tags = f"[dim]Tags: {', '.join(self.tags)}[/dim]"
@@ -549,6 +560,18 @@ class Command(BaseModel):
         if self._context:
             self._context.log_summary()
 
+    def render_usage(self, invocation_context: InvocationContext | None = None) -> None:
+        """Render the usage information for the command."""
+        if callable(self.custom_usage):
+            output = self.custom_usage()
+            if output:
+                console.print(output)
+            return
+        if isinstance(self.arg_parser, CommandArgumentParser):
+            self.arg_parser.render_usage(invocation_context)
+        else:
+            console.print(f"[bold]usage:[/] {self.key}")
+
     def render_help(self, invocation_context: InvocationContext | None = None) -> bool:
         """Display the help message for the command."""
         if callable(self.custom_help):
@@ -557,7 +580,7 @@ class Command(BaseModel):
                 console.print(output)
             return True
         if isinstance(self.arg_parser, CommandArgumentParser):
-            self.arg_parser.render_help(invocation_context=invocation_context)
+            self.arg_parser.render_help(invocation_context)
             return True
         return False
 
@@ -569,7 +592,7 @@ class Command(BaseModel):
                 console.print(output)
             return True
         if isinstance(self.arg_parser, CommandArgumentParser):
-            self.arg_parser.render_tldr(invocation_context=invocation_context)
+            self.arg_parser.render_tldr(invocation_context)
             return True
         return False
 
@@ -617,14 +640,14 @@ class Command(BaseModel):
         aliases: list[str] | None = None,
         help_text: str = "",
         help_epilog: str = "",
-        style: str = OneColors.WHITE,
+        style: Style | str = OneColors.WHITE,
         confirm: bool = False,
         confirm_message: str = "Are you sure?",
         preview_before_confirm: bool = True,
         spinner: bool = False,
         spinner_message: str = "Processing...",
         spinner_type: str = "dots",
-        spinner_style: str = OneColors.CYAN,
+        spinner_style: Style | str = OneColors.CYAN,
         spinner_speed: float = 1.0,
         options_manager: OptionsManager | None = None,
         hooks: HookManager | None = None,
@@ -645,6 +668,7 @@ class Command(BaseModel):
         custom_parser: ArgParserProtocol | None = None,
         custom_help: Callable[[], str | None] | None = None,
         custom_tldr: Callable[[], str | None] | None = None,
+        custom_usage: Callable[[], str | None] | None = None,
         auto_args: bool = True,
         arg_metadata: dict[str, str | dict[str, Any]] | None = None,
         simple_help_signature: bool = False,
@@ -679,14 +703,14 @@ class Command(BaseModel):
             aliases (list[str] | None): Optional alternate names for invocation.
             help_text (str): Help text shown in command help output.
             help_epilog (str): Additional help text shown after the main help body.
-            style (str): Rich style used when rendering the command.
+            style (Style | str): Rich style used when rendering the command.
             confirm (bool): Whether confirmation is required before execution.
             confirm_message (str): Confirmation prompt text.
             preview_before_confirm (bool): Whether to preview before confirmation.
             spinner (bool): Whether to enable spinner lifecycle hooks.
             spinner_message (str): Spinner message text.
             spinner_type (str): Spinner animation type.
-            spinner_style (str): Spinner style.
+            spinner_style (Style | str): Spinner style.
             spinner_speed (float): Spinner speed multiplier.
             options_manager (OptionsManager | None): Shared options manager for the
                 command and its parser.
@@ -721,6 +745,8 @@ class Command(BaseModel):
                 renderer.
             custom_tldr (Callable[[], str | None] | None): Optional custom TLDR
                 renderer.
+            custom_usage (Callable[[], str | None] | None): Optional custom usage
+                renderer.
             auto_args (bool): Whether to infer arguments automatically from the action
                 signature when explicit definitions are not provided.
             arg_metadata (dict[str, str | dict[str, Any]] | None): Optional metadata
@@ -735,8 +761,8 @@ class Command(BaseModel):
 
         Raises:
             NotAFalyxError: If `arg_parser` is provided but is not a
-                `CommandArgumentParser` instance, or if `hooks` is provided but is not
-                a `HookManager` instance.
+                `CommandArgumentParser` instance.
+            InvalidHookError: If `hooks` is provided but is not a `HookManager` instance.
 
         Notes:
             - Execution options supplied as strings are converted to
@@ -757,7 +783,7 @@ class Command(BaseModel):
         options_manager = options_manager or OptionsManager()
 
         if hooks and not isinstance(hooks, HookManager):
-            raise NotAFalyxError("hooks must be an instance of HookManager.")
+            raise InvalidHookError("hooks must be an instance of HookManager.")
         hooks = hooks or HookManager()
 
         if retry_policy and not isinstance(retry_policy, RetryPolicy):
@@ -805,6 +831,7 @@ class Command(BaseModel):
             custom_parser=custom_parser,
             custom_help=custom_help,
             custom_tldr=custom_tldr,
+            custom_usage=custom_usage,
             auto_args=auto_args,
             arg_metadata=arg_metadata or {},
             simple_help_signature=simple_help_signature,
