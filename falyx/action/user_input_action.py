@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `UserInputAction`, a Falyx Action that prompts the user for input using
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `UserInputAction`, a Falyx Action that prompts the user for input using
 Prompt Toolkit and returns the result as a string.
 
 This action is ideal for interactive CLI workflows that require user input mid-pipeline.
@@ -26,6 +25,8 @@ Example:
         validator=Validator.from_callable(lambda s: len(s) > 0),
     )
 """
+from __future__ import annotations
+
 from prompt_toolkit import PromptSession
 from prompt_toolkit.validation import Validator
 from rich.tree import Tree
@@ -40,8 +41,7 @@ from falyx.themes.colors import OneColors
 
 
 class UserInputAction(BaseAction):
-    """
-    Prompts the user for textual input and returns their response.
+    """Prompts the user for textual input and returns their response.
 
     `UserInputAction` uses Prompt Toolkit to gather input with optional validation,
     lifecycle hook compatibility, and support for default text. If `inject_last_result`
@@ -134,3 +134,15 @@ class UserInputAction(BaseAction):
 
     def __str__(self):
         return f"UserInputAction(name={self.name!r}, prompt={self.prompt!r})"
+
+    def clone(self) -> UserInputAction:
+        """Creates a copy of this UserInputAction with the same configuration."""
+        return UserInputAction(
+            name=self.name,
+            prompt_message=self.prompt_message,
+            default_text=self.default_text,
+            multiline=self.multiline,
+            validator=self.validator,
+            prompt_session=self.prompt_session,
+            inject_last_result=self.inject_last_result,
+        )

@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `ChainedAction`, a core Falyx construct for executing a sequence of actions
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `ChainedAction`, a core Falyx construct for executing a sequence of actions
 in strict order, optionally injecting results from previous steps into subsequent ones.
 
 `ChainedAction` is designed for linear workflows where each step may depend on
@@ -86,8 +85,7 @@ from falyx.themes import OneColors
 
 
 class ChainedAction(BaseAction, ActionListMixin):
-    """
-    ChainedAction executes a sequence of actions one after another.
+    """ChainedAction executes a sequence of actions one after another.
 
     Features:
     - Supports optional automatic last_result injection (auto_inject).
@@ -117,6 +115,7 @@ class ChainedAction(BaseAction, ActionListMixin):
         name: str,
         actions: (
             Sequence[BaseAction | Callable[..., Any] | Callable[..., Awaitable[Any]]]
+            | Any
             | None
         ) = None,
         *,
@@ -276,8 +275,7 @@ class ChainedAction(BaseAction, ActionListMixin):
     async def _rollback(
         self, rollback_stack: list[tuple[Action, tuple[Any, ...], dict[str, Any]]]
     ):
-        """
-        Roll back all executed actions in reverse order.
+        """Roll back all executed actions in reverse order.
 
         Rollbacks run even if a fallback recovered from failure,
         ensuring consistent undo of all side effects.
@@ -319,4 +317,27 @@ class ChainedAction(BaseAction, ActionListMixin):
             f"actions={[a.name for a in self.actions]}, "
             f"args={self.args!r}, kwargs={self.kwargs!r}, "
             f"auto_inject={self.auto_inject}, return_list={self.return_list})"
+        )
+
+    def clone(self) -> ChainedAction:
+        """Create a copy of this ChainedAction with the same configuration."""
+        cloned_actions = [
+            action.clone() if isinstance(action, BaseAction) else action
+            for action in self.actions
+        ]
+        return ChainedAction(
+            name=self.name,
+            actions=cloned_actions,
+            args=self.args,
+            kwargs=self.kwargs,
+            hooks=self.hooks.copy(),
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
+            auto_inject=self.auto_inject,
+            return_list=self.return_list,
+            never_prompt=self.local_never_prompt,
+            spinner_message=self.spinner_message,
+            spinner_type=self.spinner_type,
+            spinner_style=self.spinner_style,
+            spinner_speed=self.spinner_speed,
         )

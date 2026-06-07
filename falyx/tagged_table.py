@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Generates a Rich table view of Falyx commands grouped by their tags.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Generates a Rich table view of Falyx commands grouped by their tags.
 
 This module defines a utility function for rendering a custom CLI command
 table that organizes commands into groups based on their first tag. It is
@@ -25,19 +24,19 @@ def build_tagged_table(flx: Falyx) -> Table:
 
     # Group commands by first tag
     grouped: dict[str, list[Command]] = defaultdict(list)
-    for cmd in flx.commands.values():
-        first_tag = cmd.tags[0] if cmd.tags else "Other"
-        grouped[first_tag.capitalize()].append(cmd)
+    for command in flx.commands.values():
+        first_tag = command.tags[0] if command.tags else "Other"
+        grouped[first_tag.capitalize()].append(command)
 
     # Add grouped commands to table
     for group_name, commands in grouped.items():
         table.add_row(f"[bold underline]{group_name} Commands[/]")
-        for cmd in commands:
-            table.add_row(f"[{cmd.key}] [{cmd.style}]{cmd.description}")
+        for command in commands:
+            table.add_row(f"[{command.key}] [{command.style}]{command.description}")
         table.add_row("")
 
     # Add bottom row
-    for row in flx.get_bottom_row():
+    for row in flx._get_bottom_row():
         table.add_row(row)
 
     return table

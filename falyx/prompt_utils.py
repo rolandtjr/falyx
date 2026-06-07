@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Utilities for user interaction prompts in the Falyx CLI framework.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Utilities for user interaction prompts in the Falyx CLI framework.
 
 Provides asynchronous confirmation dialogs and helper logic to determine
 whether a user should be prompted based on command-line options.
@@ -9,6 +8,8 @@ Includes:
 - `should_prompt_user()` for conditional prompt logic.
 - `confirm_async()` for interactive yes/no confirmation.
 """
+from contextlib import contextmanager
+from typing import Iterator
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import (
@@ -25,22 +26,61 @@ from falyx.themes import OneColors
 from falyx.validators import yes_no_validator
 
 
+@contextmanager
+def prompt_session_context(session: PromptSession) -> Iterator[PromptSession]:
+    """Temporary override for prompt session management"""
+    message = session.message
+    validator = session.validator
+    placeholder = session.placeholder
+    try:
+        yield session
+    finally:
+        session.message = message
+        session.validator = validator
+        session.placeholder = placeholder
+
+
 def should_prompt_user(
     *,
     confirm: bool,
     options: OptionsManager,
-    namespace: str = "cli_args",
-):
-    """
-    Determine whether to prompt the user for confirmation based on command
-    and global options.
-    """
-    never_prompt = options.get("never_prompt", False, namespace)
-    force_confirm = options.get("force_confirm", False, namespace)
-    skip_confirm = options.get("skip_confirm", False, namespace)
+    action_never_prompt: bool | None = None,
+    namespace: str = "root",
+    override_namespace: str = "execution",
+) -> bool:
+    """Determine whether to prompt the user for confirmation.
 
-    if never_prompt or skip_confirm:
+    Checks the `confirm` flag and consults the `OptionsManager` for any relevant
+    flags that may override the need for confirmation, such as `--never-prompt`,
+    `--force-confirm`, or `--skip-confirm`. The `override_namespace` is checked
+    first for any explicit overrides, followed by the main `namespace` for defaults.
+
+    Args:
+        confirm (bool): The initial confirmation flag (e.g., from a command argument).
+        options (OptionsManager): The options manager to check for override flags.
+        namespace (str): The secondary namespace to check for options (default: "root").
+        override_namespace (str): The primary namespace for overrides (default: "execution").
+
+    Returns:
+        bool: True if the user should be prompted, False if confirmation can be bypassed.
+    """
+    if action_never_prompt is True:
         return False
+
+    skip_confirm = options.get("skip_confirm", None, override_namespace)
+    if skip_confirm:
+        return False
+
+    never_prompt = options.get("never_prompt", None, override_namespace)
+    if never_prompt is None:
+        never_prompt = options.get("never_prompt", False, namespace)
+
+    if never_prompt:
+        return False
+
+    force_confirm = options.get("force_confirm", None, override_namespace)
+    if force_confirm is None:
+        force_confirm = options.get("force_confirm", False, namespace)
 
     return confirm or force_confirm
 
@@ -62,9 +102,16 @@ async def confirm_async(
 
 
 def rich_text_to_prompt_text(text: Text | str | StyleAndTextTuples) -> StyleAndTextTuples:
-    """
-    Convert a Rich Text object to a list of (style, text) tuples
-    compatible with prompt_toolkit.
+    """Convert a Rich Text object to prompt_toolkit formatted text.
+
+    This function takes a Rich `Text` object (or a string or already formatted text)
+    and converts it in to a list of (style, text) tuples compatible with prompt_toolkit.
+
+    Args:
+        text (Text | str | StyleAndTextTuples): The input text to convert.
+
+    Returns:
+        StyleAndTextTuples: A list of (style, text) tuples for prompt_toolkit.
     """
     if isinstance(text, list):
         if all(isinstance(pair, tuple) and len(pair) == 2 for pair in text):

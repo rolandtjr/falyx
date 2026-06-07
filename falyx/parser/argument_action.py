@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `ArgumentAction`, an enum used to standardize the behavior of CLI arguments
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `ArgumentAction`, an enum used to standardize the behavior of CLI arguments
 defined within Falyx command configurations.
 
 Each member of this enum maps to a valid `argparse` like actions or Falyx-specific
@@ -24,8 +23,7 @@ from enum import Enum
 
 
 class ArgumentAction(Enum):
-    """
-    Defines the action to be taken when the argument is encountered.
+    """Defines the action to be taken when the argument is encountered.
 
     This enum mirrors the core behavior of Python's `argparse` actions, with a few
     Falyx-specific extensions. It is used when defining command-line arguments for

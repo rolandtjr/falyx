@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines strongly-typed enums used throughout the Falyx CLI framework for
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines strongly-typed enums used throughout the Falyx CLI framework for
 representing common structured values like file formats, selection return types,
 and confirmation modes.
 
@@ -28,8 +27,7 @@ from enum import Enum
 
 
 class FileType(Enum):
-    """
-    Represents supported file types for reading and writing in Falyx Actions.
+    """Represents supported file types for reading and writing in Falyx Actions.
 
     Used by `LoadFileAction` and `SaveFileAction` to determine how to parse or
     serialize file content. Includes alias resolution for common extensions like
@@ -91,8 +89,7 @@ class FileType(Enum):
 
 
 class SelectionReturnType(Enum):
-    """
-    Controls what is returned from a `SelectionAction` when using a selection map.
+    """Controls what is returned from a `SelectionAction` when using a selection map.
 
     Determines how the user's choice(s) from a `dict[str, SelectionOption]` are
     transformed and returned by the action.
@@ -145,8 +142,7 @@ class SelectionReturnType(Enum):
 
 
 class ConfirmType(Enum):
-    """
-    Enum for defining prompt styles in confirmation dialogs.
+    """Enum for defining prompt styles in confirmation dialogs.
 
     Used by confirmation actions to control user input behavior and available choices.
 

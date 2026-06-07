@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `FallbackAction`, a lightweight recovery Action used within `ChainedAction`
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `FallbackAction`, a lightweight recovery Action used within `ChainedAction`
 pipelines to gracefully handle errors or missing results from a preceding step.
 
 When placed immediately after a failing or null-returning Action, `FallbackAction`
@@ -36,6 +35,8 @@ Example:
 The `FallbackAction` ensures that even if `MaybeFetchRemoteAction` fails or returns
 None, `ProcessDataAction` still receives a usable input.
 """
+from __future__ import annotations
+
 from functools import cached_property
 from typing import Any
 
@@ -46,8 +47,7 @@ from falyx.themes import OneColors
 
 
 class FallbackAction(Action):
-    """
-    FallbackAction provides a default value if the previous action failed or
+    """FallbackAction provides a default value if the previous action failed or
     returned None.
 
     It injects the last result and checks:
@@ -85,3 +85,7 @@ class FallbackAction(Action):
 
     def __str__(self) -> str:
         return f"FallbackAction(fallback={self.fallback!r})"
+
+    def clone(self) -> FallbackAction:
+        """Return a copy of this FallbackAction with the same fallback value."""
+        return FallbackAction(fallback=self.fallback)

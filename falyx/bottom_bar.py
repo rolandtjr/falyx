@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Provides the `BottomBar` class for managing a customizable bottom status bar in
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Provides the `BottomBar` class for managing a customizable bottom status bar in
 Falyx-based CLI applications.
 
 The bottom bar is rendered using `prompt_toolkit` and supports:
@@ -71,6 +70,11 @@ class BottomBar:
         self._value_getters: dict[str, Callable[[], Any]] = CaseInsensitiveDict()
         self.toggle_keys: list[str] = []
         self.key_bindings = key_bindings or KeyBindings()
+
+    @property
+    def has_items(self) -> bool:
+        """Check if the bottom bar has any registered items."""
+        return bool(self._named_items)
 
     @staticmethod
     def default_render(label: str, value: Any, fg: str, bg: str, width: int) -> HTML:
@@ -202,7 +206,7 @@ class BottomBar:
         label: str,
         options: OptionsManager,
         option_name: str,
-        namespace_name: str = "cli_args",
+        namespace_name: str = "default",
         fg: str = OneColors.BLACK,
         bg_on: str = OneColors.GREEN,
         bg_off: str = OneColors.DARK_RED,

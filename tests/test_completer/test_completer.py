@@ -1,97 +1,305 @@
-from types import SimpleNamespace
+import re
 
 import pytest
 from prompt_toolkit.completion import Completion
 from prompt_toolkit.document import Document
 
+from falyx import Falyx
 from falyx.completer import FalyxCompleter
+from falyx.parser import CommandArgumentParser
+
+
+def completion_texts(completions) -> list[str]:
+    return [c.text for c in completions]
 
 
 @pytest.fixture
-def fake_falyx():
-    fake_arg_parser = SimpleNamespace(
-        suggest_next=lambda tokens, end: ["--tag", "--name", "value with space"]
+def falyx():
+    flx = Falyx()
+
+    run_parser = CommandArgumentParser(
+        command_key="R",
+        command_description="Run Command",
     )
-    fake_command = SimpleNamespace(key="R", aliases=["RUN"], arg_parser=fake_arg_parser)
-    return SimpleNamespace(
-        exit_command=SimpleNamespace(key="X", aliases=["EXIT"]),
-        help_command=SimpleNamespace(key="H", aliases=["HELP"]),
-        history_command=SimpleNamespace(key="Y", aliases=["HISTORY"]),
-        commands={"R": fake_command},
-        _name_map={"R": fake_command, "RUN": fake_command, "X": fake_command},
+    run_parser.add_argument("--tag")
+    run_parser.add_argument("--name")
+
+    flx.add_command(
+        "R",
+        "Run Command",
+        lambda: None,
+        aliases=["RUN"],
+        arg_parser=run_parser,
     )
 
+    ops = Falyx(program="ops")
 
-def test_suggest_commands(fake_falyx):
-    completer = FalyxCompleter(fake_falyx)
-    completions = list(completer._suggest_commands("R"))
-    assert any(c.text == "R" for c in completions)
-    assert any(c.text == "RUN" for c in completions)
+    deploy_parser = CommandArgumentParser(
+        command_key="D",
+        command_description="Deploy Command",
+    )
+    deploy_parser.add_argument("--target")
+    deploy_parser.add_argument("--region")
+
+    ops.add_command(
+        "D",
+        "Deploy Command",
+        lambda: None,
+        aliases=["DEPLOY"],
+        arg_parser=deploy_parser,
+    )
+
+    flx.add_submenu(
+        "OPS",
+        "Operations",
+        ops,
+        aliases=["OPERATIONS"],
+    )
+
+    return flx
 
 
-def test_suggest_commands_empty(fake_falyx):
-    completer = FalyxCompleter(fake_falyx)
-    completions = list(completer._suggest_commands(""))
-    assert any(c.text == "X" for c in completions)
-    assert any(c.text == "H" for c in completions)
+def test_suggest_namespace_entries_root(falyx):
+    completer = FalyxCompleter(falyx)
+
+    completions = completer._suggest_namespace_entries(falyx, "R")
+
+    assert "R" in completions
+    assert "RUN" in completions
+
+    completions = completer._suggest_namespace_entries(falyx, "r")
+
+    assert "r" in completions
+    assert "run" in completions
 
 
-def test_suggest_commands_no_match(fake_falyx):
-    completer = FalyxCompleter(fake_falyx)
-    completions = list(completer._suggest_commands("Z"))
-    assert not completions
+def test_suggest_namespace_entries_submenu(falyx):
+    completer = FalyxCompleter(falyx)
+    ops = falyx.namespaces["OPS"].namespace
+
+    completions = completer._suggest_namespace_entries(ops, "D")
+
+    assert "D" in completions
+    assert "DEPLOY" in completions
 
 
-def test_get_completions_no_input(fake_falyx):
-    completer = FalyxCompleter(fake_falyx)
-    doc = Document("")
-    results = list(completer.get_completions(doc, None))
+def test_get_completions_no_input_shows_root_entries(falyx):
+    completer = FalyxCompleter(falyx)
+
+    results = list(completer.get_completions(Document(""), None))
+    texts = completion_texts(results)
+
     assert any(isinstance(c, Completion) for c in results)
-    assert any(c.text == "X" for c in results)
+    assert "R" in texts
+    assert "OPS" in texts
+    assert "X" in texts
 
 
-def test_get_completions_no_match(fake_falyx):
-    completer = FalyxCompleter(fake_falyx)
-    doc = Document("Z")
-    completions = list(completer.get_completions(doc, None))
-    assert not completions
-    doc = Document("Z Z")
-    completions = list(completer.get_completions(doc, None))
-    assert not completions
+def test_get_completions_partial_root_entry(falyx):
+    completer = FalyxCompleter(falyx)
+
+    results = list(completer.get_completions(Document("OP"), None))
+    texts = completion_texts(results)
+
+    assert "OPS" in texts
+    assert "OPERATIONS" in texts
 
 
-def test_get_completions_partial_command(fake_falyx):
-    completer = FalyxCompleter(fake_falyx)
-    doc = Document("R")
-    results = list(completer.get_completions(doc, None))
-    assert any(c.text in ("R", "RUN") for c in results)
+def test_get_completions_no_match_returns_empty(falyx):
+    completer = FalyxCompleter(falyx)
+
+    assert list(completer.get_completions(Document("Z"), None)) == []
+    assert list(completer.get_completions(Document("OPS Z"), None)) == []
 
 
-def test_get_completions_with_flag(fake_falyx):
-    completer = FalyxCompleter(fake_falyx)
-    doc = Document("R ")
-    results = list(completer.get_completions(doc, None))
-    assert "--tag" in [c.text for c in results]
+def test_get_completions_namespace_boundary_suggests_help_flags(falyx):
+    completer = FalyxCompleter(falyx)
+
+    results = list(completer.get_completions(Document("OPS -"), None))
+    texts = completion_texts(results)
+
+    assert "-h" in texts
+    assert "--help" in texts
+    assert "-T" not in texts
+    assert "--tldr" not in texts
+
+    falyx.add_tldr_example(
+        entry_key="R",
+        usage="",
+        description="This is a TLDR example for the R command.",
+    )
+    results = list(completer.get_completions(Document("-"), None))
+    texts = completion_texts(results)
+
+    assert "-h" in texts
+    assert "--help" in texts
+    assert "-T" in texts
+    assert "--tldr" in texts
 
 
-def test_get_completions_partial_flag(fake_falyx):
-    completer = FalyxCompleter(fake_falyx)
-    doc = Document("R --t")
-    results = list(completer.get_completions(doc, None))
-    assert all(c.start_position <= 0 for c in results)
-    assert any(c.text.startswith("--t") or c.display == "--tag" for c in results)
+def test_get_completions_preview_prefix_is_preserved(falyx):
+    completer = FalyxCompleter(falyx)
+
+    results = list(completer.get_completions(Document("?R"), None))
+    texts = completion_texts(results)
+
+    assert any(text.startswith("?R") for text in texts)
 
 
-def test_get_completions_bad_input(fake_falyx):
-    completer = FalyxCompleter(fake_falyx)
-    doc = Document('R "unclosed quote')
-    results = list(completer.get_completions(doc, None))
+def test_get_completions_preview_prefix_for_namespace_entries(falyx):
+    completer = FalyxCompleter(falyx)
+
+    results = list(completer.get_completions(Document("?OP"), None))
+    texts = completion_texts(results)
+
+    assert "?OPS" in texts or "?OPERATIONS" in texts
+
+
+def test_get_completions_leaf_command_delegates_flags_to_root_command_parser(
+    falyx, monkeypatch
+):
+    completer = FalyxCompleter(falyx)
+
+    seen = {}
+
+    def fake_suggest_next(args, cursor_at_end_of_token):
+        seen["args"] = list(args)
+        seen["cursor_at_end_of_token"] = cursor_at_end_of_token
+        return ["--tag"]
+
+    monkeypatch.setattr(
+        falyx.commands["R"].arg_parser,
+        "suggest_next",
+        fake_suggest_next,
+    )
+
+    results = list(completer.get_completions(Document("R --t"), None))
+    texts = completion_texts(results)
+
+    assert seen["args"] == ["--t"]
+    assert seen["cursor_at_end_of_token"] is False
+    assert "--tag" in texts
+
+
+def test_get_completions_leaf_command_delegates_flags_to_submenu_command_parser(
+    falyx, monkeypatch
+):
+    completer = FalyxCompleter(falyx)
+    ops = falyx.namespaces["OPS"].namespace
+    deploy = ops.commands["D"]
+
+    seen = {}
+
+    def fake_suggest_next(args, cursor_at_end_of_token):
+        seen["args"] = list(args)
+        seen["cursor_at_end_of_token"] = cursor_at_end_of_token
+        return ["--target"]
+
+    monkeypatch.setattr(
+        deploy.arg_parser,
+        "suggest_next",
+        fake_suggest_next,
+    )
+
+    results = list(completer.get_completions(Document("OPS D --t"), None))
+    texts = completion_texts(results)
+
+    assert seen["args"] == ["--t"]
+    assert seen["cursor_at_end_of_token"] is False
+    assert "--target" in texts
+
+
+def test_get_completions_leaf_command_receives_empty_stub_after_space(falyx, monkeypatch):
+    completer = FalyxCompleter(falyx)
+
+    seen = {}
+
+    def fake_suggest_next(args, cursor_at_end_of_token):
+        seen["args"] = list(args)
+        seen["cursor_at_end_of_token"] = cursor_at_end_of_token
+        return ["--tag", "--name"]
+
+    monkeypatch.setattr(
+        falyx.commands["R"].arg_parser,
+        "suggest_next",
+        fake_suggest_next,
+    )
+
+    results = list(completer.get_completions(Document("R "), None))
+    texts = completion_texts(results)
+
+    assert seen["args"] == []
+    assert seen["cursor_at_end_of_token"] is True
+    assert "--tag" in texts
+    assert "--name" in texts
+
+
+def test_get_completions_bad_input(falyx):
+    completer = FalyxCompleter(falyx)
+
+    results = list(completer.get_completions(Document('R "unclosed quote'), None))
+
     assert results == []
 
 
-def test_get_completions_exception_handling(fake_falyx):
-    completer = FalyxCompleter(fake_falyx)
-    fake_falyx.commands["R"].arg_parser.suggest_next = lambda *args: 1 / 0
-    doc = Document("R --tag")
-    results = list(completer.get_completions(doc, None))
+def test_get_completions_exception_handling(falyx, monkeypatch):
+    completer = FalyxCompleter(falyx)
+
+    def boom(*args, **kwargs):
+        raise ZeroDivisionError("boom")
+
+    monkeypatch.setattr(falyx.commands["R"].arg_parser, "suggest_next", boom)
+
+    results = list(completer.get_completions(Document("R --tag"), None))
+
     assert results == []
+
+
+def test_ensure_quote_wraps_whitespace(falyx):
+    completer = FalyxCompleter(falyx)
+
+    assert completer._ensure_quote("hello world") == '"hello world"'
+    assert completer._ensure_quote("hello") == "hello"
+
+
+def test_command_suggestions_are_case_insensitive(falyx):
+    completer = FalyxCompleter(falyx)
+
+    results = list(completer.get_completions(Document("r"), None))
+    texts = completion_texts(results)
+
+    assert "r" in texts
+    assert "run" in texts
+
+    results = list(completer.get_completions(Document("R"), None))
+    texts = completion_texts(results)
+
+    assert "R" in texts
+    assert "RUN" in texts
+
+
+def test_namespace_suggestions_are_case_insensitive(falyx):
+    completer = FalyxCompleter(falyx)
+
+    results = list(completer.get_completions(Document("op"), None))
+    texts = completion_texts(results)
+
+    assert "ops" in texts
+    assert "operations" in texts
+
+    results = list(completer.get_completions(Document("OP"), None))
+    texts = completion_texts(results)
+
+    assert "OPS" in texts
+    assert "OPERATIONS" in texts
+
+
+def test_command_completions_after_namespace(falyx):
+    completer = FalyxCompleter(falyx)
+
+    results = list(completer.get_completions(Document("OPS D --"), None))
+    texts = completion_texts(results)
+
+    assert "--target" in texts
+    assert "--region" in texts
+    assert "--help" in texts

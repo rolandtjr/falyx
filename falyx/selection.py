@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Provides interactive selection utilities for Falyx CLI actions.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Provides interactive selection utilities for Falyx CLI actions.
 
 This module defines `SelectionOption` objects, selection maps, and rich-powered
 rendering functions to build interactive selection prompts using `prompt_toolkit`.
@@ -12,6 +11,8 @@ It supports:
 
 Used by `SelectionAction` and other prompt-driven workflows within Falyx.
 """
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any, Callable, KeysView, Sequence
 
@@ -21,7 +22,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from falyx.console import console
-from falyx.prompt_utils import rich_text_to_prompt_text
+from falyx.prompt_utils import prompt_session_context, rich_text_to_prompt_text
 from falyx.themes import OneColors
 from falyx.utils import CaseInsensitiveDict, chunks
 from falyx.validators import MultiIndexValidator, MultiKeyValidator
@@ -44,11 +45,17 @@ class SelectionOption:
         key = escape(f"[{key}]")
         return f"[{OneColors.WHITE}]{key}[/] [{self.style}]{self.description}[/]"
 
+    def copy(self) -> SelectionOption:
+        """Create a copy of the SelectionOption."""
+        return SelectionOption(
+            description=self.description,
+            value=self.value,
+            style=self.style,
+        )
+
 
 class SelectionOptionMap(CaseInsensitiveDict):
-    """
-    Manages selection options including validation and reserved key protection.
-    """
+    """Manages selection options including validation and reserved key protection."""
 
     RESERVED_KEYS: set[str] = set()
 
@@ -100,6 +107,13 @@ class SelectionOptionMap(CaseInsensitiveDict):
                 continue
             yield k, v
 
+    def copy(self) -> SelectionOptionMap:
+        """Create a copy of the SelectionOptionMap."""
+        new_map = SelectionOptionMap(allow_reserved=self.allow_reserved)
+        for key, option in self.items():
+            new_map[key] = option.copy()
+        return new_map
+
 
 def render_table_base(
     title: str,
@@ -118,6 +132,7 @@ def render_table_base(
     highlight: bool = True,
     column_names: Sequence[str] | None = None,
 ) -> Table:
+    """Render the base table for selection prompts."""
     table = Table(
         title=title,
         caption=caption,
@@ -288,23 +303,37 @@ async def prompt_for_index(
     allow_duplicates: bool = False,
     cancel_key: str = "",
 ) -> int | list[int]:
+    """Prompt the user to select an index from a table of options. Return the selected index."""
     prompt_session = prompt_session or PromptSession()
 
     if show_table:
         console.print(table, justify="center")
 
-    selection = await prompt_session.prompt_async(
-        message=rich_text_to_prompt_text(prompt_message),
-        validator=MultiIndexValidator(
-            min_index,
-            max_index,
-            number_selections,
-            separator,
-            allow_duplicates,
-            cancel_key,
-        ),
-        default=default_selection,
+    number_selections_str = (
+        f"{number_selections} " if isinstance(number_selections, int) else ""
     )
+
+    plural = "s" if number_selections != 1 else ""
+    placeholder = (
+        f"Enter {number_selections_str}selection{plural} separated by '{separator}'"
+        if number_selections != 1
+        else "Enter selection"
+    )
+
+    with prompt_session_context(prompt_session) as session:
+        selection = await session.prompt_async(
+            message=rich_text_to_prompt_text(prompt_message),
+            validator=MultiIndexValidator(
+                min_index,
+                max_index,
+                number_selections,
+                separator,
+                allow_duplicates,
+                cancel_key,
+            ),
+            default=default_selection,
+            placeholder=placeholder,
+        )
 
     if selection.strip() == cancel_key:
         return int(cancel_key)
@@ -332,13 +361,26 @@ async def prompt_for_selection(
     if show_table:
         console.print(table, justify="center")
 
-    selected = await prompt_session.prompt_async(
-        message=rich_text_to_prompt_text(prompt_message),
-        validator=MultiKeyValidator(
-            keys, number_selections, separator, allow_duplicates, cancel_key
-        ),
-        default=default_selection,
+    number_selections_str = (
+        f"{number_selections} " if isinstance(number_selections, int) else ""
     )
+
+    plural = "s" if number_selections != 1 else ""
+    placeholder = (
+        f"Enter {number_selections_str}selection{plural} separated by '{separator}'"
+        if number_selections != 1
+        else "Enter selection"
+    )
+
+    with prompt_session_context(prompt_session) as session:
+        selected = await session.prompt_async(
+            message=rich_text_to_prompt_text(prompt_message),
+            validator=MultiKeyValidator(
+                keys, number_selections, separator, allow_duplicates, cancel_key
+            ),
+            default=default_selection,
+            placeholder=placeholder,
+        )
 
     if selected.strip() == cancel_key:
         return cancel_key

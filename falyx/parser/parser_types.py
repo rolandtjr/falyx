@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Type utilities and argument state models for Falyx's custom CLI argument parser.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Type utilities and argument state models for Falyx's custom CLI argument parser.
 
 This module provides specialized helpers and data structures used by
 the `CommandArgumentParser` to handle non-standard parsing behavior.
@@ -16,21 +15,16 @@ Contents:
 These tools support richer expressiveness and user-friendly ergonomics in
 Falyx's declarative command-line interfaces.
 """
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeAlias
 
 from falyx.parser.argument import Argument
+from falyx.parser.option import Option
 
 
-@dataclass
-class ArgumentState:
-    """Tracks an argument and whether it has been consumed."""
-
-    arg: Argument
-    consumed: bool = False
-    consumed_position: int | None = None
-    has_invalid_choice: bool = False
-
+class StateMixin:
     def set_consumed(self, position: int | None = None) -> None:
         """Mark this argument as consumed, optionally setting the position."""
         self.consumed = True
@@ -42,12 +36,62 @@ class ArgumentState:
         self.consumed_position = None
 
 
+@dataclass
+class ArgumentState(StateMixin):
+    """Tracks an argument and whether it has been consumed."""
+
+    arg: Argument
+    consumed: bool = False
+    consumed_position: int | None = None
+    has_invalid_choice: bool = False
+
+
+@dataclass
+class OptionState(StateMixin):
+    """Tracks an option argument and its consumed state, including the dest name."""
+
+    option: Option
+    consumed: bool = False
+    consumed_position: int | None = None
+    has_invalid_choice: bool = False
+
+
 @dataclass(frozen=True)
 class TLDRExample:
     """Represents a usage example for TLDR output."""
 
     usage: str
     description: str
+
+    def copy(self) -> TLDRExample:
+        """Create a copy of this TLDRExample."""
+        return TLDRExample(
+            usage=self.usage,
+            description=self.description,
+        )
+
+
+TLDRInput: TypeAlias = TLDRExample | tuple[str, str]
+
+
+@dataclass(frozen=True)
+class FalyxTLDRExample:
+    """Represents a usage example for Falyx TLDR output, with optional metadata."""
+
+    entry_key: str
+    usage: str
+    description: str
+
+    def copy(self) -> FalyxTLDRExample:
+        """Create a copy of this FalyxTLDRExample."""
+        return FalyxTLDRExample(
+            entry_key=self.entry_key,
+            usage=self.usage,
+            description=self.description,
+        )
+
+
+FalyxTLDRInput: TypeAlias = FalyxTLDRExample | tuple[str, str, str]
 
 
 def true_none(value: Any) -> bool | None:

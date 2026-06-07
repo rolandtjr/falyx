@@ -1,6 +1,5 @@
 # Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Contains value coercion and signature comparison utilities for Falyx argument parsing.
+"""Contains value coercion and signature comparison utilities for Falyx argument parsing.
 
 This module provides type coercion functions for converting string input into expected
 Python types, including `Enum`, `bool`, `datetime`, and `Literal`. It also supports
@@ -13,6 +12,7 @@ Functions:
 - same_argument_definitions: Check if multiple callables share the same argument structure.
 """
 import types
+from collections.abc import Callable
 from datetime import datetime
 from enum import EnumMeta
 from typing import Any, Literal, Union, get_args, get_origin
@@ -24,9 +24,18 @@ from falyx.logger import logger
 from falyx.parser.signature import infer_args_from_func
 
 
+def get_type_name(type_: Any) -> str:
+    if hasattr(type_, "__name__"):
+        return type_.__name__
+    elif not isinstance(type_, type):
+        parent_type = type(type_)
+        if hasattr(parent_type, "__name__"):
+            return parent_type.__name__
+    return str(type_)
+
+
 def coerce_bool(value: str) -> bool:
-    """
-    Convert a string to a boolean.
+    """Convert a string to a boolean.
 
     Accepts various truthy and falsy representations such as 'true', 'yes', '0', 'off', etc.
 
@@ -47,8 +56,7 @@ def coerce_bool(value: str) -> bool:
 
 
 def coerce_enum(value: Any, enum_type: EnumMeta) -> Any:
-    """
-    Convert a raw value or string to an Enum instance.
+    """Convert a raw value or string to an Enum instance.
 
     Tries to resolve by name, value, or coerced base type.
 
@@ -80,15 +88,14 @@ def coerce_enum(value: Any, enum_type: EnumMeta) -> Any:
         raise ValueError(f"'{value}' should be one of {{{', '.join(values)}}}") from None
 
 
-def coerce_value(value: str, target_type: type) -> Any:
-    """
-    Attempt to convert a string to the given target type.
+def coerce_value(value: str, target_type: Callable[[Any], Any]) -> Any:
+    """Attempt to convert a string to the given target type.
 
     Handles complex typing constructs such as Union, Literal, Enum, and datetime.
 
     Args:
         value (str): The input string to convert.
-        target_type (type): The desired type.
+        target_type (Callable[[Any], Any]): The desired type.
 
     Returns:
         Any: The coerced value.
@@ -133,8 +140,7 @@ def same_argument_definitions(
     actions: list[Any],
     arg_metadata: dict[str, str | dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]] | None:
-    """
-    Determine if multiple callables resolve to the same argument definitions.
+    """Determine if multiple callables resolve to the same argument definitions.
 
     This is used to infer whether actions in an ActionGroup or ProcessPool can share
     a unified argument parser.

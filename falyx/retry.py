@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Implements retry logic for Falyx Actions using configurable retry policies.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Implements retry logic for Falyx Actions using configurable retry policies.
 
 This module defines:
 - `RetryPolicy`: A configurable model controlling retry behavior (delay, backoff, jitter).
@@ -30,8 +29,7 @@ from falyx.logger import logger
 
 
 class RetryPolicy(BaseModel):
-    """
-    Defines a retry strategy for Falyx `Action` objects.
+    """Defines a retry strategy for Falyx `Action` objects.
 
     This model controls whether an action should be retried on failure, and how:
     - `max_retries`: Maximum number of retry attempts.
@@ -60,23 +58,16 @@ class RetryPolicy(BaseModel):
     enabled: bool = False
 
     def enable_policy(self) -> None:
-        """
-        Enable the retry policy.
-        :return: None
-        """
+        """Enable the retry policy."""
         self.enabled = True
 
     def is_active(self) -> bool:
-        """
-        Check if the retry policy is active.
-        :return: True if the retry policy is active, False otherwise.
-        """
+        """Check if the retry policy is active."""
         return self.max_retries > 0 and self.enabled
 
 
 class RetryHandler:
-    """
-    Executes retry logic for Falyx actions using a provided `RetryPolicy`.
+    """Executes retry logic for Falyx actions using a provided `RetryPolicy`.
 
     This class is intended to be registered as an `on_error` hook. It will
     re-attempt the failed `Action`'s `action` method using the args/kwargs from

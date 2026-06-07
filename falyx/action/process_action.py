@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `ProcessAction`, a Falyx Action that executes a blocking or CPU-bound function
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `ProcessAction`, a Falyx Action that executes a blocking or CPU-bound function
 in a separate process using `concurrent.futures.ProcessPoolExecutor`.
 
 This is useful for offloading expensive computations or subprocess-compatible operations
@@ -54,8 +53,7 @@ from falyx.themes import OneColors
 
 
 class ProcessAction(BaseAction):
-    """
-    ProcessAction runs a function in a separate process using ProcessPoolExecutor.
+    """ProcessAction runs a function in a separate process using ProcessPoolExecutor.
 
     Features:
     - Executes CPU-bound or blocking tasks without blocking the main event loop.
@@ -178,4 +176,22 @@ class ProcessAction(BaseAction):
             f"ProcessAction(name={self.name!r}, "
             f"action={getattr(self.action, '__name__', repr(self.action))}, "
             f"args={self.args!r}, kwargs={self.kwargs!r})"
+        )
+
+    def clone(self) -> ProcessAction:
+        """Create a copy of this ProcessAction with the same configuration."""
+        return ProcessAction(
+            name=self.name,
+            action=self.action,
+            args=self.args,
+            kwargs=self.kwargs,
+            hooks=self.hooks.copy(),
+            executor=None,
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
+            never_prompt=self.local_never_prompt,
+            spinner_message=self.spinner_message,
+            spinner_type=self.spinner_type,
+            spinner_style=self.spinner_style,
+            spinner_speed=self.spinner_speed,
         )

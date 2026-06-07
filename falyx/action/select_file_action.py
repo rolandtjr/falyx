@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `SelectFileAction`, a Falyx Action that allows users to select one or more
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `SelectFileAction`, a Falyx Action that allows users to select one or more
 files from a target directory and optionally return either their content or path,
 parsed based on a selected `FileType`.
 
@@ -72,8 +71,7 @@ from falyx.themes import OneColors
 
 
 class SelectFileAction(BaseAction):
-    """
-    SelectFileAction allows users to select a file(s) from a directory and return:
+    """SelectFileAction allows users to select a file(s) from a directory and return:
     - file content (as text, JSON, CSV, etc.)
     - or the file path itself.
 
@@ -115,8 +113,9 @@ class SelectFileAction(BaseAction):
         separator: str = ",",
         allow_duplicates: bool = False,
         prompt_session: PromptSession | None = None,
+        never_prompt: bool | None = False,
     ):
-        super().__init__(name)
+        super().__init__(name, never_prompt=never_prompt)
         self.directory = Path(directory).resolve()
         self.title = title
         self.columns = columns
@@ -185,6 +184,9 @@ class SelectFileAction(BaseAction):
                 raise ValueError(f"Unsupported return type: {self.return_type}")
         except Exception as error:
             logger.error("Failed to parse %s: %s", file.name, error)
+            raise ValueError(
+                f"Failed to parse {file.name} as {self.return_type}: {error}"
+            ) from error
         return value
 
     def _find_cancel_key(self, options) -> str:
@@ -291,4 +293,23 @@ class SelectFileAction(BaseAction):
         return (
             f"SelectFileAction(name={self.name!r}, dir={str(self.directory)!r}, "
             f"suffix_filter={self.suffix_filter!r}, return_type={self.return_type})"
+        )
+
+    def clone(self) -> SelectFileAction:
+        """Create a copy of this SelectFileAction with the same configuration."""
+        return SelectFileAction(
+            name=self.name,
+            directory=self.directory,
+            title=self.title,
+            columns=self.columns,
+            prompt_message=self.prompt_message,
+            style=self.style,
+            suffix_filter=self.suffix_filter,
+            return_type=self.return_type,
+            encoding=self.encoding,
+            number_selections=self.number_selections,
+            separator=self.separator,
+            allow_duplicates=self.allow_duplicates,
+            prompt_session=self.prompt_session,
+            never_prompt=self.local_never_prompt,
         )

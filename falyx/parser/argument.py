@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines the `Argument` dataclass used by `CommandArgumentParser` to represent
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines the `Argument` dataclass used by `CommandArgumentParser` to represent
 individual command-line parameters in a structured, introspectable format.
 
 Each `Argument` instance describes one CLI input, including its flags, type,
@@ -33,6 +32,8 @@ Used By:
 - Rich-based CLI help generation
 - Completion and preview suggestions
 """
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -42,8 +43,7 @@ from falyx.parser.argument_action import ArgumentAction
 
 @dataclass
 class Argument:
-    """
-    Represents a command-line argument.
+    """Represents a command-line argument.
 
     Attributes:
         flags (tuple[str, ...]): Short and long flags for the argument.
@@ -60,6 +60,8 @@ class Argument:
             An action object that resolves the argument, if applicable.
         lazy_resolver (bool): True if the resolver should be called lazily, False otherwise
         suggestions (list[str] | None): Optional completions for interactive shells
+        group (str | None): Optional name of the argument group this belongs to.
+        mutex_group (str | None): Optional name of the mutually exclusive group this belongs to.
     """
 
     flags: tuple[str, ...]
@@ -75,6 +77,8 @@ class Argument:
     resolver: BaseAction | None = None
     lazy_resolver: bool = False
     suggestions: list[str] | None = None
+    group: str | None = None
+    mutex_group: str | None = None
 
     def get_positional_text(self) -> str:
         """Get the positional text for the argument."""
@@ -132,6 +136,8 @@ class Argument:
             and self.positional == other.positional
             and self.default == other.default
             and self.help == other.help
+            and self.group == other.group
+            and self.mutex_group == other.mutex_group
         )
 
     def __hash__(self) -> int:
@@ -147,5 +153,27 @@ class Argument:
                 self.positional,
                 self.default,
                 self.help,
+                self.group,
+                self.mutex_group,
             )
+        )
+
+    def copy(self) -> Argument:
+        """Create a copy of this Argument."""
+        return Argument(
+            flags=self.flags,
+            dest=self.dest,
+            action=self.action,
+            type=self.type,
+            default=self.default,
+            choices=list(self.choices) if self.choices else [],
+            required=self.required,
+            help=self.help,
+            nargs=self.nargs,
+            positional=self.positional,
+            resolver=self.resolver,
+            lazy_resolver=self.lazy_resolver,
+            suggestions=list(self.suggestions) if self.suggestions else None,
+            group=self.group,
+            mutex_group=self.mutex_group,
         )

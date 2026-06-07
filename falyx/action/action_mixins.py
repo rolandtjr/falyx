@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Provides reusable mixins for managing collections of `BaseAction` instances
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Provides reusable mixins for managing collections of `BaseAction` instances
 within composite Falyx actions such as `ActionGroup` or `ChainedAction`.
 
 The primary export, `ActionListMixin`, encapsulates common functionality for

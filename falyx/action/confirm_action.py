@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `ConfirmAction`, a Falyx Action that prompts the user for confirmation
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `ConfirmAction`, a Falyx Action that prompts the user for confirmation
 before continuing execution.
 
 `ConfirmAction` supports a wide range of confirmation strategies, including:
@@ -62,8 +61,7 @@ from falyx.validators import word_validator, words_validator
 
 
 class ConfirmAction(BaseAction):
-    """
-    Action to confirm an operation with the user.
+    """Action to confirm an operation with the user.
 
     There are several ways to confirm an action, such as using a simple
     yes/no prompt. You can also use a confirmation type that requires the user
@@ -91,14 +89,13 @@ class ConfirmAction(BaseAction):
         prompt_message: str = "Confirm?",
         confirm_type: ConfirmType | str = ConfirmType.YES_NO,
         prompt_session: PromptSession | None = None,
-        never_prompt: bool = False,
+        never_prompt: bool | None = False,
         word: str = "CONFIRM",
         return_last_result: bool = False,
         inject_last_result: bool = True,
         inject_into: str = "last_result",
     ):
-        """
-        Initialize the ConfirmAction.
+        """Initialize the ConfirmAction.
 
         Args:
             message (str): The confirmation message to display.
@@ -269,4 +266,18 @@ class ConfirmAction(BaseAction):
         return (
             f"ConfirmAction(name={self.name}, message={self.prompt_message}, "
             f"confirm_type={self.confirm_type}, return_last_result={self.return_last_result})"
+        )
+
+    def clone(self) -> ConfirmAction:
+        """Return a copy of this ConfirmAction with the same configuration."""
+        return ConfirmAction(
+            name=self.name,
+            prompt_message=self.prompt_message,
+            confirm_type=self.confirm_type,
+            prompt_session=self.prompt_session,
+            never_prompt=self.local_never_prompt,
+            word=self.word,
+            return_last_result=self.return_last_result,
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
         )

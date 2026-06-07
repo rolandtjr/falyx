@@ -1,7 +1,6 @@
-"""
-Falyx CLI Framework
+"""Falyx CLI Framework
 
-Copyright (c) 2025 rtj.dev LLC.
+Copyright (c) 2026 rtj.dev LLC.
 Licensed under the MIT License. See LICENSE file for details.
 """
 

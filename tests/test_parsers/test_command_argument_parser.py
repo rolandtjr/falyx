@@ -1,7 +1,11 @@
 import pytest
+from rich.text import Text
 
-from falyx.exceptions import CommandArgumentError
-from falyx.parser import ArgumentAction, CommandArgumentParser
+from falyx.action import Action
+from falyx.console import console as falyx_console
+from falyx.exceptions import CommandArgumentError, NotAFalyxError
+from falyx.options_manager import OptionsManager
+from falyx.parser import Argument, ArgumentAction, CommandArgumentParser
 from falyx.signals import HelpSignal
 
 
@@ -431,7 +435,6 @@ async def test_parse_args_flagged_nargs_plus():
     assert args["files"] == ["a", "b", "c"]
 
     args = await parser.parse_args(["--files", "a"])
-    print(args)
     assert args["files"] == ["a"]
 
     args = await parser.parse_args([])
@@ -666,7 +669,7 @@ async def test_parse_args_split_order():
     cap.add_argument("a")
     cap.add_argument("--x")
     cap.add_argument("b", nargs="*")
-    args, kwargs = await cap.parse_args_split(["1", "--x", "100", "2"])
+    args, kwargs, _ = await cap.parse_args_split(["1", "--x", "100", "2"])
     assert args == ("1", ["2"])
     assert kwargs == {"x": "100"}
 
@@ -826,4 +829,200 @@ async def test_render_help():
     parser.add_argument("--foo", type=str, help="Foo help")
     parser.add_argument("--bar", action=ArgumentAction.APPEND, type=str, help="Bar help")
 
-    assert parser.render_help() is None
+    with falyx_console.capture() as capture:
+        parser.render_help()
+    output = Text.from_ansi(capture.get()).plain
+    assert "usage:" in output
+    assert "--foo" in output
+    assert "Foo help" in output
+    assert "--bar" in output
+    assert "Bar help" in output
+
+
+def test_command_argument_parser_set_options_manager_invalid():
+    parser = CommandArgumentParser()
+
+    with pytest.raises(NotAFalyxError):
+        parser.set_options_manager("not_a_options_manager")
+
+    with pytest.raises(NotAFalyxError):
+        parser.set_options_manager(123)
+
+    with pytest.raises(NotAFalyxError):
+        parser.set_options_manager(None)
+
+
+def test_command_argument_parser_set_options_manager_valid():
+    parser = CommandArgumentParser()
+    options_manager = OptionsManager([("new_namespace", {"foo": "bar"})])
+    parser.set_options_manager(options_manager)
+    assert parser.options_manager == options_manager
+    assert parser.options_manager.get("foo", namespace_name="new_namespace") == "bar"
+
+
+def test_add_argument_invalid_required():
+    parser = CommandArgumentParser()
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument("--foo", action=ArgumentAction.STORE_TRUE, required=True)
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument("--foo", action=ArgumentAction.STORE_FALSE, required=True)
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument(
+            "--foo", action=ArgumentAction.STORE_BOOL_OPTIONAL, required=True
+        )
+
+
+def test_add_argument_invalid_choices():
+    parser = CommandArgumentParser()
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument("--foo", action="store_true", choices="not_a_list")
+
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument("--foo", choices=123)
+
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument("--foo", choices={"a": 1, "b": 2})
+
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument("--foo", choices=["a", "b"], type=int)
+
+
+def test_add_argument_resolver_invalid():
+    parser = CommandArgumentParser()
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument("--foo", resolver=lambda x: x)
+
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument("--foo", resolver=123)
+
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument("--foo", action="action", resolver="not_a_function")
+
+
+def test_add_argument_resolver_valid():
+    parser = CommandArgumentParser()
+
+    parser.add_argument(
+        "--foo", action="action", resolver=Action("test", lambda x: x.upper())
+    )
+
+
+def test_add_argument_resolve_invalid_default():
+    parser = CommandArgumentParser()
+
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument("--foo", action="store_true", default="any value")
+
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument("--foo", action="store_false", default=False)
+
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument("--foo", action="store_true", default=True)
+
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument("--foo", action="store_bool_optional", default=False)
+
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument("--foo", action="count", default=500)
+
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument("--foo", action="append", default="not a list")
+
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument("--foo", action="extend", default="not a list")
+
+    with pytest.raises(CommandArgumentError):
+        parser.add_argument("--count", action="count", default=0)
+
+
+@pytest.mark.asyncio
+async def test_add_argument_resolve_valid_default():
+    parser = CommandArgumentParser()
+
+    parser.add_argument("--foo", action="store_true", default=False)
+
+    parser.add_argument("--bar", action="store_false", default=True)
+
+    parser.add_argument("--baz", action="store_bool_optional", default=None)
+
+    parser.add_argument("--items", action="append", default=[])
+
+    parser.add_argument("--values", action="extend", default=[])
+
+    parser.add_argument("--number", action="store", nargs=1, type=int, default=0)
+
+    result = await parser.parse_args(["--number", "5"])
+
+    assert result["foo"] is False
+    assert result["bar"] is True
+    assert result["baz"] is None
+    assert result["items"] == []
+    assert result["values"] == []
+    assert result["number"] == 5
+
+
+def test_add_argument_in_reserved_dests():
+    parser = CommandArgumentParser()
+
+    with pytest.raises(
+        CommandArgumentError,
+        match="invalid dest .*'help' is reserved and cannot be used.",
+    ):
+        parser.add_argument("--help")
+
+    with pytest.raises(
+        CommandArgumentError,
+        match="invalid dest .*'tldr' is reserved and cannot be used.",
+    ):
+        parser.add_argument("--tldr")
+
+
+def test_add_argument_in_reserved_dests_positional():
+    parser = CommandArgumentParser()
+
+    with pytest.raises(
+        CommandArgumentError,
+        match="invalid dest .*'help' is reserved and cannot be used.",
+    ):
+        parser.add_argument("help")
+
+    with pytest.raises(
+        CommandArgumentError,
+        match="invalid dest .*'tldr' is reserved and cannot be used.",
+    ):
+        parser.add_argument("tldr")
+
+
+def test_add_argument_invalid_suggestions():
+    parser = CommandArgumentParser()
+
+    with pytest.raises(
+        CommandArgumentError, match="suggestions must be a list or None, got int"
+    ):
+        parser.add_argument("--valid", suggestions=112445)
+
+
+def test_add_argument_invalid_lazy_resolver():
+    parser = CommandArgumentParser()
+
+    with pytest.raises(
+        CommandArgumentError, match="lazy_resolver must be a boolean, got int"
+    ):
+        parser.add_argument("--valid", lazy_resolver=123)
+
+
+def test_add_argument_returns_registered_argument() -> None:
+    parser = CommandArgumentParser()
+
+    arg = parser.add_argument(
+        "--retries",
+        type=int,
+        default="1",
+        choices=["1", "2"],
+    )
+
+    assert isinstance(arg, Argument)
+    assert arg.dest == "retries"
+    assert arg.default == 1
+    assert arg.choices == [1, 2]
+    assert parser.get_argument("retries") is arg

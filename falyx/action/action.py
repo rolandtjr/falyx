@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `Action`, the core atomic unit in the Falyx CLI framework, used to wrap and
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `Action`, the core atomic unit in the Falyx CLI framework, used to wrap and
 execute a single callable or coroutine with structured lifecycle support.
 
 An `Action` is the simplest building block in Falyx's execution model, enabling
@@ -50,8 +49,7 @@ from falyx.utils import ensure_async
 
 
 class Action(BaseAction):
-    """
-    Action wraps a simple function or coroutine into a standard executable unit.
+    """Action wraps a simple function or coroutine into a standard executable unit.
 
     It supports:
     - Optional retry logic.
@@ -148,8 +146,8 @@ class Action(BaseAction):
             self.enable_retry()
 
     def get_infer_target(self) -> tuple[Callable[..., Any], None]:
-        """
-        Returns the callable to be used for argument inference.
+        """Returns the callable to be used for argument inference.
+
         By default, it returns the action itself.
         """
         return self.action, None
@@ -208,3 +206,34 @@ class Action(BaseAction):
             f"retry={self.retry_policy.enabled}, "
             f"rollback={self.rollback is not None})"
         )
+
+    def _copy_hooks_without_retry(self) -> HookManager:
+        """Create a copy of the current hooks, excluding any retry handlers."""
+        new_hooks = HookManager()
+        for hook_type, hooks in self.hooks._hooks.items():
+            for hook in hooks:
+                owner = getattr(hook, "__self__", None)
+                if not isinstance(owner, RetryHandler):
+                    new_hooks.register(hook_type, hook)
+        return new_hooks
+
+    def clone(self) -> Action:
+        """Create a copy of this Action with the same configuration."""
+        new_action = Action(
+            name=self.name,
+            action=self._action,
+            rollback=self._rollback,
+            args=self.args,
+            kwargs=self.kwargs,
+            hooks=self._copy_hooks_without_retry(),
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
+            never_prompt=self.local_never_prompt,
+            retry=self.retry_policy.enabled,
+            retry_policy=self.retry_policy.model_copy(deep=True),
+            spinner_message=self.spinner_message,
+            spinner_type=self.spinner_type,
+            spinner_style=self.spinner_style,
+            spinner_speed=self.spinner_speed,
+        )
+        return new_action

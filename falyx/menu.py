@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `MenuOption` and `MenuOptionMap`, core components used to construct
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `MenuOption` and `MenuOptionMap`, core components used to construct
 interactive menus within Falyx Actions such as `MenuAction` and `PromptMenuAction`.
 
 Each `MenuOption` represents a single actionable choice with a description,
@@ -69,6 +68,14 @@ class MenuOption:
             [(OneColors.WHITE, f"[{key}] "), (self.style, self.description)]
         )
 
+    def copy(self) -> MenuOption:
+        """Create a copy of this MenuOption."""
+        return MenuOption(
+            description=self.description,
+            action=self.action.clone(),
+            style=self.style,
+        )
+
 
 class MenuOptionMap(CaseInsensitiveDict):
     """
@@ -101,12 +108,16 @@ class MenuOptionMap(CaseInsensitiveDict):
         self,
         options: dict[str, MenuOption] | None = None,
         allow_reserved: bool = False,
+        disable_reserved: bool = False,
     ):
         super().__init__()
         self.allow_reserved = allow_reserved
         if options:
             self.update(options)
-        self._inject_reserved_defaults()
+        if not disable_reserved:
+            self._inject_reserved_defaults()
+        else:
+            self.allow_reserved = True
 
     def _inject_reserved_defaults(self):
         from falyx.action import SignalAction
@@ -157,3 +168,13 @@ class MenuOptionMap(CaseInsensitiveDict):
             if not include_reserved and key in self.RESERVED_KEYS:
                 continue
             yield key, option
+
+    def copy(self) -> MenuOptionMap:
+        """Create a copy of this MenuOptionMap."""
+        items = {}
+        for key, option in self.items():
+            if key in self.RESERVED_KEYS and not self.allow_reserved:
+                continue
+            items[key] = option.copy()
+        new_map = MenuOptionMap(items, allow_reserved=self.allow_reserved)
+        return new_map

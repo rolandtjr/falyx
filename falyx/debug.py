@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Provides debug logging hooks for Falyx action execution.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Provides debug logging hooks for Falyx action execution.
 
 This module defines lifecycle hook functions (`log_before`, `log_success`, `log_after`, `log_error`)
 that can be registered with a `HookManager` to trace command execution.

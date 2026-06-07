@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Input validators for use with Prompt Toolkit and interactive Falyx CLI workflows.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Input validators for use with Prompt Toolkit and interactive Falyx CLI workflows.
 
 This module defines reusable `Validator` instances and subclasses that enforce valid
 user input during prompts—especially for selection actions, confirmations, and
@@ -21,6 +20,8 @@ enforce correctness and provide helpful error messages.
 from typing import TYPE_CHECKING, KeysView, Sequence
 
 from prompt_toolkit.validation import ValidationError, Validator
+
+from falyx.routing import RouteKind
 
 if TYPE_CHECKING:
     from falyx.falyx import Falyx
@@ -48,10 +49,33 @@ class CommandValidator(Validator):
                 message=self.error_message,
                 cursor_position=len(text),
             )
-        is_preview, choice, _, __ = await self.falyx.get_command(text, from_validate=True)
-        if is_preview:
+        route, _, __, ___ = await self.falyx.prepare_route(text, from_validate=True)
+        if not route:
+            raise ValidationError(
+                message=self.error_message,
+                cursor_position=len(text),
+            )
+        if route.is_preview and route.command is None:
+            raise ValidationError(
+                message=self.error_message,
+                cursor_position=len(text),
+            )
+        elif route.is_preview:
             return None
-        if not choice:
+        if route.kind in {
+            RouteKind.NAMESPACE_MENU,
+            RouteKind.NAMESPACE_HELP,
+            RouteKind.NAMESPACE_TLDR,
+        }:
+            return None
+        if route.kind is RouteKind.COMMAND and route.command is None:
+            raise ValidationError(
+                message=self.error_message,
+                cursor_position=len(text),
+            )
+        elif route.kind is RouteKind.COMMAND:
+            return None
+        if route.kind is RouteKind.UNKNOWN:
             raise ValidationError(
                 message=self.error_message,
                 cursor_position=len(text),
@@ -132,6 +156,8 @@ def word_validator(word: str) -> Validator:
 
 
 class MultiIndexValidator(Validator):
+    """Validator for multiple index selections (e.g. '1,2,3')."""
+
     def __init__(
         self,
         minimum: int,
@@ -182,6 +208,8 @@ class MultiIndexValidator(Validator):
 
 
 class MultiKeyValidator(Validator):
+    """Validator for multiple key selections (e.g. 'A,B,C')."""
+
     def __init__(
         self,
         keys: Sequence[str] | KeysView[str],

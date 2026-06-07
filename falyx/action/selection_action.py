@@ -1,7 +1,6 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `SelectionAction`, a highly flexible Falyx Action for interactive or headless
-selection from a list or dictionary of user-defined options.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `SelectionAction`, a highly flexible Falyx Action for interactive or
+headless selection from a list or dictionary of user-defined options.
 
 This module powers workflows that require prompting the user for input, selecting
 configuration presets, branching execution paths, or collecting multiple values
@@ -31,6 +30,8 @@ Example:
 This module is foundational to creating expressive, user-centered CLI experiences
 within Falyx while preserving reproducibility and automation friendliness.
 """
+from __future__ import annotations
+
 from typing import Any
 
 from prompt_toolkit import PromptSession
@@ -56,9 +57,8 @@ from falyx.themes import OneColors
 
 
 class SelectionAction(BaseAction):
-    """
-    A Falyx Action for interactively or programmatically selecting one or more items
-    from a list or dictionary of options.
+    """A Falyx Action for interactively or programmatically selecting one or more
+    items from a list or dictionary of options.
 
     `SelectionAction` supports both `list[str]` and `dict[str, SelectionOption]`
     inputs. It renders a prompt (unless `never_prompt=True`), validates user input
@@ -90,7 +90,12 @@ class SelectionAction(BaseAction):
         allow_duplicates (bool): Whether duplicate selections are allowed.
         inject_last_result (bool): If True, attempts to inject the last result as default.
         inject_into (str): The keyword name for injected value (default: "last_result").
-        return_type (SelectionReturnType | str): The type of result to return.
+        return_type (SelectionReturnType | str): The type of result to return. Options:
+            - KEY: Return the selected key(s) only.
+            - VALUE: Return the value(s) associated with the selected key(s).
+            - DESCRIPTION: Return the description(s) of the selected item(s).
+            - DESCRIPTION_VALUE: Return a dict of {description: value} pairs.
+            - ITEMS: Return full `SelectionOption` objects as a dict {key: SelectionOption}.
         prompt_session (PromptSession | None): Reused or customized prompt_toolkit session.
         never_prompt (bool): If True, skips prompting and uses default_selection or last_result.
         show_table (bool): Whether to render the selection table before prompting.
@@ -135,7 +140,7 @@ class SelectionAction(BaseAction):
         inject_into: str = "last_result",
         return_type: SelectionReturnType | str = "value",
         prompt_session: PromptSession | None = None,
-        never_prompt: bool = False,
+        never_prompt: bool | None = False,
         show_table: bool = True,
     ):
         super().__init__(
@@ -552,4 +557,24 @@ class SelectionAction(BaseAction):
             f"default_selection={self.default_selection!r}, "
             f"return_type={self.return_type!r}, "
             f"prompt={'off' if self.never_prompt else 'on'})"
+        )
+
+    def clone(self) -> SelectionAction:
+        """Create a copy of this SelectionAction with the same configuration."""
+        return SelectionAction(
+            name=self.name,
+            selections=self.selections.copy(),
+            title=self.title,
+            columns=self.columns,
+            prompt_message=self.prompt_message,
+            default_selection=self.default_selection,
+            number_selections=self.number_selections,
+            separator=self.separator,
+            allow_duplicates=self.allow_duplicates,
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
+            return_type=self.return_type,
+            prompt_session=self.prompt_session,
+            never_prompt=self.local_never_prompt,
+            show_table=self.show_table,
         )

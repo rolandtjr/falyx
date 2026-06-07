@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-BaseIOAction: A base class for stream- or buffer-based IO-driven Actions.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""BaseIOAction: A base class for stream- or buffer-based IO-driven Actions.
 
 This module defines `BaseIOAction`, a specialized variant of `BaseAction`
 that interacts with standard input and output, enabling command-line pipelines,
@@ -15,6 +14,8 @@ Features:
 Common usage includes shell-like filters, input transformers, or any tool that
 needs to consume input from another process or pipeline.
 """
+from __future__ import annotations
+
 import asyncio
 import sys
 from typing import Any, Callable
@@ -29,8 +30,7 @@ from falyx.themes import OneColors
 
 
 class BaseIOAction(BaseAction):
-    """
-    Base class for IO-driven Actions that operate on stdin/stdout input streams.
+    """Base class for IO-driven Actions that operate on stdin/stdout input streams.
 
     Designed for use in shell pipelines or programmatic workflows that pass data
     through chained commands. It handles reading input, transforming it, and
@@ -170,3 +170,12 @@ class BaseIOAction(BaseAction):
             parent.add("".join(label))
         else:
             self.console.print(Tree("".join(label)))
+
+    def clone(self) -> BaseIOAction:
+        """Create a copy of this BaseIOAction with the same configuration."""
+        return self.__class__(
+            name=self.name,
+            hooks=self.hooks.copy(),
+            mode=self.mode,
+            inject_last_result=self.inject_last_result,
+        )

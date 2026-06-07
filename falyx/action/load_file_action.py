@@ -1,7 +1,6 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `LoadFileAction`, a Falyx Action for reading and parsing the contents of a file
-at runtime in a structured, introspectable, and lifecycle-aware manner.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `LoadFileAction`, a Falyx Action for reading and parsing the contents of a
+file at runtime in a structured, introspectable, and lifecycle-aware manner.
 
 This action supports multiple common file types—including plain text, structured data
 formats (JSON, YAML, TOML), tabular formats (CSV, TSV), XML, and raw Path objects—
@@ -36,6 +35,8 @@ This module is a foundational building block for file-driven CLI workflows in Fa
 It is often paired with `SaveFileAction`, `SelectionAction`, or `ConfirmAction` for
 robust and interactive pipelines.
 """
+from __future__ import annotations
+
 import csv
 import json
 import xml.etree.ElementTree as ET
@@ -57,8 +58,7 @@ from falyx.themes import OneColors
 
 
 class LoadFileAction(BaseAction):
-    """
-    LoadFileAction loads and parses the contents of a file at runtime.
+    """LoadFileAction loads and parses the contents of a file at runtime.
 
     This action supports multiple common file formats—including plain text, JSON,
     YAML, TOML, XML, CSV, and TSV—and returns a parsed representation of the file.
@@ -187,6 +187,7 @@ class LoadFileAction(BaseAction):
 
         except Exception as error:
             logger.error("Failed to parse %s: %s", self.file_path.name, error)
+            raise
         return value
 
     async def _run(self, *args, **kwargs) -> Any:
@@ -243,7 +244,7 @@ class LoadFileAction(BaseAction):
                     for line in preview_lines:
                         content_tree.add(f"[dim]{line}[/]")
                 elif self.file_type in {FileType.JSON, FileType.YAML, FileType.TOML}:
-                    raw = self.load_file()
+                    raw = await self.load_file()
                     if raw is not None:
                         preview_str = (
                             json.dumps(raw, indent=2)
@@ -262,3 +263,14 @@ class LoadFileAction(BaseAction):
 
     def __str__(self) -> str:
         return f"LoadFileAction(file_path={self.file_path}, file_type={self.file_type})"
+
+    def clone(self) -> LoadFileAction:
+        """Create a copy of this LoadFileAction with the same configuration."""
+        return LoadFileAction(
+            name=self.name,
+            file_path=self.file_path,
+            file_type=self.file_type,
+            encoding=self.encoding,
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
+        )

@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `ActionFactory`, a dynamic Falyx Action that defers the construction of its
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `ActionFactory`, a dynamic Falyx Action that defers the construction of its
 underlying logic to runtime using a user-defined factory function.
 
 This pattern is useful when the specific Action to execute cannot be determined until
@@ -31,6 +30,8 @@ Example:
         inject_last_result=True,
     )
 """
+from __future__ import annotations
+
 from typing import Any, Callable
 
 from rich.tree import Tree
@@ -46,8 +47,7 @@ from falyx.utils import ensure_async
 
 
 class ActionFactory(BaseAction):
-    """
-    Dynamically creates and runs another Action at runtime using a factory function.
+    """Dynamically creates and runs another Action at runtime using a factory function.
 
     This is useful for generating context-specific behavior (e.g., dynamic HTTPActions)
     where the structure of the next action depends on runtime values.
@@ -175,4 +175,17 @@ class ActionFactory(BaseAction):
             f"inject_last_result={self.inject_last_result}, "
             f"factory={self._factory.__name__ if hasattr(self._factory, '__name__') else type(self._factory).__name__}, "
             f"args={self.args!r}, kwargs={self.kwargs!r})"
+        )
+
+    def clone(self) -> ActionFactory:
+        """Return a copy of this ActionFactory with the same configuration."""
+        return ActionFactory(
+            name=self.name,
+            factory=self._factory,
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
+            args=self.args,
+            kwargs=self.kwargs,
+            preview_args=self.preview_args,
+            preview_kwargs=self.preview_kwargs,
         )

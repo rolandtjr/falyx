@@ -1,19 +1,43 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines the Command class for Falyx CLI.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Command abstraction for the Falyx CLI framework.
 
-Commands are callable units representing a menu option or CLI task,
-wrapping either a BaseAction or a simple function. They provide:
+This module defines the `Command` class, which represents a single executable
+unit exposed to users via CLI or interactive menu interfaces.
 
-- Hook lifecycle (before, on_success, on_error, after, on_teardown)
+A `Command` acts as a bridge between:
+- User input (parsed via CommandArgumentParser)
+- Execution logic (encapsulated in Action / BaseAction)
+- Runtime configuration (OptionsManager)
+- Lifecycle hooks (HookManager)
+
+Core Responsibilities:
+- Define command identity (key, aliases, description)
+- Bind an executable action or workflow
+- Configure argument parsing via CommandArgumentParser
+- Separate execution arguments (e.g. retries, confirm) from action arguments
+- Manage lifecycle hooks for command-level execution
+- Provide help, usage, and preview interfaces
 - Execution timing and duration tracking
-- Retry logic (single action or recursively through action trees)
 - Confirmation prompts and spinner integration
-- Result capturing and summary logging
-- Rich-based preview for CLI display
 
-Every Command is self-contained, configurable, and plays a critical role
-in building robust interactive menus.
+Execution Model:
+1. CLI input is routed via FalyxParser into a resolved Command
+2. Arguments are parsed via CommandArgumentParser
+3. Parsed values are split into:
+   - positional args
+   - keyword args
+   - execution args (e.g. retries, summary)
+4. Execution occurs via the bound Action with lifecycle hooks applied
+5. Results and context are tracked via ExecutionContext / ExecutionRegistry
+
+Key Concepts:
+- Commands are *user-facing entrypoints*, not execution units themselves
+- Execution is always delegated to an underlying Action or callable
+- Argument parsing is declarative and optional
+- Execution options are handled separately from business logic inputs
+
+This module defines the primary abstraction used by Falyx to expose structured,
+composable workflows as CLI commands.
 """
 from __future__ import annotations
 
@@ -22,17 +46,20 @@ from typing import Any, Awaitable, Callable
 
 from prompt_toolkit.formatted_text import FormattedText
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+from rich.style import Style
 from rich.tree import Tree
 
 from falyx.action.action import Action
 from falyx.action.base_action import BaseAction
 from falyx.console import console
-from falyx.context import ExecutionContext
+from falyx.context import ExecutionContext, InvocationContext
 from falyx.debug import register_debug_hooks
+from falyx.exceptions import CommandArgumentError, InvalidHookError, NotAFalyxError
+from falyx.execution_option import ExecutionOption
 from falyx.execution_registry import ExecutionRegistry as er
 from falyx.hook_manager import HookManager, HookType
+from falyx.hooks import spinner_before_hook, spinner_teardown_hook
 from falyx.logger import logger
-from falyx.mode import FalyxMode
 from falyx.options_manager import OptionsManager
 from falyx.parser.command_argument_parser import CommandArgumentParser
 from falyx.parser.signature import infer_args_from_func
@@ -46,67 +73,104 @@ from falyx.utils import ensure_async
 
 
 class Command(BaseModel):
-    """
-    Represents a selectable command in a Falyx menu system.
+    """Represents a user-invokable command in Falyx.
 
-    A Command wraps an executable action (function, coroutine, or BaseAction)
-    and enhances it with:
+    A `Command` encapsulates all metadata, parsing logic, and execution behavior
+    required to expose a callable workflow through the Falyx CLI or interactive
+    menu system.
 
-    - Lifecycle hooks (before, success, error, after, teardown)
-    - Retry support (single action or recursive for chained/grouped actions)
-    - Confirmation prompts for safe execution
-    - Spinner visuals during execution
-    - Tagging for categorization and filtering
-    - Rich-based CLI previews
+    It is responsible for:
+    - Identifying the command via key and aliases
+    - Binding an executable Action or callable
+    - Parsing user-provided arguments
+    - Managing execution configuration (retries, confirmation, etc.)
+    - Integrating with lifecycle hooks and execution context
+
+    Architecture:
+    - Parsing is delegated to CommandArgumentParser
+    - Execution is delegated to BaseAction / Action
+    - Runtime configuration is managed via OptionsManager
+    - Lifecycle hooks are managed via HookManager
+
+    Argument Handling:
+    - Supports positional and keyword arguments via CommandArgumentParser
+    - Separates execution-specific options (e.g. retries, confirm flags)
+      from action arguments
+    - Returns structured `(args, kwargs, execution_args)` for execution
+
+    Execution Behavior:
+    - Callable via `await command(*args, **kwargs)`
+    - Applies lifecycle hooks:
+        before → on_success/on_error → after → on_teardown
+    - Supports preview mode for dry-run introspection
+    - Supports retry policies and confirmation flows
     - Result tracking and summary reporting
 
-    Commands are built to be flexible yet robust, enabling dynamic CLI workflows
-    without sacrificing control or reliability.
+    Help & Introspection:
+    - Provides usage, help text, and TLDR examples
+    - Supports both CLI help and interactive menu rendering
+    - Can expose simplified or full help signatures
 
-    Attributes:
-        key (str): Primary trigger key for the command.
+    Args:
+        key (str): Primary identifier used to invoke the command.
         description (str): Short description for the menu display.
-        hidden (bool): Toggles visibility in the menu.
-        aliases (list[str]): Alternate keys or phrases.
-        action (BaseAction | Callable): The executable logic.
-        args (tuple): Static positional arguments.
-        kwargs (dict): Static keyword arguments.
-        help_text (str): Additional help or guidance text.
-        style (str): Rich style for description.
-        confirm (bool): Whether to require confirmation before executing.
-        confirm_message (str): Custom confirmation prompt.
-        preview_before_confirm (bool): Whether to preview before confirming.
-        spinner (bool): Whether to show a spinner during execution.
-        spinner_message (str): Spinner text message.
-        spinner_type (str): Spinner style (e.g., dots, line, etc.).
-        spinner_style (str): Color or style of the spinner.
-        spinner_speed (float): Speed of the spinner animation.
-        hooks (HookManager): Hook manager for lifecycle events.
-        retry (bool): Enable retry on failure.
-        retry_all (bool): Enable retry across chained or grouped actions.
-        retry_policy (RetryPolicy): Retry behavior configuration.
-        tags (list[str]): Organizational tags for the command.
-        logging_hooks (bool): Whether to attach logging hooks automatically.
-        options_manager (OptionsManager): Manages global command-line options.
-        arg_parser (CommandArgumentParser): Parses command arguments.
-        arguments (list[dict[str, Any]]): Argument definitions for the command.
-        argument_config (Callable[[CommandArgumentParser], None] | None): Function to configure arguments
-            for the command parser.
-        custom_parser (ArgParserProtocol | None): Custom argument parser.
-        custom_help (Callable[[], str | None] | None): Custom help message generator.
-        auto_args (bool): Automatically infer arguments from the action.
-        arg_metadata (dict[str, str | dict[str, Any]]): Metadata for arguments,
-            such as help text or choices.
-        simple_help_signature (bool): Whether to use a simplified help signature.
-        ignore_in_history (bool): Whether to ignore this command in execution history last result.
-        program: (str | None): The parent program name.
+        action (BaseAction | Callable[..., Any]):
+            Execution logic for the command.
+        args (tuple, optional): Static positional arguments.
+        kwargs (dict[str, Any], optional): Static keyword arguments.
+        hidden (bool): Whether to hide the command from menus.
+        aliases (list[str], optional): Alternate names for invocation.
+        help_text (str): Help description shown in CLI/menu.
+        help_epilog (str): Additional help content.
+        style (Style | str): Rich style used for rendering.
+        confirm (bool): Whether confirmation is required before execution.
+        confirm_message (str): Confirmation prompt text.
+        preview_before_confirm (bool): Whether to preview before confirmation.
+        spinner (bool): Enable spinner during execution.
+        spinner_message (str): Spinner message text.
+        spinner_type (str): Rich Spinner animation type (e.g., dots, line, etc.).
+        spinner_style (Style | str): Rich style for the spinner.
+        spinner_speed (float): Spinner speed multiplier.
+        hooks (HookManager | None): Hook manager for lifecycle events.
+        tags (list[str], optional): Tags for grouping and filtering.
+        logging_hooks (bool): Enable debug logging hooks.
+        retry (bool): Enable retry behavior.
+        retry_all (bool): Apply retry to all nested actions.
+        retry_policy (RetryPolicy | None): Retry configuration.
+        arg_parser (CommandArgumentParser | None):
+            Custom argument parser instance.
+        execution_options (frozenset[ExecutionOption], optional):
+            Enabled execution-level options.
+        arguments (list[dict[str, Any]], optional):
+            Declarative argument definitions.
+        argument_config (Callable[[CommandArgumentParser], None] | None):
+            Callback to configure parser.
+        custom_parser (ArgParserProtocol | None):
+            Override parser logic entirely.
+        custom_help (Callable[[], str | None] | None):
+            Override help rendering.
+        custom_tldr (Callable[[], str | None] | None):
+            Override TLDR rendering.
+        custom_usage (Callable[[], str | None] | None):
+            Override usage rendering.
+        auto_args (bool): Auto-generate arguments from action signature.
+        arg_metadata (dict[str, Any], optional): Metadata for arguments.
+        simple_help_signature (bool): Use simplified help formatting.
+        ignore_in_history (bool):
+            Ignore command for `last_result` in execution history.
+        options_manager (OptionsManager | None):
+            Shared options manager instance.
+        program (str | None): The parent program name.
 
-    Methods:
-        __call__(): Executes the command, respecting hooks and retries.
-        preview(): Rich tree preview of the command.
-        confirmation_prompt(): Formatted prompt for confirmation.
-        result: Property exposing the last result.
-        log_summary(): Summarizes execution details to the console.
+    Raises:
+        CommandArgumentError: If argument parsing fails.
+        InvalidActionError: If action is not callable or invalid.
+        FalyxError: If command configuration is invalid.
+
+    Notes:
+        - Commands are lightweight wrappers; execution logic belongs in Actions
+        - Argument parsing and execution are intentionally decoupled
+        - Commands are case-insensitive and support alias resolution
     """
 
     key: str
@@ -118,16 +182,16 @@ class Command(BaseModel):
     aliases: list[str] = Field(default_factory=list)
     help_text: str = ""
     help_epilog: str = ""
-    style: str = OneColors.WHITE
+    style: Style | str = OneColors.WHITE
     confirm: bool = False
     confirm_message: str = "Are you sure?"
     preview_before_confirm: bool = True
     spinner: bool = False
     spinner_message: str = "Processing..."
     spinner_type: str = "dots"
-    spinner_style: str = OneColors.CYAN
+    spinner_style: Style | str = OneColors.CYAN
     spinner_speed: float = 1.0
-    hooks: "HookManager" = Field(default_factory=HookManager)
+    hooks: HookManager = Field(default_factory=HookManager)
     retry: bool = False
     retry_all: bool = False
     retry_policy: RetryPolicy = Field(default_factory=RetryPolicy)
@@ -135,10 +199,13 @@ class Command(BaseModel):
     logging_hooks: bool = False
     options_manager: OptionsManager = Field(default_factory=OptionsManager)
     arg_parser: CommandArgumentParser | None = None
+    execution_options: frozenset[ExecutionOption] = Field(default_factory=frozenset)
     arguments: list[dict[str, Any]] = Field(default_factory=list)
     argument_config: Callable[[CommandArgumentParser], None] | None = None
     custom_parser: ArgParserProtocol | None = None
     custom_help: Callable[[], str | None] | None = None
+    custom_tldr: Callable[[], str | None] | None = None
+    custom_usage: Callable[[], str | None] | None = None
     auto_args: bool = True
     arg_metadata: dict[str, str | dict[str, Any]] = Field(default_factory=dict)
     simple_help_signature: bool = False
@@ -149,52 +216,106 @@ class Command(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    async def parse_args(
-        self, raw_args: list[str] | str, from_validate: bool = False
-    ) -> tuple[tuple, dict]:
-        if callable(self.custom_parser):
+    async def resolve_args(
+        self,
+        raw_args: list[str] | str,
+        from_validate: bool = False,
+        invocation_context: InvocationContext | None = None,
+    ) -> tuple[tuple, dict, dict]:
+        """Parse CLI arguments into execution-ready components.
+
+        This method delegates argument parsing to the configured
+        CommandArgumentParser (if present) and normalizes the result into three
+        distinct groups used during execution:
+
+        - positional arguments (`args`)
+        - keyword arguments (`kwargs`)
+        - execution arguments (`execution_args`)
+
+        Execution arguments represent runtime configuration (e.g. retries,
+        confirmation flags, summary output) and are handled separately from the
+        action's business logic inputs.
+
+        Behavior:
+        - If an argument parser is defined, uses `CommandArgumentParser.parse_args_split()`
+        to resolve and type-coerce all inputs.
+        - If no parser is defined, returns empty args and kwargs.
+        - Supports validation mode (`from_validate=True`) for interactive input,
+        deferring certain errors and resolver execution where applicable.
+        - Handles help/preview signals raised during parsing.
+
+        Args:
+            args (list[str] | str | None): CLI-style argument tokens or a single string.
+            from_validate (bool): Whether parsing is occurring in validation mode
+                (e.g. prompt_toolkit validator). When True, may suppress eager
+                resolution or defer certain errors.
+
+        Returns:
+            tuple:
+                - tuple[Any, ...]: Positional arguments for execution.
+                - dict[str, Any]: Keyword arguments for execution.
+                - dict[str, Any]: Execution-specific arguments (e.g. retries,
+                confirm flags, summary).
+
+        Raises:
+            CommandArgumentError: If argument parsing or validation fails.
+            HelpSignal: If help or TLDR output is triggered during parsing.
+
+        Notes:
+            - Execution arguments are not passed to the underlying Action.
+            - This method is the canonical boundary between CLI parsing and
+            execution semantics.
+        """
+        if self.custom_parser is not None:
+            if not callable(self.custom_parser):
+                raise NotAFalyxError(
+                    "custom_parser must be a callable that implements ArgParserProtocol."
+                )
             if isinstance(raw_args, str):
                 try:
                     raw_args = shlex.split(raw_args)
-                except ValueError:
-                    logger.warning(
-                        "[Command:%s] Failed to split arguments: %s",
-                        self.key,
-                        raw_args,
-                    )
-                    return ((), {})
+                except ValueError as error:
+                    raise CommandArgumentError(
+                        f"[{self.key}] Failed to parse arguments: {error}"
+                    ) from error
             return self.custom_parser(raw_args)
 
         if isinstance(raw_args, str):
             try:
                 raw_args = shlex.split(raw_args)
-            except ValueError:
-                logger.warning(
-                    "[Command:%s] Failed to split arguments: %s",
-                    self.key,
-                    raw_args,
-                )
-                return ((), {})
-        if not isinstance(self.arg_parser, CommandArgumentParser):
-            logger.warning(
-                "[Command:%s] No argument parser configured, using default parsing.",
-                self.key,
+            except ValueError as error:
+                raise CommandArgumentError(
+                    f"[{self.key}] Failed to parse arguments: {error}"
+                ) from error
+
+        if self.arg_parser is None:
+            raise NotAFalyxError(
+                "Command has no parser configured. "
+                "Provide a custom_parser or CommandArgumentParser."
             )
-            return ((), {})
+        if not isinstance(self.arg_parser, CommandArgumentParser):
+            raise NotAFalyxError(
+                "arg_parser must be an instance of CommandArgumentParser"
+            )
+
         return await self.arg_parser.parse_args_split(
-            raw_args, from_validate=from_validate
+            raw_args,
+            from_validate=from_validate,
+            invocation_context=invocation_context,
         )
 
     @field_validator("action", mode="before")
     @classmethod
-    def wrap_callable_as_async(cls, action: Any) -> Any:
+    def _wrap_callable_as_async(cls, action: Any) -> Any:
+        """Ensure the action is an async callable or a BaseAction instance."""
         if isinstance(action, BaseAction):
             return action
         elif callable(action):
             return ensure_async(action)
         raise TypeError("Action must be a callable or an instance of BaseAction")
 
-    def get_argument_definitions(self) -> list[dict[str, Any]]:
+    def _get_argument_definitions(self) -> list[dict[str, Any]]:
+        """Retrieve the argument definitions for the command."""
         if self.arguments:
             return self.arguments
         elif callable(self.argument_config) and isinstance(
@@ -246,8 +367,14 @@ class Command(BaseModel):
                 program=self.program,
                 options_manager=self.options_manager,
             )
-            for arg_def in self.get_argument_definitions():
+            for arg_def in self._get_argument_definitions():
                 self.arg_parser.add_argument(*arg_def.pop("flags"), **arg_def)
+
+        if isinstance(self.arg_parser, CommandArgumentParser) and self.execution_options:
+            self.arg_parser.enable_execution_options(self.execution_options)
+
+        if isinstance(self.arg_parser, CommandArgumentParser):
+            self.arg_parser.set_options_manager(self.options_manager)
 
         if self.ignore_in_history and isinstance(self.action, BaseAction):
             self.action.ignore_in_history = True
@@ -257,10 +384,58 @@ class Command(BaseModel):
         if isinstance(self.action, BaseAction):
             self.action.set_options_manager(self.options_manager)
 
+    async def _handle_prompt_user(self) -> None:
+        """Handle user confirmation prompts based on command configuration and options."""
+        action_never_prompt = None
+        if isinstance(self.action, BaseAction):
+            action_never_prompt = self.action.local_never_prompt
+        if should_prompt_user(
+            confirm=self.confirm,
+            options=self.options_manager,
+            action_never_prompt=action_never_prompt,
+        ):
+            if self.preview_before_confirm:
+                await self.preview()
+            if not await confirm_async(self._confirmation_prompt):
+                logger.info("[Command:%s] Cancelled by user.", self.key)
+                raise CancelSignal(f"[Command:{self.key}] Cancelled by confirmation.")
+
     async def __call__(self, *args, **kwargs) -> Any:
-        """
-        Run the action with full hook lifecycle, timing, error handling,
-        confirmation prompts, preview, and spinner integration.
+        """Execute the command's underlying action with lifecycle management.
+
+        This method invokes the bound action (BaseAction or callable) using the
+        provided arguments while applying the full Falyx execution lifecycle.
+
+        Execution Flow:
+        1. Create an ExecutionContext for tracking inputs, results, and timing
+        2. Trigger `before` hooks
+        3. Execute the underlying action
+        4. Trigger `on_success` or `on_error` hooks
+        5. Trigger `after` and `on_teardown` hooks
+        6. Record execution via ExecutionRegistry
+
+        Behavior:
+        - Supports both synchronous and asynchronous actions
+        - Applies retry policies if configured
+        - Integrates with confirmation and execution options via OptionsManager
+        - Propagates exceptions unless recovered by hooks (e.g. retry handlers)
+
+        Args:
+            *args (Any): Positional arguments passed to the action.
+            **kwargs (Any): Keyword arguments passed to the action.
+
+        Returns:
+            Any: Result returned by the underlying action.
+
+        Raises:
+            Exception: Propagates execution errors unless handled by hooks.
+
+        Notes:
+            - This method does not perform argument parsing; inputs are assumed
+            to be pre-processed via `resolve_args`.
+            - Execution options (e.g. retries, confirm) are applied externally
+            via Falyx in OptionsManager before invocation.
+            - Lifecycle hooks are always executed, even in failure cases.
         """
         self._inject_options_manager()
         combined_args = args + self.args
@@ -273,12 +448,7 @@ class Command(BaseModel):
         )
         self._context = context
 
-        if should_prompt_user(confirm=self.confirm, options=self.options_manager):
-            if self.preview_before_confirm:
-                await self.preview()
-            if not await confirm_async(self.confirmation_prompt):
-                logger.info("[Command:%s] Cancelled by user.", self.key)
-                raise CancelSignal(f"[Command:{self.key}] Cancelled by confirmation.")
+        await self._handle_prompt_user()
 
         context.start_timer()
 
@@ -305,7 +475,7 @@ class Command(BaseModel):
         return self._context.result if self._context else None
 
     @property
-    def confirmation_prompt(self) -> FormattedText:
+    def _confirmation_prompt(self) -> FormattedText:
         """Generate a styled prompt_toolkit FormattedText confirmation message."""
         if self.confirm_message and self.confirm_message != "Are you sure?":
             return FormattedText([("class:confirm", self.confirm_message)])
@@ -329,30 +499,71 @@ class Command(BaseModel):
 
         return FormattedText(prompt)
 
+    def get_option(
+        self,
+        option_name: str,
+        default: Any = None,
+        *,
+        namespace_name: str = "default",
+    ) -> Any:
+        """Resolve an option from the OptionsManager if present, else default."""
+        if self.options_manager:
+            return self.options_manager.get(option_name, default, namespace_name)
+        return default
+
+    @property
+    def primary_alias(self) -> str:
+        """Get the primary alias for the command, used in help displays."""
+        if self.aliases:
+            return self.aliases[0].lower()
+        return self.key
+
     @property
     def usage(self) -> str:
         """Generate a help string for the command arguments."""
         if not self.arg_parser:
             return "No arguments defined."
 
-        command_keys_text = self.arg_parser.get_command_keys_text(plain_text=True)
-        options_text = self.arg_parser.get_options_text(plain_text=True)
+        command_keys_text = self.arg_parser.get_command_keys_text()
+        options_text = self.arg_parser.get_options_text()
         return f"  {command_keys_text:<20}  {options_text} "
 
     @property
-    def help_signature(self) -> tuple[str, str, str]:
-        """Generate a help signature for the command."""
-        is_cli_mode = self.options_manager.get("mode") in {
-            FalyxMode.RUN,
-            FalyxMode.PREVIEW,
-            FalyxMode.RUN_ALL,
-            FalyxMode.HELP,
-        }
+    def help_signature(
+        self,
+        invocation_context: InvocationContext | None = None,
+    ) -> tuple[str, str, str]:
+        """Return a formatted help signature for display.
 
-        program = f"{self.program} run " if is_cli_mode else ""
+        This property provides the core information used to render command help
+        in both CLI and interactive menu modes.
 
+        The signature consists of:
+        - usage: A formatted usage string (including arguments if defined)
+        - description: A short description of the command
+        - tag: Optional tag or category label (if applicable)
+
+        Behavior:
+        - If a CommandArgumentParser is present, delegates usage generation to
+        the parser (`get_usage()`).
+        - Otherwise, constructs a minimal usage string from the command key.
+        - Honors `simple_help_signature` to produce a condensed representation
+        (e.g. omitting argument details).
+        - Applies styling appropriate for Rich rendering.
+
+        Returns:
+            tuple:
+                - str: Usage string (e.g. "falyx D | deploy [--help] region")
+                - str: Command description
+                - str: Optional tag/category label
+
+        Notes:
+            - This is the primary interface used by help menus, CLI help output,
+            and command listings.
+            - Formatting may vary depending on CLI vs menu mode.
+        """
         if self.arg_parser and not self.simple_help_signature:
-            usage = f"[{self.style}]{program}[/]{self.arg_parser.get_usage()}"
+            usage = self.arg_parser.get_usage(invocation_context)
             description = f"[dim]{self.help_text or self.description}[/dim]"
             if self.tags:
                 tags = f"[dim]Tags: {', '.join(self.tags)}[/dim]"
@@ -365,16 +576,29 @@ class Command(BaseModel):
             + [f"[{self.style}]{alias}[/{self.style}]" for alias in self.aliases]
         )
         return (
-            f"[{self.style}]{program}[/]{command_keys}",
+            f"{command_keys}",
             f"[dim]{self.help_text or self.description}[/dim]",
             "",
         )
 
     def log_summary(self) -> None:
+        """Log a summary of the command execution if context is available."""
         if self._context:
             self._context.log_summary()
 
-    def render_help(self) -> bool:
+    def render_usage(self, invocation_context: InvocationContext | None = None) -> None:
+        """Render the usage information for the command."""
+        if callable(self.custom_usage):
+            output = self.custom_usage()
+            if output:
+                console.print(output)
+            return
+        if isinstance(self.arg_parser, CommandArgumentParser):
+            self.arg_parser.render_usage(invocation_context)
+        else:
+            console.print(f"[bold]usage:[/] {self.key}")
+
+    def render_help(self, invocation_context: InvocationContext | None = None) -> bool:
         """Display the help message for the command."""
         if callable(self.custom_help):
             output = self.custom_help()
@@ -382,11 +606,24 @@ class Command(BaseModel):
                 console.print(output)
             return True
         if isinstance(self.arg_parser, CommandArgumentParser):
-            self.arg_parser.render_help()
+            self.arg_parser.render_help(invocation_context)
+            return True
+        return False
+
+    def render_tldr(self, invocation_context: InvocationContext | None = None) -> bool:
+        """Display the TLDR message for the command."""
+        if callable(self.custom_tldr):
+            output = self.custom_tldr()
+            if output:
+                console.print(output)
+            return True
+        if isinstance(self.arg_parser, CommandArgumentParser):
+            self.arg_parser.render_tldr(invocation_context)
             return True
         return False
 
     async def preview(self) -> None:
+        """Preview the command execution."""
         label = f"[{OneColors.GREEN_b}]Command:[/] '{self.key}' — {self.description}"
 
         if hasattr(self.action, "preview") and callable(self.action.preview):
@@ -415,4 +652,361 @@ class Command(BaseModel):
         return (
             f"Command(key='{self.key}', description='{self.description}' "
             f"action='{self.action}')"
+        )
+
+    @classmethod
+    def build(
+        cls,
+        key: str,
+        description: str,
+        action: BaseAction | Callable[..., Any],
+        *,
+        args: tuple = (),
+        kwargs: dict[str, Any] | None = None,
+        hidden: bool = False,
+        aliases: list[str] | None = None,
+        help_text: str = "",
+        help_epilog: str = "",
+        style: Style | str = OneColors.WHITE,
+        confirm: bool = False,
+        confirm_message: str = "Are you sure?",
+        preview_before_confirm: bool = True,
+        spinner: bool = False,
+        spinner_message: str = "Processing...",
+        spinner_type: str = "dots",
+        spinner_style: Style | str = OneColors.CYAN,
+        spinner_speed: float = 1.0,
+        options_manager: OptionsManager | None = None,
+        hooks: HookManager | None = None,
+        before_hooks: list[Callable] | None = None,
+        success_hooks: list[Callable] | None = None,
+        error_hooks: list[Callable] | None = None,
+        after_hooks: list[Callable] | None = None,
+        teardown_hooks: list[Callable] | None = None,
+        tags: list[str] | None = None,
+        logging_hooks: bool = False,
+        retry: bool = False,
+        retry_all: bool = False,
+        retry_policy: RetryPolicy | None = None,
+        arg_parser: CommandArgumentParser | None = None,
+        arguments: list[dict[str, Any]] | None = None,
+        argument_config: Callable[[CommandArgumentParser], None] | None = None,
+        execution_options: list[ExecutionOption | str] | None = None,
+        custom_parser: ArgParserProtocol | None = None,
+        custom_help: Callable[[], str | None] | None = None,
+        custom_tldr: Callable[[], str | None] | None = None,
+        custom_usage: Callable[[], str | None] | None = None,
+        auto_args: bool = True,
+        arg_metadata: dict[str, str | dict[str, Any]] | None = None,
+        simple_help_signature: bool = False,
+        ignore_in_history: bool = False,
+        program: str | None = None,
+    ) -> Command:
+        """Build and configure a `Command` instance from high-level constructor inputs.
+
+        This factory centralizes command construction so callers such as `Falyx` and
+        `CommandRunner` can create fully configured commands through one consistent
+        path. It normalizes optional inputs, validates selected objects, converts
+        execution options into their canonical internal form, and registers any
+        requested command-level hooks.
+
+        In addition to instantiating the `Command`, this method can:
+            - validate and attach an explicit `CommandArgumentParser`
+            - normalize execution options into a `frozenset[ExecutionOption]`
+            - ensure a shared `OptionsManager` is available
+            - attach a custom `HookManager`
+            - register lifecycle hooks for the command
+            - register spinner hooks when spinner support is enabled
+
+        Args:
+            key (str): Primary identifier used to invoke the command.
+            description (str): Short description of the command.
+            action (BaseAction | Callable[..., Any]): Underlying execution logic for
+                the command.
+            args (tuple): Static positional arguments applied to every execution.
+            kwargs (dict[str, Any] | None): Static keyword arguments applied to every
+                execution.
+            hidden (bool): Whether the command should be hidden from menu displays.
+            aliases (list[str] | None): Optional alternate names for invocation.
+            help_text (str): Help text shown in command help output.
+            help_epilog (str): Additional help text shown after the main help body.
+            style (Style | str): Rich style used when rendering the command.
+            confirm (bool): Whether confirmation is required before execution.
+            confirm_message (str): Confirmation prompt text.
+            preview_before_confirm (bool): Whether to preview before confirmation.
+            spinner (bool): Whether to enable spinner lifecycle hooks.
+            spinner_message (str): Spinner message text.
+            spinner_type (str): Spinner animation type.
+            spinner_style (Style | str): Spinner style.
+            spinner_speed (float): Spinner speed multiplier.
+            options_manager (OptionsManager | None): Shared options manager for the
+                command and its parser.
+            hooks (HookManager | None): Optional hook manager to assign directly to the
+                command.
+            before_hooks (list[Callable] | None): Hooks registered for the `BEFORE`
+                lifecycle stage.
+            success_hooks (list[Callable] | None): Hooks registered for the
+                `ON_SUCCESS` lifecycle stage.
+            error_hooks (list[Callable] | None): Hooks registered for the `ON_ERROR`
+                lifecycle stage.
+            after_hooks (list[Callable] | None): Hooks registered for the `AFTER`
+                lifecycle stage.
+            teardown_hooks (list[Callable] | None): Hooks registered for the
+                `ON_TEARDOWN` lifecycle stage.
+            tags (list[str] | None): Optional tags used for grouping and filtering.
+            logging_hooks (bool): Whether to enable debug hook logging.
+            retry (bool): Whether retry behavior is enabled.
+            retry_all (bool): Whether retry behavior should be applied recursively.
+            retry_policy (RetryPolicy | None): Retry configuration for the command.
+            arg_parser (CommandArgumentParser | None): Optional explicit argument
+                parser instance.
+            arguments (list[dict[str, Any]] | None): Declarative argument
+                definitions for the command parser.
+            argument_config (Callable[[CommandArgumentParser], None] | None): Callback
+                used to configure the argument parser.
+            execution_options (list[ExecutionOption | str] | None): Execution-level
+                options to enable for the command.
+            custom_parser (ArgParserProtocol | None): Optional custom parser
+                implementation that overrides normal parser behavior.
+            custom_help (Callable[[], str | None] | None): Optional custom help
+                renderer.
+            custom_tldr (Callable[[], str | None] | None): Optional custom TLDR
+                renderer.
+            custom_usage (Callable[[], str | None] | None): Optional custom usage
+                renderer.
+            auto_args (bool): Whether to infer arguments automatically from the action
+                signature when explicit definitions are not provided.
+            arg_metadata (dict[str, str | dict[str, Any]] | None): Optional metadata
+                used during argument inference.
+            simple_help_signature (bool): Whether to use a simplified help signature.
+            ignore_in_history (bool): Whether to exclude the command from execution
+                history tracking.
+            program (str | None): Parent program name used in help rendering.
+
+        Returns:
+            Command: A fully configured `Command` instance.
+
+        Raises:
+            NotAFalyxError: If `arg_parser` is provided but is not a
+                `CommandArgumentParser` instance.
+            InvalidHookError: If `hooks` is provided but is not a `HookManager` instance.
+
+        Notes:
+            - Execution options supplied as strings are converted to
+            `ExecutionOption` enum values before the command is created.
+            - If no `options_manager` is provided, a new `OptionsManager` is created.
+            - Spinner hooks are registered at build time when `spinner=True`.
+            - This method is the canonical command-construction path used by higher-
+            level APIs such as `Falyx.add_command()` and `CommandRunner.build()`.
+        """
+        if arg_parser and not isinstance(arg_parser, CommandArgumentParser):
+            raise NotAFalyxError(
+                "arg_parser must be an instance of CommandArgumentParser."
+            )
+        arg_parser = arg_parser
+
+        if options_manager and not isinstance(options_manager, OptionsManager):
+            raise NotAFalyxError("options_manager must be an instance of OptionsManager.")
+        options_manager = options_manager or OptionsManager()
+
+        if hooks and not isinstance(hooks, HookManager):
+            raise InvalidHookError("hooks must be an instance of HookManager.")
+        hooks = hooks or HookManager()
+
+        if retry_policy and not isinstance(retry_policy, RetryPolicy):
+            raise NotAFalyxError("retry_policy must be an instance of RetryPolicy.")
+        retry_policy = retry_policy or RetryPolicy()
+
+        if execution_options:
+            parsed_execution_options = frozenset(
+                ExecutionOption(option) if isinstance(option, str) else option
+                for option in execution_options
+            )
+        else:
+            parsed_execution_options = frozenset()
+
+        command = Command(
+            key=key,
+            description=description,
+            action=action,
+            args=args,
+            kwargs=kwargs if kwargs else {},
+            hidden=hidden,
+            aliases=aliases if aliases else [],
+            help_text=help_text,
+            help_epilog=help_epilog,
+            style=style,
+            confirm=confirm,
+            confirm_message=confirm_message,
+            preview_before_confirm=preview_before_confirm,
+            spinner=spinner,
+            spinner_message=spinner_message,
+            spinner_type=spinner_type,
+            spinner_style=spinner_style,
+            spinner_speed=spinner_speed,
+            tags=tags if tags else [],
+            logging_hooks=logging_hooks,
+            hooks=hooks,
+            retry=retry,
+            retry_all=retry_all,
+            retry_policy=retry_policy,
+            options_manager=options_manager,
+            arg_parser=arg_parser,
+            execution_options=parsed_execution_options,
+            arguments=arguments or [],
+            argument_config=argument_config,
+            custom_parser=custom_parser,
+            custom_help=custom_help,
+            custom_tldr=custom_tldr,
+            custom_usage=custom_usage,
+            auto_args=auto_args,
+            arg_metadata=arg_metadata or {},
+            simple_help_signature=simple_help_signature,
+            ignore_in_history=ignore_in_history,
+            program=program,
+        )
+
+        for hook in before_hooks or []:
+            command.hooks.register(HookType.BEFORE, hook)
+        for hook in success_hooks or []:
+            command.hooks.register(HookType.ON_SUCCESS, hook)
+        for hook in error_hooks or []:
+            command.hooks.register(HookType.ON_ERROR, hook)
+        for hook in after_hooks or []:
+            command.hooks.register(HookType.AFTER, hook)
+        for hook in teardown_hooks or []:
+            command.hooks.register(HookType.ON_TEARDOWN, hook)
+
+        if spinner:
+            command.hooks.register(HookType.BEFORE, spinner_before_hook)
+            command.hooks.register(HookType.ON_TEARDOWN, spinner_teardown_hook)
+
+        return command
+
+    def clone_with_overrides(
+        self,
+        *,
+        key: str | None = None,
+        description: str | None = None,
+        action: BaseAction | Callable[..., Any] | None = None,
+        args: tuple | None = None,
+        kwargs: dict[str, Any] | None = None,
+        hidden: bool | None = None,
+        aliases: list[str] | None = None,
+        help_text: str | None = None,
+        help_epilog: str | None = None,
+        style: Style | str | None = None,
+        confirm: bool | None = None,
+        confirm_message: str | None = None,
+        preview_before_confirm: bool | None = None,
+        spinner: bool | None = None,
+        spinner_message: str | None = None,
+        spinner_type: str | None = None,
+        spinner_style: Style | str | None = None,
+        spinner_speed: float | None = None,
+        hooks: HookManager | None = None,
+        retry: bool | None = None,
+        retry_all: bool | None = None,
+        retry_policy: RetryPolicy | None = None,
+        tags: list[str] | None = None,
+        logging_hooks: bool | None = None,
+        options_manager: OptionsManager | None = None,
+        arg_parser: CommandArgumentParser | None = None,
+        execution_options: list[ExecutionOption | str] | None = None,
+        arguments: list[dict[str, Any]] | None = None,
+        argument_config: Callable[[CommandArgumentParser], None] | None = None,
+        custom_parser: ArgParserProtocol | None = None,
+        custom_help: Callable[[], str | None] | None = None,
+        custom_tldr: Callable[[], str | None] | None = None,
+        custom_usage: Callable[[], str | None] | None = None,
+        auto_args: bool | None = None,
+        arg_metadata: dict[str, str | dict[str, Any]] | None = None,
+        simple_help_signature: bool | None = None,
+        ignore_in_history: bool | None = None,
+        program: str | None = None,
+    ) -> Command:
+        """Create a clone of the command with specified overrides."""
+        if not arg_parser and self.arg_parser:
+            arg_parser = self.arg_parser.clone_with_overrides(
+                command_key=key or self.key,
+                command_description=description or self.description,
+                command_style=style or self.style,
+                help_text=help_text or self.help_text,
+                help_epilog=help_epilog or self.help_epilog,
+                aliases=aliases if aliases is not None else self.aliases,
+                program=program or self.program,
+                options_manager=options_manager or self.options_manager,
+            )
+        if not hooks and self.hooks:
+            hooks = self.hooks.copy()
+        if not action and self.action:
+            if isinstance(self.action, BaseAction):
+                cloned_action: (
+                    BaseAction | Callable[..., Any] | Callable[..., Awaitable[Any]]
+                ) = self.action.clone()
+            elif callable(self.action):
+                cloned_action = self.action
+            else:
+                raise NotAFalyxError("Action must be a BaseAction or callable to clone.")
+        return Command.build(
+            key=key or self.key,
+            description=description or self.description,
+            action=action or cloned_action,
+            args=args if args is not None else self.args,
+            kwargs=kwargs if kwargs is not None else self.kwargs,
+            hidden=hidden if hidden is not None else self.hidden,
+            aliases=aliases if aliases is not None else self.aliases,
+            help_text=help_text if help_text is not None else self.help_text,
+            help_epilog=help_epilog if help_epilog is not None else self.help_epilog,
+            style=style or self.style,
+            confirm=confirm if confirm is not None else self.confirm,
+            confirm_message=confirm_message or self.confirm_message,
+            preview_before_confirm=(
+                preview_before_confirm
+                if preview_before_confirm is not None
+                else self.preview_before_confirm
+            ),
+            spinner=spinner if spinner is not None else self.spinner,
+            spinner_message=spinner_message or self.spinner_message,
+            spinner_type=spinner_type or self.spinner_type,
+            spinner_style=spinner_style or self.spinner_style,
+            spinner_speed=(
+                spinner_speed if spinner_speed is not None else self.spinner_speed
+            ),
+            hooks=hooks or self.hooks,
+            retry=retry if retry is not None else self.retry,
+            retry_all=retry_all if retry_all is not None else self.retry_all,
+            retry_policy=retry_policy or self.retry_policy,
+            tags=tags if tags is not None else self.tags,
+            logging_hooks=(
+                logging_hooks if logging_hooks is not None else self.logging_hooks
+            ),
+            options_manager=options_manager or self.options_manager,
+            arg_parser=arg_parser or self.arg_parser,
+            execution_options=(
+                execution_options
+                if execution_options is not None
+                else (list(self.execution_options) if self.execution_options else [])
+            ),
+            arguments=arguments if arguments is not None else (self.arguments or []),
+            argument_config=argument_config or self.argument_config,
+            custom_parser=custom_parser or self.custom_parser,
+            custom_help=custom_help or self.custom_help,
+            custom_tldr=custom_tldr or self.custom_tldr,
+            custom_usage=custom_usage or self.custom_usage,
+            auto_args=auto_args if auto_args is not None else self.auto_args,
+            arg_metadata=(
+                arg_metadata if arg_metadata is not None else (self.arg_metadata or {})
+            ),
+            simple_help_signature=(
+                simple_help_signature
+                if simple_help_signature is not None
+                else self.simple_help_signature
+            ),
+            ignore_in_history=(
+                ignore_in_history
+                if ignore_in_history is not None
+                else self.ignore_in_history
+            ),
+            program=program or self.program,
         )

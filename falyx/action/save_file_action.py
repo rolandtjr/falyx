@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `SaveFileAction`, a Falyx Action for writing structured or unstructured data
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `SaveFileAction`, a Falyx Action for writing structured or unstructured data
 to a file in a variety of supported formats.
 
 Supports overwrite control, automatic directory creation, and full lifecycle hook
@@ -20,6 +19,8 @@ Common use cases:
 - Logging artifacts from batch pipelines
 - Exporting config or user input to JSON/YAML for reuse
 """
+from __future__ import annotations
+
 import csv
 import json
 import xml.etree.ElementTree as ET
@@ -41,8 +42,7 @@ from falyx.themes import OneColors
 
 
 class SaveFileAction(BaseAction):
-    """
-    Saves data to a file in the specified format.
+    """Saves data to a file in the specified format.
 
     `SaveFileAction` serializes and writes input data to disk using the format
     defined by `file_type`. It supports plain text and structured formats like
@@ -91,7 +91,7 @@ class SaveFileAction(BaseAction):
     def __init__(
         self,
         name: str,
-        file_path: str,
+        file_path: str | Path | None,
         file_type: FileType | str = FileType.TEXT,
         mode: Literal["w", "a"] = "w",
         encoding: str = "UTF-8",
@@ -100,9 +100,9 @@ class SaveFileAction(BaseAction):
         create_dirs: bool = True,
         inject_last_result: bool = False,
         inject_into: str = "data",
+        never_prompt: bool | None = False,
     ):
-        """
-        SaveFileAction allows saving data to a file.
+        """SaveFileAction allows saving data to a file.
 
         Args:
             name (str): Name of the action.
@@ -115,9 +115,13 @@ class SaveFileAction(BaseAction):
             create_dirs (bool): Whether to create parent directories if they do not exist.
             inject_last_result (bool): Whether to inject result from previous action.
             inject_into (str): Kwarg name to inject the last result as.
+            never_prompt (bool | None): Whether to never prompt for input.
         """
         super().__init__(
-            name=name, inject_last_result=inject_last_result, inject_into=inject_into
+            name=name,
+            inject_last_result=inject_last_result,
+            inject_into=inject_into,
+            never_prompt=never_prompt,
         )
         self._file_path = self._coerce_file_path(file_path)
         self._file_type = FileType(file_type)
@@ -294,3 +298,19 @@ class SaveFileAction(BaseAction):
 
     def __str__(self) -> str:
         return f"SaveFileAction(file_path={self.file_path}, file_type={self.file_type})"
+
+    def clone(self) -> SaveFileAction:
+        """Create a copy of this SaveFileAction with the same configuration."""
+        return SaveFileAction(
+            name=self.name,
+            file_path=self.file_path,
+            file_type=self.file_type,
+            mode=self.mode,
+            encoding=self.encoding,
+            data=self.data,
+            overwrite=self.overwrite,
+            create_dirs=self.create_dirs,
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
+            never_prompt=self.local_never_prompt,
+        )

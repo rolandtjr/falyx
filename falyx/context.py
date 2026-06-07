@@ -1,19 +1,22 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Execution context management for Falyx CLI actions.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Context models for Falyx execution and invocation state.
 
-This module defines `ExecutionContext` and `SharedContext`, which are responsible for
-capturing per-action and cross-action metadata during CLI workflow execution. These
-context objects provide structured introspection, result tracking, error recording,
-and time-based performance metrics.
+This module defines the core context objects used throughout Falyx to track both
+runtime execution metadata and routed invocation-path state.
 
-- `ExecutionContext`: Captures runtime information for a single action execution,
-  including arguments, results, exceptions, timing, and logging.
-- `SharedContext`: Maintains shared state and result propagation across
-  `ChainedAction` or `ActionGroup` executions.
+It provides:
+    - `ExecutionContext` for per-action execution details such as arguments,
+      results, exceptions, timing, and summary logging.
+    - `SharedContext` for transient shared state across grouped or chained
+      actions, including propagated results, indexed errors, and arbitrary
+      shared data.
+    - `InvocationContext` for capturing the current routed command path as an
+      immutable value object that supports both plain-text and Rich-markup
+      rendering.
 
-These contexts enable rich introspection, traceability, and workflow coordination,
-supporting hook lifecycles, retries, and structured output generation.
+Together, these models support Falyx lifecycle hooks, execution tracing,
+history/introspection, and context-aware help and usage rendering across CLI
+and menu modes.
 """
 from __future__ import annotations
 
@@ -24,8 +27,12 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 from rich.console import Console
+from rich.markup import escape
+from rich.style import Style
 
 from falyx.console import console
+from falyx.display_types import StyledSegment
+from falyx.mode import FalyxMode
 
 
 class ExecutionContext(BaseModel):
@@ -222,9 +229,9 @@ class SharedContext(BaseModel):
         results (list[Any]): Captures results from each action, in order of execution.
         errors (list[tuple[int, BaseException]]): Indexed list of errors from failed actions.
         current_index (int): Index of the currently executing action (used in chains).
-        is_parallel (bool): Whether the context is used in parallel mode (ActionGroup).
+        is_concurrent (bool): Whether the context is used in concurrent mode (ActionGroup).
         shared_result (Any | None): Optional shared value available to all actions in
-                                    parallel mode.
+                                    concurrent mode.
         share (dict[str, Any]): Custom shared key-value store for user-defined
                                 communication
             between actions (e.g., flags, intermediate data, settings).
@@ -247,7 +254,7 @@ class SharedContext(BaseModel):
     results: list[Any] = Field(default_factory=list)
     errors: list[tuple[int, BaseException]] = Field(default_factory=list)
     current_index: int = -1
-    is_parallel: bool = False
+    is_concurrent: bool = False
     shared_result: Any | None = None
 
     share: dict[str, Any] = Field(default_factory=dict)
@@ -262,11 +269,11 @@ class SharedContext(BaseModel):
 
     def set_shared_result(self, result: Any) -> None:
         self.shared_result = result
-        if self.is_parallel:
+        if self.is_concurrent:
             self.results.append(result)
 
     def last_result(self) -> Any:
-        if self.is_parallel:
+        if self.is_concurrent:
             return self.shared_result
         return self.results[-1] if self.results else None
 
@@ -277,12 +284,153 @@ class SharedContext(BaseModel):
         self.share[key] = value
 
     def __str__(self) -> str:
-        parallel_label = "Parallel" if self.is_parallel else "Sequential"
+        concurrent_label = "Concurrent" if self.is_concurrent else "Sequential"
         return (
-            f"<{parallel_label}SharedContext '{self.name}' | "
+            f"<{concurrent_label}SharedContext '{self.name}' | "
             f"Results: {self.results} | "
             f"Errors: {self.errors}>"
         )
+
+
+class InvocationContext(BaseModel):
+    """Immutable invocation-path context for routed Falyx help and execution.
+
+    `InvocationContext` captures the current displayable command path as the router
+    descends through namespaces and commands. It stores both the raw typed path
+    (`typed_path`) and a styled segment representation (`segments`) so the same
+    context can be rendered as plain text or Rich markup.
+
+    This model is intended to be treated as an immutable value object. Methods such
+    as `with_path_segment()` and `without_last_path_segment()` return new context
+    instances rather than mutating the existing one.
+
+    Attributes:
+        program (str): Root program name used in CLI-mode help and usage output.
+        program_style (Style | str): Rich style applied to the program name when rendering
+            `markup_path`.
+        typed_path (list[str]): Raw invocation tokens collected during routing,
+            excluding the root program name.
+        segments (list[StyledSegment]): Styled path segments used to render the
+            invocation path with Rich markup.
+        mode (FalyxMode): Active Falyx mode for this invocation context. This is
+            used to determine whether the path should include the program name.
+        is_preview (bool): Whether the current invocation is a preview flow rather
+            than a normal execution flow.
+    """
+
+    program: str = ""
+    program_style: Style | str = ""
+    typed_path: list[str] = Field(default_factory=list)
+    segments: list[StyledSegment] = Field(default_factory=list)
+    mode: FalyxMode = FalyxMode.MENU
+    is_preview: bool = False
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    @property
+    def is_cli_mode(self) -> bool:
+        """Whether this context should render using CLI path semantics.
+
+        Returns:
+            bool: `True` when the invocation is not in menu mode, meaning rendered
+            paths should include the program name. `False` when in menu mode.
+        """
+        return self.mode != FalyxMode.MENU
+
+    def with_path_segment(
+        self,
+        token: str,
+        *,
+        style: Style | str | None = None,
+    ) -> InvocationContext:
+        """Return a new context with one additional path segment appended.
+
+        This method preserves the current context and creates a new
+        `InvocationContext` with the provided token added to both `typed_path` and
+        `segments`.
+
+        Args:
+            token (str): Raw path token to append, such as a namespace key,
+                command key, or alias.
+            style (str | None): Optional Rich style for the appended segment.
+
+        Returns:
+            InvocationContext: A new context containing the appended path segment.
+        """
+        return InvocationContext(
+            program=self.program,
+            program_style=self.program_style,
+            typed_path=[*self.typed_path, token],
+            segments=[*self.segments, StyledSegment(text=token, style=style)],
+            mode=self.mode,
+            is_preview=self.is_preview,
+        )
+
+    def without_last_path_segment(self) -> InvocationContext:
+        """Return a new context with the last path segment removed.
+
+        This method preserves the current context and creates a new
+        `InvocationContext` with the last token removed from both `typed_path` and
+        `segments`.
+
+        Returns:
+            InvocationContext: A new context with the last path segment removed, or the
+            current context if no path segments are present.
+        """
+        if not self.typed_path:
+            return self
+        return InvocationContext(
+            program=self.program,
+            program_style=self.program_style,
+            typed_path=self.typed_path[:-1],
+            segments=self.segments[:-1],
+            mode=self.mode,
+            is_preview=self.is_preview,
+        )
+
+    @property
+    def plain_path(self) -> str:
+        """Render the invocation path as plain text.
+
+        In CLI mode, the rendered path includes the root program name followed by
+        all collected path segments. In menu mode, only the collected path segments
+        are rendered.
+
+        Returns:
+            str: Plain-text invocation path suitable for logs, comparisons, or
+            non-styled help output.
+        """
+        parts = [seg.text for seg in self.segments]
+        if self.is_cli_mode:
+            return " ".join([self.program, *parts]).strip()
+        return " ".join(parts).strip()
+
+    @property
+    def markup_path(self) -> str:
+        """Render the invocation path as escaped Rich markup.
+
+        In CLI mode, the root program name is included and styled with
+        `program_style` when provided. Each path segment is escaped and styled
+        using its associated `StyledSegment.style` value when present.
+
+        Returns:
+            str: Rich-markup invocation path suitable for help and usage rendering.
+        """
+        parts: list[str] = []
+        if self.is_cli_mode and self.program:
+            if self.program_style:
+                parts.append(
+                    f"[{self.program_style}]{escape(self.program)}[/{self.program_style}]"
+                )
+            else:
+                parts.append(escape(self.program))
+
+        for seg in self.segments:
+            if seg.style:
+                parts.append(f"[{seg.style}]{escape(seg.text)}[/{seg.style}]")
+            else:
+                parts.append(escape(seg.text))
+        return " ".join(parts).strip()
 
 
 if __name__ == "__main__":

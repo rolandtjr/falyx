@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines `PromptMenuAction`, a Falyx Action that prompts the user to choose from
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines `PromptMenuAction`, a Falyx Action that prompts the user to choose from
 a list of labeled options using a single-line prompt input. Each option corresponds
 to a `MenuOption` that wraps a description and an executable action.
 
@@ -11,6 +10,8 @@ or contextual user input flows.
 Key Components:
 - PromptMenuAction: Inline prompt-driven menu runner
 """
+from __future__ import annotations
+
 from typing import Any
 
 from prompt_toolkit import PromptSession
@@ -29,8 +30,7 @@ from falyx.themes import OneColors
 
 
 class PromptMenuAction(BaseAction):
-    """
-    Displays a single-line interactive prompt for selecting an option from a menu.
+    """Displays a single-line interactive prompt for selecting an option from a menu.
 
     `PromptMenuAction` is a lightweight alternative to `MenuAction`, offering a more
     compact selection interface. Instead of rendering a full table, it displays
@@ -188,4 +188,18 @@ class PromptMenuAction(BaseAction):
             f"default_selection={self.default_selection!r}, "
             f"include_reserved={self.include_reserved}, "
             f"prompt={'off' if self.never_prompt else 'on'})"
+        )
+
+    def clone(self) -> PromptMenuAction:
+        """Create a copy of this PromptMenuAction with the same configuration."""
+        return PromptMenuAction(
+            name=self.name,
+            menu_options=self.menu_options.copy(),
+            prompt_message=self.prompt_message,
+            default_selection=self.default_selection,
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
+            prompt_session=self.prompt_session,
+            never_prompt=self.never_prompt,
+            include_reserved=self.include_reserved,
         )

@@ -1,6 +1,5 @@
-# Falyx CLI Framework — (c) 2025 rtj.dev LLC — MIT Licensed
-"""
-Defines structural protocols for advanced Falyx features.
+# Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
+"""Defines structural protocols for advanced Falyx features.
 
 These runtime-checkable `Protocol` classes specify the expected interfaces for:
 - Factories that asynchronously return actions
@@ -29,4 +28,6 @@ class ActionFactoryProtocol(Protocol):
 
 @runtime_checkable
 class ArgParserProtocol(Protocol):
-    def __call__(self, args: list[str]) -> tuple[tuple, dict]: ...
+    def __call__(
+        self, args: list[str]
+    ) -> tuple[tuple, dict[str, Any], dict[str, Any]]: ...
