@@ -125,10 +125,16 @@ class BaseAction(ABC):
     def set_shared_context(self, shared_context: SharedContext) -> None:
         self.shared_context = shared_context
 
-    def get_option(self, option_name: str, default: Any = None) -> Any:
+    def get_option(
+        self,
+        option_name: str,
+        default: Any = None,
+        *,
+        namespace_name: str = "default",
+    ) -> Any:
         """Resolve an option from the OptionsManager if present, else default."""
         if self.options_manager:
-            return self.options_manager.get(option_name, default)
+            return self.options_manager.get(option_name, default, namespace_name)
         return default
 
     @property
@@ -142,7 +148,12 @@ class BaseAction(ABC):
     def never_prompt(self) -> bool:
         if self._never_prompt is not None:
             return self._never_prompt
-        return self.get_option("never_prompt", False)
+        return self.get_option("never_prompt", False, namespace_name="root")
+
+    @property
+    def local_never_prompt(self) -> bool | None:
+        """Return the local never_prompt setting, which may be None if not explicitly set."""
+        return self._never_prompt
 
     @property
     def spinner_manager(self):
@@ -181,3 +192,8 @@ class BaseAction(ABC):
 
     def __repr__(self) -> str:
         return str(self)
+
+    @abstractmethod
+    def clone(self) -> BaseAction:
+        """Return a copy of this action. Must be implemented by subclasses."""
+        return self

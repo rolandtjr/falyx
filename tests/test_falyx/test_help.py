@@ -90,6 +90,6 @@ async def test_help_command_bad_argument(capsys):
 
     flx.add_command("U", "Untagged Command", untagged_command)
     with pytest.raises(
-        CommandArgumentError, match="Unexpected positional argument: nonexistent_tag"
+        CommandArgumentError, match="unexpected positional argument: nonexistent_tag"
     ):
         await flx.execute_command("H nonexistent_tag")

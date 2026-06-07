@@ -1,10 +1,12 @@
 import asyncio
+import logging
 import sys
 
 import pytest
 from rich.console import Console
 from rich.text import Text
 
+from falyx import Falyx
 from falyx.action import Action
 from falyx.command import Command
 from falyx.command_runner import CommandRunner
@@ -18,6 +20,7 @@ from falyx.exceptions import (
 )
 from falyx.hook_manager import HookManager, HookType
 from falyx.options_manager import OptionsManager
+from falyx.parser import CommandArgumentParser
 from falyx.signals import BackSignal, CancelSignal, HelpSignal, QuitSignal
 
 
@@ -133,15 +136,15 @@ async def test_command_runner_initialization(
     assert runner.command == command_with_parser
     assert runner.program == "test_program"
     assert runner.command.arg_parser.program == "test_program"
-    assert isinstance(runner.options, OptionsManager)
+    assert isinstance(runner.options_manager, OptionsManager)
     assert isinstance(runner.runner_hooks, HookManager)
     assert runner.console == falyx_console
-    assert runner.command.options_manager == runner.options
-    assert runner.command.arg_parser.options_manager == runner.options
-    assert runner.command.options_manager == runner.options
-    assert runner.executor.options == runner.options
+    assert runner.command.options_manager == runner.options_manager
+    assert runner.command.arg_parser.options_manager == runner.options_manager
+    assert runner.command.options_manager == runner.options_manager
+    assert runner.executor.options_manager == runner.options_manager
     assert runner.executor.hooks == runner.runner_hooks
-    assert runner.options.get("summary", namespace_name="execution") is None
+    assert runner.options_manager.get("summary", namespace_name="execution") is None
 
     runner_no_parser = CommandRunner(command_with_no_parser)
     assert runner_no_parser.command == command_with_no_parser
@@ -161,12 +164,12 @@ async def test_command_runner_initialization(
 
 def test_command_runner_initialization_with_custom_options(command_with_parser):
     custom_options = OptionsManager([("default", {"summary": True})])
-    runner = CommandRunner(command_with_parser, options=custom_options)
-    assert runner.options == custom_options
-    assert runner.options.get("summary", namespace_name="default") is True
-    assert runner.command.options_manager == runner.options
-    assert runner.command.arg_parser.options_manager == runner.options
-    assert runner.command.options_manager == runner.options
+    runner = CommandRunner(command_with_parser, options_manager=custom_options)
+    assert runner.options_manager == custom_options
+    assert runner.options_manager.get("summary", namespace_name="default") is True
+    assert runner.command.options_manager == runner.options_manager
+    assert runner.command.arg_parser.options_manager == runner.options_manager
+    assert runner.command.options_manager == runner.options_manager
 
 
 def test_command_runner_initialization_with_custom_console(command_with_parser):
@@ -190,11 +193,11 @@ def test_command_runner_initialization_with_all_bad_components(command_with_pars
     custom_hooks = "Not a HookManager"
 
     with pytest.raises(
-        NotAFalyxError, match="options must be an instance of OptionsManager"
+        NotAFalyxError, match="options_manager must be an instance of OptionsManager"
     ):
         CommandRunner(
             command_with_parser,
-            options=custom_options,
+            options_manager=custom_options,
         )
 
     with pytest.raises(
@@ -247,9 +250,10 @@ async def test_command_runner_run_with_failing_action(command_with_failing_actio
 
 @pytest.mark.asyncio
 async def test_command_runner_debug_statement(command_with_parser, caplog):
-    caplog.set_level("DEBUG")
+    logging.getLogger("falyx").setLevel(logging.DEBUG)
     runner = CommandRunner(command_with_parser)
     await runner.run("--foo 42")
+    print(command_with_parser.get_option("verbose", namespace_name="root"))
     assert (
         "Executing command 'Test Command' with args=(), kwargs={'foo': 42}" in caplog.text
     )
@@ -539,3 +543,126 @@ async def test_command_runner_run_error(command_with_parser):
         await runner.run(["--foo", "42"], raise_on_error=False, wrap_errors=False)
     await runner.run(["--foo", "42"], raise_on_error=False, wrap_errors=True)
     await runner.run(["--foo", "42"], raise_on_error=True, wrap_errors=False)
+
+
+def test_command_runner_from_command_reuses_custom_options_manager_and_seeds_missing_namespaces():
+    flx = Falyx(program="source")
+    original = flx.add_command(
+        key="D",
+        description="Deploy",
+        action=lambda: "ok",
+    )
+
+    custom_options = OptionsManager([("default", {"summary": True})])
+
+    runner = CommandRunner.from_command(
+        original,
+        options_manager=custom_options,
+    )
+
+    assert runner.command is not original
+    assert runner.options_manager is custom_options
+    assert runner.command.options_manager is custom_options
+
+    assert runner.options_manager.get("summary", namespace_name="default") is True
+
+    assert runner.options_manager.get_namespace("root") == {}
+    assert runner.options_manager.get_namespace("execution") == {}
+
+    assert original.options_manager is flx.options_manager
+    assert original.options_manager is not custom_options
+
+
+@pytest.mark.asyncio
+async def test_command_runner_root_options_affect_cloned_command_without_mutating_original(
+    monkeypatch,
+):
+    flx = Falyx(program="source")
+    original = flx.add_command(
+        key="D",
+        description="Deploy",
+        action=Action("deploy-action", lambda: "ok"),
+        confirm=True,
+    )
+
+    original.options_manager.set("never_prompt", False, "root")
+    original.options_manager.set("verbose", False, "root")
+
+    runner_options = OptionsManager()
+    runner_options.from_mapping({}, "root")
+    runner_options.from_mapping({}, "execution")
+    runner_options.set("never_prompt", True, "root")
+    runner_options.set("verbose", True, "root")
+
+    runner = CommandRunner.from_command(
+        original,
+        options_manager=runner_options,
+    )
+
+    calls = {"preview": 0, "confirm": 0}
+
+    async def fake_preview(self):
+        calls["preview"] += 1
+
+    async def fake_confirm(*args, **kwargs):
+        calls["confirm"] += 1
+        return True
+
+    monkeypatch.setattr(Command, "preview", fake_preview)
+    monkeypatch.setattr("falyx.command.confirm_async", fake_confirm)
+
+    result = await runner.run([])
+
+    assert result == "ok"
+
+    assert calls["preview"] == 0
+    assert calls["confirm"] == 0
+
+    assert runner.command.get_option("never_prompt", namespace_name="root") is True
+    assert runner.command.get_option("verbose", namespace_name="root") is True
+
+    assert runner.command.action.get_option("verbose", namespace_name="root") is True
+    assert runner.command.action.never_prompt is True
+
+    assert original.get_option("never_prompt", namespace_name="root") is False
+    assert original.get_option("verbose", namespace_name="root") is False
+    assert original.options_manager is flx.options_manager
+    assert original.options_manager is not runner.options_manager
+
+
+@pytest.mark.asyncio
+async def test_command_runner_from_command_with_custom_options_preserves_parity_and_isolation():
+    falyx = Falyx("Custom Options Parity Test")
+
+    def add(x: int, y: int) -> int:
+        return x + y
+
+    command = falyx.add_command(
+        key="A",
+        description="Add",
+        action=add,
+    )
+
+    custom_options = OptionsManager([("default", {"summary": True})])
+
+    runner = CommandRunner.from_command(
+        command,
+        options_manager=custom_options,
+    )
+
+    falyx_result = await falyx.execute_command("A 2 3")
+    runner_result = await runner.run(["2", "3"])
+
+    assert falyx_result == 5
+    assert runner_result == 5
+    assert falyx_result == runner_result
+
+    assert runner.options_manager is custom_options
+    assert runner.command.options_manager is custom_options
+    assert runner.options_manager.get("summary", namespace_name="default") is True
+    assert runner.options_manager.get_namespace("root") == {}
+    assert runner.options_manager.get_namespace("execution") == {}
+
+    assert runner.command is not command
+    assert command.options_manager is falyx.options_manager
+    assert command.options_manager is not runner.options_manager

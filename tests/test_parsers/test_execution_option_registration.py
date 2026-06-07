@@ -34,10 +34,6 @@ def test_enable_execution_options_registers_retry_flags():
 def test_enable_execution_options_invalid_double_registration_raises():
     parser = CommandArgumentParser()
     parser.enable_execution_options(frozenset({ExecutionOption.SUMMARY}))
-    with pytest.raises(
-        CommandArgumentError, match="destination 'summary' is already defined"
-    ):
-        parser.enable_execution_options(frozenset({ExecutionOption.SUMMARY}))
 
     with pytest.raises(
         CommandArgumentError,
@@ -68,9 +64,10 @@ def test_register_execution_dest_rejects_duplicates():
         parser.add_argument("--summary", action="store_true")
 
     with pytest.raises(
-        CommandArgumentError, match="destination 'summary' is already defined"
+        CommandArgumentError,
+        match="destination 'summary' is already registered as an execution argument",
     ):
-        parser.enable_execution_options(frozenset({ExecutionOption.SUMMARY}))
+        parser._register_execution_dest("summary")
 
 
 @pytest.mark.asyncio

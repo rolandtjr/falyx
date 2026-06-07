@@ -91,6 +91,9 @@ class CaseInsensitiveDict(dict):
     def __getitem__(self, key):
         return super().__getitem__(self._normalize_key(key))
 
+    def __delitem__(self, key):
+        super().__delitem__(self._normalize_key(key))
+
     def __contains__(self, key):
         return super().__contains__(self._normalize_key(key))
 

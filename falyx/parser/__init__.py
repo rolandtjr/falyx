@@ -7,7 +7,7 @@ Licensed under the MIT License. See LICENSE file for details.
 from .argument import Argument
 from .argument_action import ArgumentAction
 from .command_argument_parser import CommandArgumentParser
-from .falyx_parser import FalyxParser
+from .falyx_parser import FalyxParser, OptionAction
 from .parse_result import ParseResult
 
 __all__ = [
@@ -15,5 +15,6 @@ __all__ = [
     "ArgumentAction",
     "CommandArgumentParser",
     "FalyxParser",
+    "OptionAction",
     "ParseResult",
 ]

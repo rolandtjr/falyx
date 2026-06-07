@@ -12,6 +12,7 @@ Functions:
 - same_argument_definitions: Check if multiple callables share the same argument structure.
 """
 import types
+from collections.abc import Callable
 from datetime import datetime
 from enum import EnumMeta
 from typing import Any, Literal, Union, get_args, get_origin
@@ -87,14 +88,14 @@ def coerce_enum(value: Any, enum_type: EnumMeta) -> Any:
         raise ValueError(f"'{value}' should be one of {{{', '.join(values)}}}") from None
 
 
-def coerce_value(value: str, target_type: type) -> Any:
+def coerce_value(value: str, target_type: Callable[[Any], Any]) -> Any:
     """Attempt to convert a string to the given target type.
 
     Handles complex typing constructs such as Union, Literal, Enum, and datetime.
 
     Args:
         value (str): The input string to convert.
-        target_type (type): The desired type.
+        target_type (Callable[[Any], Any]): The desired type.
 
     Returns:
         Any: The coerced value.

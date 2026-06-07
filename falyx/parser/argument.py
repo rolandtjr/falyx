@@ -32,6 +32,8 @@ Used By:
 - Rich-based CLI help generation
 - Completion and preview suggestions
 """
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -154,4 +156,24 @@ class Argument:
                 self.group,
                 self.mutex_group,
             )
+        )
+
+    def copy(self) -> Argument:
+        """Create a copy of this Argument."""
+        return Argument(
+            flags=self.flags,
+            dest=self.dest,
+            action=self.action,
+            type=self.type,
+            default=self.default,
+            choices=list(self.choices) if self.choices else [],
+            required=self.required,
+            help=self.help,
+            nargs=self.nargs,
+            positional=self.positional,
+            resolver=self.resolver,
+            lazy_resolver=self.lazy_resolver,
+            suggestions=list(self.suggestions) if self.suggestions else None,
+            group=self.group,
+            mutex_group=self.mutex_group,
         )

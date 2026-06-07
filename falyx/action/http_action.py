@@ -7,6 +7,9 @@ Features:
 - Retry integration and last_result injection
 - Clean resource teardown using hooks
 """
+from __future__ import annotations
+
+from copy import deepcopy
 from typing import Any
 
 import aiohttp
@@ -80,6 +83,7 @@ class HTTPAction(Action):
         spinner_type: str = "dots",
         spinner_style: str = OneColors.CYAN,
         spinner_speed: float = 1.0,
+        never_prompt: bool | None = None,
     ):
         self.method = method.upper()
         self.url = url
@@ -103,6 +107,7 @@ class HTTPAction(Action):
             spinner_type=spinner_type,
             spinner_style=spinner_style,
             spinner_speed=spinner_speed,
+            never_prompt=never_prompt,
         )
 
     async def _request(self, *_, **__) -> dict[str, Any]:
@@ -164,4 +169,27 @@ class HTTPAction(Action):
             f"headers={self.headers!r}, params={self.params!r}, json={self.json!r}, "
             f"data={self.data!r}, retry={self.retry_policy.enabled}, "
             f"inject_last_result={self.inject_last_result})"
+        )
+
+    def clone(self) -> HTTPAction:
+        """Return a copy of this HTTPAction with the same configuration."""
+        return HTTPAction(
+            name=self.name,
+            method=self.method,
+            url=self.url,
+            headers=self.headers.copy() if self.headers else None,
+            params=self.params.copy() if self.params else None,
+            json=deepcopy(self.json),
+            data=self.data,
+            hooks=self._copy_hooks_without_retry(),
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
+            retry=self.retry_policy.enabled,
+            retry_policy=self.retry_policy.model_copy(deep=True),
+            spinner=False,
+            spinner_message=self.spinner_message,
+            spinner_type=self.spinner_type,
+            spinner_style=self.spinner_style,
+            spinner_speed=self.spinner_speed,
+            never_prompt=self.local_never_prompt,
         )

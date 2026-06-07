@@ -92,7 +92,7 @@ class CommandRunner:
     Attributes:
         command (Command): The command executed by this runner.
         program (str): Program name used in CLI usage text and help output.
-        options (OptionsManager): Shared options manager used by the command,
+        options_manager (OptionsManager): Shared options manager used by the command,
             parser, and executor.
         runner_hooks (HookManager): Executor-level hooks used during execution.
         console (Console): Rich console used for user-facing output.
@@ -105,7 +105,7 @@ class CommandRunner:
         command: Command,
         *,
         program: str | None = None,
-        options: OptionsManager | None = None,
+        options_manager: OptionsManager | None = None,
         runner_hooks: HookManager | None = None,
         console: Console | None = None,
     ) -> None:
@@ -120,7 +120,7 @@ class CommandRunner:
             program (str | None): Program name used in CLI usage text, invocation-path
                 rendering, and built-in help output. If `None`, an empty program name is
                 used.
-            options (OptionsManager | None): Optional shared options manager. If
+            options_manager (OptionsManager | None): Optional shared options manager. If
                 omitted, a new `OptionsManager` is created.
             runner_hooks (HookManager | None): Optional executor-level hook manager. If
                 omitted, a new `HookManager` is created.
@@ -129,23 +129,26 @@ class CommandRunner:
         """
         self.command = command
         self.program = program or ""
-        self.options = self._get_options(options)
+        self.options_manager = self._get_options_manager(options_manager)
         self.runner_hooks = self._get_hooks(runner_hooks)
         self.console = self._get_console(console)
         self.error_console = error_console
-        self.command.options_manager = self.options
+        self.command.options_manager = self.options_manager
         if program:
             self.command.program = program
         if isinstance(self.command.arg_parser, CommandArgumentParser):
-            self.command.arg_parser.set_options_manager(self.options)
+            self.command.arg_parser.set_options_manager(self.options_manager)
             self.command.arg_parser.is_runner_mode = True
             if program:
                 self.command.arg_parser.program = program
         self.executor = CommandExecutor(
-            options=self.options,
+            options_manager=self.options_manager,
             hooks=self.runner_hooks,
         )
-        self.options.from_mapping(values={}, namespace_name="execution")
+        if not self.options_manager.get_namespace("root"):
+            self.options_manager.from_mapping(values={}, namespace_name="root")
+        if not self.options_manager.get_namespace("execution"):
+            self.options_manager.from_mapping(values={}, namespace_name="execution")
 
     def _get_console(self, console) -> Console:
         if console is None:
@@ -155,13 +158,18 @@ class CommandRunner:
         else:
             raise NotAFalyxError("console must be an instance of rich.Console or None.")
 
-    def _get_options(self, options) -> OptionsManager:
-        if options is None:
+    def _get_options_manager(
+        self,
+        options_manager: OptionsManager | None,
+    ) -> OptionsManager:
+        if options_manager is None:
             return OptionsManager()
-        elif isinstance(options, OptionsManager):
-            return options
+        elif isinstance(options_manager, OptionsManager):
+            return options_manager
         else:
-            raise NotAFalyxError("options must be an instance of OptionsManager or None.")
+            raise NotAFalyxError(
+                "options_manager must be an instance of OptionsManager or None."
+            )
 
     def _get_hooks(self, hooks) -> HookManager:
         if hooks is None:
@@ -295,7 +303,7 @@ class CommandRunner:
         *,
         program: str | None = None,
         runner_hooks: HookManager | None = None,
-        options: OptionsManager | None = None,
+        options_manager: OptionsManager | None = None,
         console: Console | None = None,
     ) -> CommandRunner:
         """Create a `CommandRunner` from an existing `Command` instance.
@@ -311,7 +319,7 @@ class CommandRunner:
                 used.
             runner_hooks (HookManager | None): Optional executor-level hook manager
                 for the runner.
-            options (OptionsManager | None): Optional shared options manager.
+            options_manager (OptionsManager | None): Optional shared options manager.
             console (Console | None): Optional Rich console for output.
 
         Returns:
@@ -325,10 +333,14 @@ class CommandRunner:
             raise NotAFalyxError("command must be an instance of Command.")
         if runner_hooks and not isinstance(runner_hooks, HookManager):
             raise InvalidHookError("runner_hooks must be an instance of HookManager.")
-        return cls(
-            command=command,
+        bound_command = command.clone_with_overrides(
+            options_manager=options_manager,
             program=program,
-            options=options,
+        )
+        return cls(
+            command=bound_command,
+            program=program,
+            options_manager=options_manager,
             runner_hooks=runner_hooks,
             console=console,
         )
@@ -357,7 +369,7 @@ class CommandRunner:
         spinner_type: str = "dots",
         spinner_style: str = OneColors.CYAN,
         spinner_speed: float = 1.0,
-        options: OptionsManager | None = None,
+        options_manager: OptionsManager | None = None,
         command_hooks: HookManager | None = None,
         before_hooks: list[Callable] | None = None,
         success_hooks: list[Callable] | None = None,
@@ -415,7 +427,7 @@ class CommandRunner:
             spinner_type (str): Spinner animation type.
             spinner_style (str): Spinner style.
             spinner_speed (float): Spinner speed multiplier.
-            options (OptionsManager | None): Shared options manager for the command
+            options_manager (OptionsManager | None): Shared options manager for the command
                 and runner.
             command_hooks (HookManager | None): Optional hook manager for the built
                 command itself.
@@ -473,7 +485,7 @@ class CommandRunner:
             - Command construction is delegated to `Command.build()` so command
             configuration remains centralized.
         """
-        options = options or OptionsManager()
+        options_manager = options_manager or OptionsManager()
         command = Command.build(
             key=key,
             description=description,
@@ -499,7 +511,7 @@ class CommandRunner:
             retry=retry,
             retry_all=retry_all,
             retry_policy=retry_policy,
-            options_manager=options,
+            options_manager=options_manager,
             hooks=command_hooks,
             before_hooks=before_hooks,
             success_hooks=success_hooks,
@@ -525,7 +537,7 @@ class CommandRunner:
 
         return cls(
             command=command,
-            options=options,
+            options_manager=options_manager,
             runner_hooks=runner_hooks,
             console=console,
         )

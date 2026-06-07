@@ -38,9 +38,11 @@ class ParseResult:
     Attributes:
         mode: Top-level runtime mode selected from the root parse.
         raw_argv: Original argv passed into the root parser.
-        options: Dictionary of parsed root-level options and their values.
+        root_defaults: Dictionary of parsed root-level options and their default values.
         root_options: Dictionary of parsed root-level options that should be
             applied at the root level for all namespaces.
+        namespace_defaults: Dictionary of parsed namespace-level options and their default values.
+        namespace_options: Dictionary of parsed namespace-level options and their values.
         remaining_argv: Unconsumed argv that should be forwarded to routed
             command resolution.
         current_head: The current head token being processed (for error reporting).
@@ -53,12 +55,11 @@ class ParseResult:
 
     mode: FalyxMode
     raw_argv: list[str] = field(default_factory=list)
-    options: dict[str, Any] = field(default_factory=dict)
+    root_defaults: dict[str, Any] = field(default_factory=dict)
     root_options: dict[str, Any] = field(default_factory=dict)
+    namespace_defaults: dict[str, Any] = field(default_factory=dict)
+    namespace_options: dict[str, Any] = field(default_factory=dict)
     remaining_argv: list[str] = field(default_factory=list)
     current_head: str = ""
     help: bool = False
     tldr: bool = False
-    verbose: bool = False
-    debug_hooks: bool = False
-    never_prompt: bool = False

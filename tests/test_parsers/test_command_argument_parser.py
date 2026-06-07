@@ -5,7 +5,7 @@ from falyx.action import Action
 from falyx.console import console as falyx_console
 from falyx.exceptions import CommandArgumentError, NotAFalyxError
 from falyx.options_manager import OptionsManager
-from falyx.parser import ArgumentAction, CommandArgumentParser
+from falyx.parser import Argument, ArgumentAction, CommandArgumentParser
 from falyx.signals import HelpSignal
 
 
@@ -1009,3 +1009,20 @@ def test_add_argument_invalid_lazy_resolver():
         CommandArgumentError, match="lazy_resolver must be a boolean, got int"
     ):
         parser.add_argument("--valid", lazy_resolver=123)
+
+
+def test_add_argument_returns_registered_argument() -> None:
+    parser = CommandArgumentParser()
+
+    arg = parser.add_argument(
+        "--retries",
+        type=int,
+        default="1",
+        choices=["1", "2"],
+    )
+
+    assert isinstance(arg, Argument)
+    assert arg.dest == "retries"
+    assert arg.default == 1
+    assert arg.choices == [1, 2]
+    assert parser.get_argument("retries") is arg

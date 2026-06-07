@@ -68,6 +68,14 @@ class MenuOption:
             [(OneColors.WHITE, f"[{key}] "), (self.style, self.description)]
         )
 
+    def copy(self) -> MenuOption:
+        """Create a copy of this MenuOption."""
+        return MenuOption(
+            description=self.description,
+            action=self.action.clone(),
+            style=self.style,
+        )
+
 
 class MenuOptionMap(CaseInsensitiveDict):
     """
@@ -160,3 +168,13 @@ class MenuOptionMap(CaseInsensitiveDict):
             if not include_reserved and key in self.RESERVED_KEYS:
                 continue
             yield key, option
+
+    def copy(self) -> MenuOptionMap:
+        """Create a copy of this MenuOptionMap."""
+        items = {}
+        for key, option in self.items():
+            if key in self.RESERVED_KEYS and not self.allow_reserved:
+                continue
+            items[key] = option.copy()
+        new_map = MenuOptionMap(items, allow_reserved=self.allow_reserved)
+        return new_map

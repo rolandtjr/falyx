@@ -23,6 +23,8 @@ Use Cases:
 Example:
     SignalAction("ExitApp", QuitSignal(), hooks=my_hook_manager)
 """
+from __future__ import annotations
+
 from rich.tree import Tree
 
 from falyx.action.action import Action
@@ -90,3 +92,7 @@ class SignalAction(Action):
         tree = parent.add(label) if parent else Tree(label)
         if not parent:
             self.console.print(tree)
+
+    def clone(self) -> SignalAction:
+        """Creates a copy of this SignalAction with the same configuration."""
+        return SignalAction(name=self.name, signal=self.signal, hooks=self.hooks.copy())

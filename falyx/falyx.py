@@ -64,11 +64,12 @@ import asyncio
 import logging
 import shlex
 import sys
+from collections.abc import Callable
 from difflib import get_close_matches
 from functools import cached_property
 from pathlib import Path
 from random import choice
-from typing import Any, Callable
+from typing import Any
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application import get_app
@@ -103,6 +104,7 @@ from falyx.exceptions import (
     CommandArgumentError,
     EntryNotFoundError,
     FalyxError,
+    FalyxOptionError,
     InvalidActionError,
     InvalidHookError,
     NotAFalyxError,
@@ -115,7 +117,8 @@ from falyx.logger import logger
 from falyx.mode import FalyxMode
 from falyx.namespace import FalyxNamespace
 from falyx.options_manager import OptionsManager
-from falyx.parser import CommandArgumentParser, FalyxParser, ParseResult
+from falyx.parser import CommandArgumentParser, FalyxParser, OptionAction
+from falyx.parser.option import Option
 from falyx.parser.parser_types import FalyxTLDRInput
 from falyx.prompt_utils import rich_text_to_prompt_text
 from falyx.protocols import ArgParserProtocol
@@ -128,7 +131,6 @@ from falyx.validators import CommandValidator
 from falyx.version import __version__
 
 
-# TODO: better OptionsManager determination (assert same instance across a namespace)
 class Falyx:
     """Primary controller for Falyx CLI applications.
 
@@ -206,7 +208,7 @@ class Falyx:
         builtins (dict[str, Command]): Registered built-in commands such as help,
             preview, and version.
         namespaces (dict[str, FalyxNamespace]): Registered nested namespaces.
-        options (OptionsManager): Shared runtime option manager.
+        options_manager (OptionsManager): Shared runtime option manager.
         hooks (HookManager): Application-level hook manager.
         console (Console): Rich console used for rendering output.
         key_bindings (KeyBindings): Prompt Toolkit key bindings for menu mode.
@@ -254,7 +256,7 @@ class Falyx:
         force_confirm: bool = False,
         verbose: bool = False,
         debug_hooks: bool = False,
-        options: OptionsManager | None = None,
+        options_manager: OptionsManager | None = None,
         render_menu: Callable[[Falyx], None] | None = None,
         custom_table: Callable[[Falyx], Table] | Table | None = None,
         hide_menu_table: bool = False,
@@ -328,7 +330,7 @@ class Falyx:
                 runtime option.
             verbose (bool): Default session-level value for the `verbose` runtime option.
             debug_hooks (bool): Default session-level value for the `debug_hooks` runtime option.
-            options (OptionsManager | None): Shared options manager for the application.
+            options_manager (OptionsManager | None): Shared options manager for the application.
                 If omitted, a new `OptionsManager` instance is created.
             render_menu (Callable[[Falyx], None] | None): Optional custom menu renderer
                 used instead of the default table-based menu output.
@@ -355,7 +357,7 @@ class Falyx:
                 option from the root parser.
 
         Raises:
-            FalyxError: If the provided options object is invalid or other core runtime
+            FalyxError: If the provided options_manager object is invalid or other core runtime
                 configuration is inconsistent.
 
         Notes:
@@ -399,9 +401,9 @@ class Falyx:
         self.custom_table: Callable[[Falyx], Table] | Table | None = custom_table
         self._hide_menu_table: bool = hide_menu_table
         self.show_placeholder_menu: bool = show_placeholder_menu
-        self._validate_options(options)
+        self._validate_options_manager(options_manager)
         self._prompt_session: PromptSession | None = None
-        self.options.set("mode", FalyxMode.COMMAND)
+        self.options_manager.set("mode", FalyxMode.COMMAND)
         self.exit_command: Command = self._get_exit_command()
         self.history_command: Command | None = (
             self._get_history_command() if include_history_command else None
@@ -419,15 +421,47 @@ class Falyx:
         self.default_to_menu: bool = default_to_menu
         self.simple_usage: bool = simple_usage
         self._register_default_builtins()
-        self._register_options()
+        self._register_runtime_options()
         self._executor = CommandExecutor(
-            options=self.options,
+            options_manager=self.options_manager,
             hooks=self.hooks,
         )
         self.disable_verbose_option: bool = disable_verbose_option
         self.disable_debug_hooks_option: bool = disable_debug_hooks_option
         self.disable_never_prompt_option: bool = disable_never_prompt_option
         self.parser: FalyxParser = FalyxParser(self)
+
+    def __str__(self) -> str:
+        return (
+            f"Falyx(program='{self.program}', "
+            f"title='{self.title}', "
+            f"description='{self.description}')"
+        )
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+    def add_option(
+        self,
+        *flags: str,
+        action: str | OptionAction = "store",
+        default: Any = None,
+        type: Callable[[Any], Any] = str,
+        choices: list[str] | None = None,
+        help: str = "",
+        dest: str | None = None,
+        suggestions: list[str] | None = None,
+    ) -> Option:
+        return self.parser.add_option(
+            *flags,
+            action=action,
+            default=default,
+            type=type,
+            choices=choices,
+            help=help,
+            dest=dest,
+            suggestions=suggestions,
+        )
 
     def add_tldr_example(
         self,
@@ -487,7 +521,7 @@ class Falyx:
             program=self.program,
             program_style=self.program_style,
             typed_path=[],
-            mode=self.options.get("mode"),
+            mode=self.options_manager.get("mode"),
         )
 
     @property
@@ -497,11 +531,11 @@ class Falyx:
         Returns:
             bool: `True` when the active mode is not `FalyxMode.MENU`.
         """
-        return self.options.get("mode") != FalyxMode.MENU
+        return self.options_manager.get("mode") != FalyxMode.MENU
 
-    def _validate_options(
+    def _validate_options_manager(
         self,
-        options: OptionsManager | None = None,
+        options_manager: OptionsManager | None = None,
     ) -> None:
         """Validate and install the shared options manager.
 
@@ -509,44 +543,47 @@ class Falyx:
         stored on the instance.
 
         Args:
-            options (OptionsManager | None): Optional options manager to reuse.
+            options_manager (OptionsManager | None): Optional options manager to reuse.
 
         Raises:
-            NotAFalyxError: If `options` is provided but is not an `OptionsManager`.
+            NotAFalyxError: If `options_manager` is provided but is not an `OptionsManager`.
         """
-        self.options: OptionsManager = options or OptionsManager()
-        if not isinstance(self.options, OptionsManager):
-            raise NotAFalyxError("options must be an instance of OptionsManager.")
+        self.options_manager: OptionsManager = options_manager or OptionsManager()
+        if not isinstance(self.options_manager, OptionsManager):
+            raise NotAFalyxError("options_manager must be an instance of OptionsManager.")
 
-    def _register_options(self) -> None:
+    def _register_runtime_options(self) -> None:
         """Seed default application options and execution namespace values.
 
-        This method ensures that core runtime flags such as mode, prompt behavior,
+        This method ensures that core runtime flags such as prompt behavior,
         menu visibility, and program display metadata exist in the shared options
         manager.
         """
-        self.options.from_mapping(values={}, namespace_name="execution")
+        if not self.options_manager.get_namespace("root"):
+            self.options_manager.from_mapping(values={}, namespace_name="root")
+        if not self.options_manager.get_namespace("execution"):
+            self.options_manager.from_mapping(values={}, namespace_name="execution")
 
-        if not self.options.get("never_prompt"):
-            self.options.set("never_prompt", self._never_prompt)
+        if not self.options_manager.has_option("never_prompt"):
+            self.options_manager.set("never_prompt", self._never_prompt, "root")
 
-        if not self.options.get("force_confirm"):
-            self.options.set("force_confirm", self._force_confirm)
+        if not self.options_manager.has_option("force_confirm"):
+            self.options_manager.set("force_confirm", self._force_confirm, "root")
 
-        if not self.options.get("verbose"):
-            self.options.set("verbose", self._verbose)
+        if not self.options_manager.has_option("verbose"):
+            self.options_manager.set("verbose", self._verbose, "root")
 
-        if not self.options.get("debug_hooks"):
-            self.options.set("debug_hooks", self._debug_hooks)
+        if not self.options_manager.has_option("debug_hooks"):
+            self.options_manager.set("debug_hooks", self._debug_hooks, "root")
 
-        if not self.options.get("hide_menu_table"):
-            self.options.set("hide_menu_table", self._hide_menu_table)
+        if not self.options_manager.has_option("hide_menu_table"):
+            self.options_manager.set("hide_menu_table", self._hide_menu_table)
 
-        if not self.options.get("program"):
-            self.options.set("program", self.program)
+        if not self.options_manager.has_option("program"):
+            self.options_manager.set("program", self.program)
 
-        if not self.options.get("program_style"):
-            self.options.set("program_style", self.program_style)
+        if not self.options_manager.has_option("program_style"):
+            self.options_manager.set("program_style", self.program_style)
 
     @property
     def completion_names(self) -> list[str]:
@@ -670,7 +707,7 @@ class Falyx:
             style=OneColors.DARK_RED,
             simple_help_signature=True,
             ignore_in_history=True,
-            options_manager=self.options,
+            options_manager=self.options_manager,
             program=self.program,
             help_text="Exit the program.",
         )
@@ -744,7 +781,7 @@ class Falyx:
             argument_config=add_history_arguments,
             help_text="View the execution history of commands.",
             ignore_in_history=True,
-            options_manager=self.options,
+            options_manager=self.options_manager,
             program=self.program,
         )
 
@@ -1313,7 +1350,7 @@ class Falyx:
             style=OneColors.LIGHT_YELLOW,
             argument_config=add_help_arguments,
             ignore_in_history=True,
-            options_manager=self.options,
+            options_manager=self.options_manager,
             program=self.program,
         )
 
@@ -1364,7 +1401,7 @@ class Falyx:
             aliases=["PREVIEW"],
             action=Action("Preview", self._preview),
             style=OneColors.GREEN,
-            options_manager=self.options,
+            options_manager=self.options_manager,
             program=self.program,
             help_text="Preview the execution of a command without running it.",
             argument_config=add_preview_argument,
@@ -1388,7 +1425,7 @@ class Falyx:
             action=Action("Version", self._render_version),
             style=self.version_style,
             ignore_in_history=True,
-            options_manager=self.options,
+            options_manager=self.options_manager,
             program=self.program,
             help_text=f"Show the {self.program} version.",
         )
@@ -1664,7 +1701,7 @@ class Falyx:
             confirm=confirm,
             confirm_message=confirm_message,
             ignore_in_history=True,
-            options_manager=self.options,
+            options_manager=self.options_manager,
             program=self.program,
             help_text=help_text,
         )
@@ -1726,32 +1763,42 @@ class Falyx:
                 help_text="Go back to the previous menu.",
             )
 
-    def add_commands(self, commands: list[Command] | list[dict]) -> None:
+    def add_commands(self, commands: list[Command] | list[dict]) -> list[Command]:
         """Register multiple commands from instances or config dictionaries.
 
         Args:
             commands (list[Command] | list[dict]): Sequence of `Command` objects or
                 `add_command()` keyword dictionaries.
 
+        Returns:
+            list[Command]: List of registered `Command` instances.
+
         Raises:
             FalyxError: If an element is neither a `Command` nor a configuration
                 dictionary.
         """
+        added_commands = []
         for command in commands:
             if isinstance(command, dict):
-                self.add_command(**command)
+                added_commands.append(self.add_command(**command))
             elif isinstance(command, Command):
-                self.add_command_from_command(command)
+                added_commands.append(self.add_command_from_command(command))
             else:
                 raise FalyxError(
                     "command must be a dictionary or an instance of Command."
                 )
+        return added_commands
 
-    def add_command_from_command(self, command: Command) -> None:
-        """Register an already-built `Command` object.
+    def add_command_from_command(self, command: Command) -> Command:
+        """Registers a clone of the provided command and returns the bound clone
+        owned by this namespace.
 
         Args:
             command (Command): Preconstructed command to add to this namespace.
+
+        Returns:
+            Command: The newly registered clone of the command instance bound to
+                this namespace.
 
         Raises:
             FalyxError: If `command` is not a `Command`.
@@ -1759,8 +1806,13 @@ class Falyx:
         if not isinstance(command, Command):
             raise FalyxError("command must be an instance of Command.")
         self._validate_command_aliases(command.key, command.aliases)
-        self.commands[command.key] = command
+        bound_command = command.clone_with_overrides(
+            options_manager=self.options_manager,
+            program=self.program,
+        )
+        self.commands[command.key] = bound_command
         _ = self._entry_map
+        return bound_command
 
     def add_command(
         self,
@@ -1903,7 +1955,7 @@ class Falyx:
             auto_args=auto_args,
             arg_metadata=arg_metadata,
             simple_help_signature=simple_help_signature,
-            options_manager=self.options,
+            options_manager=self.options_manager,
             ignore_in_history=ignore_in_history,
             program=self.program,
         )
@@ -2146,7 +2198,7 @@ class Falyx:
             program=self.program,
             program_style=self.program_style,
             typed_path=[],
-            mode=mode or self.options.get("mode"),
+            mode=mode or self.options_manager.get("mode"),
             is_preview=is_preview,
         )
 
@@ -2253,6 +2305,7 @@ class Falyx:
             EOFError: If execution receives an unexpected end of input and `wrap_errors`
                 is `False`.
         """
+        route.namespace._apply_root_options()
         if route.is_preview:
             if route.kind is RouteKind.COMMAND and route.command:
                 logger.info("preview command '%s' selected.", route.command.key)
@@ -2286,6 +2339,10 @@ class Falyx:
 
             if command is route.namespace.help_command:
                 kwargs = kwargs or {}
+                # pop the help command key from the typed path to avoid it being
+                # treated as a real argument during help rendering
+                route.context.typed_path.pop()
+                route.context.segments.pop()
                 kwargs["invocation_context"] = route.context
 
             logger.debug(
@@ -2295,15 +2352,22 @@ class Falyx:
                 kwargs,
                 execution_args,
             )
-            return await self._executor.execute(
-                command=route.command,
-                args=args,
-                kwargs=kwargs or {},
-                execution_args=execution_args or {},
-                raise_on_error=raise_on_error,
-                wrap_errors=wrap_errors,
-                summary_last_result=summary_last_result,
+            route.namespace.options_manager.seed_missing(
+                route.namespace_defaults,
             )
+            with route.namespace.options_manager.override_namespace(
+                route.namespace_overrides,
+                "default",
+            ):
+                return await self._executor.execute(
+                    command=route.command,
+                    args=args,
+                    kwargs=kwargs or {},
+                    execution_args=execution_args or {},
+                    raise_on_error=raise_on_error,
+                    wrap_errors=wrap_errors,
+                    summary_last_result=summary_last_result,
+                )
 
     async def execute_command(
         self,
@@ -2372,15 +2436,23 @@ class Falyx:
 
         assert route is not None, "prepare_route should never return None."
 
-        return await self._dispatch_route(
-            route=route,
-            args=args,
-            kwargs=kwargs,
-            execution_args=execution_args,
-            raise_on_error=raise_on_error,
-            wrap_errors=wrap_errors,
-            summary_last_result=summary_last_result,
+        route.namespace.options_manager.seed_missing(
+            route.root_defaults,
+            namespace_name="root",
         )
+        with route.namespace.options_manager.override_namespace(
+            route.root_overrides,
+            namespace_name="root",
+        ):
+            return await self._dispatch_route(
+                route=route,
+                args=args,
+                kwargs=kwargs,
+                execution_args=execution_args,
+                raise_on_error=raise_on_error,
+                wrap_errors=wrap_errors,
+                summary_last_result=summary_last_result,
+            )
 
     def resolve_completion_route(
         self,
@@ -2409,21 +2481,57 @@ class Falyx:
         """
         namespace = self
         route_context = invocation_context
-        remaining = list(committed_tokens)
+        remaining_in_namespace = [stub]
 
+        remaining = list(committed_tokens)
         while remaining:
+            remaining = list(remaining)
+            remaining_in_namespace = list(remaining) + ([stub] if stub else [])
+            try:
+                parse_result = namespace.parser.parse_args(remaining)
+            except FalyxOptionError:
+                # If committed tokens end with a namespace-level option, the completer should
+                # suggest values for that option instead of namespace entries.
+                return CompletionRoute(
+                    namespace=namespace,
+                    context=route_context,
+                    command=None,
+                    remaining_argv=remaining_in_namespace,
+                    stub=stub,
+                    cursor_at_end_of_token=cursor_at_end_of_token,
+                    expecting_entry=True,
+                    is_preview=is_preview,
+                )
+
+            remaining = list(parse_result.remaining_argv)
+            remaining_in_namespace = list(remaining) + ([stub] if stub else [])
+
+            if not remaining:
+                break
+
             head = remaining.pop(0)
             entry, _ = namespace.resolve_entry(head)
 
             if entry is None:
+                if remaining or stub:
+                    return CompletionRoute(
+                        namespace=namespace,
+                        context=route_context,
+                        command=None,
+                        remaining_argv=remaining_in_namespace,
+                        stub="",
+                        cursor_at_end_of_token=cursor_at_end_of_token,
+                        expecting_entry=False,
+                        is_preview=is_preview,
+                    )
                 # Still routing namespace entries; could not resolve this token.
                 # Let the completer suggest entries or namespace-level flags.
                 return CompletionRoute(
                     namespace=namespace,
                     context=route_context,
                     command=None,
-                    leaf_argv=[],
-                    stub=head if not remaining else stub,
+                    remaining_argv=remaining_in_namespace,
+                    stub=head,
                     cursor_at_end_of_token=cursor_at_end_of_token,
                     expecting_entry=True,
                     is_preview=is_preview,
@@ -2453,6 +2561,7 @@ class Falyx:
             context=route_context,
             command=None,
             leaf_argv=[],
+            remaining_argv=remaining_in_namespace,
             stub=stub,
             cursor_at_end_of_token=cursor_at_end_of_token,
             expecting_entry=True,
@@ -2465,6 +2574,8 @@ class Falyx:
         *,
         invocation_context: InvocationContext,
         is_preview: bool = False,
+        root_defaults: dict[str, Any] | None = None,
+        root_overrides: dict[str, Any] | None = None,
     ) -> RouteResult:
         """Resolve an invocation path across namespaces until a leaf boundary.
 
@@ -2485,7 +2596,13 @@ class Falyx:
         """
         # 1. Namespace-level parsing for help/tldr flags and root/session options
         parse_result = self.parser.parse_args(tokens)
-        self.parser.apply_to_options(parse_result, self.options)
+        if not root_defaults:
+            root_defaults = {}
+        if not root_overrides:
+            root_overrides = {}
+        parse_result.root_defaults = root_defaults | parse_result.root_defaults
+        parse_result.root_options = root_overrides | parse_result.root_options
+
         tokens = parse_result.remaining_argv
 
         # 2. Help or TLDR requested for this namespace
@@ -2507,12 +2624,22 @@ class Falyx:
             )
 
         # 3. No more tokens -> this namespace itself was targeted
-        if not tokens:
+        if not tokens and (parse_result.namespace_options or parse_result.root_options):
+            return RouteResult(
+                kind=RouteKind.UNKNOWN,
+                namespace=self,
+                context=invocation_context,
+                current_head=parse_result.current_head,
+                is_preview=is_preview,
+            )
+        elif not tokens:
             return RouteResult(
                 kind=RouteKind.NAMESPACE_MENU,
                 namespace=self,
                 context=invocation_context,
                 is_preview=is_preview,
+                root_defaults=parse_result.root_defaults,
+                root_overrides=parse_result.root_options,
             )
 
         head, *tail = tokens
@@ -2534,7 +2661,11 @@ class Falyx:
         # 5. Namespace entry -> recurse with remaining tokens
         if isinstance(entry, FalyxNamespace):
             return await entry.namespace.resolve_route(
-                tail, invocation_context=route_context, is_preview=is_preview
+                tail,
+                invocation_context=route_context,
+                is_preview=is_preview,
+                root_defaults=parse_result.root_defaults,
+                root_overrides=parse_result.root_options,
             )
 
         # 6. Leaf command -> stop routing; leave tail untouched for leaf parser
@@ -2546,6 +2677,10 @@ class Falyx:
             leaf_argv=tail,
             current_head=head,
             is_preview=is_preview,
+            root_defaults=parse_result.root_defaults,
+            root_overrides=parse_result.root_options,
+            namespace_defaults=parse_result.namespace_defaults,
+            namespace_overrides=parse_result.namespace_options,
         )
 
     async def _process_command(self) -> None:
@@ -2577,12 +2712,12 @@ class Falyx:
         welcome and exit messages.
         """
         logger.info("Starting menu: %s", self.title)
-        self.options.set("mode", FalyxMode.MENU)
+        self.options_manager.set("mode", FalyxMode.MENU)
         if self.welcome_message:
             self.console.print(self.welcome_message)
         try:
             while True:
-                if not self.options.get("hide_menu_table", self._hide_menu_table):
+                if not self.options_manager.get("hide_menu_table", self._hide_menu_table):
                     if callable(self.render_menu):
                         self.render_menu(self)
                     else:
@@ -2608,32 +2743,20 @@ class Falyx:
             if self.exit_message:
                 self.console.print(self.exit_message)
 
-    def _apply_parse_result(self, result: ParseResult) -> None:
+    def _apply_root_options(self) -> None:
         """Apply parsed root/session options to runtime state.
 
-        This updates the active mode, logging verbosity, debug-hook registration,
-        and prompt behavior based on the root parse result.
-
-        Args:
-            result (ParseResult): Parsed root CLI result to apply.
+        This updates logging verbosity and debug-hook registration.
         """
-        self.options.set("mode", result.mode)
-
-        if result.verbose:
-            logging.getLogger("falyx").setLevel(logging.DEBUG)
-            self.options.set("verbose", True)
+        falyx_logger = logging.getLogger("falyx")
+        if self.options_manager.get("verbose", False, "root"):
+            falyx_logger.setLevel(logging.DEBUG)
         else:
-            self.options.set("verbose", False)
+            falyx_logger.setLevel(logging.WARNING)
 
-        if result.debug_hooks:
-            self.options.set("debug_hooks", True)
+        if self.options_manager.get("debug_hooks", False, "root"):
             self.register_all_with_debug_hooks()
             logger.debug("Enabling global debug hooks for all commands")
-        else:
-            self.options.set("debug_hooks", False)
-
-        if result.never_prompt:
-            self.options.set("never_prompt", True)
 
     async def run(self, always_start_menu: bool = False) -> None:
         """Execute the Falyx application using CLI-driven dispatch.
@@ -2690,21 +2813,29 @@ class Falyx:
         assert route is not None, "prepare_route should never return None."
 
         try:
-            await self._dispatch_route(
-                route=route,
-                args=args,
-                kwargs=kwargs,
-                execution_args=execution_args,
-                raise_on_error=False,
-                wrap_errors=True,
+            route.namespace.options_manager.seed_missing(
+                route.root_defaults,
+                namespace_name="root",
             )
+            with route.namespace.options_manager.override_namespace(
+                route.root_overrides,
+                namespace_name="root",
+            ):
+                await self._dispatch_route(
+                    route=route,
+                    args=args,
+                    kwargs=kwargs,
+                    execution_args=execution_args,
+                    raise_on_error=False,
+                    wrap_errors=True,
+                )
         except EntryNotFoundError as error:
             await self.render_help()
             print_error(message=error)
             sys.exit(2)
         except (FalyxError, Exception) as error:
             print_error(message=error)
-            if self.options.get("verbose"):
+            if self.options_manager.get("verbose", False, "root"):
                 logger.error("Error: %s", error, exc_info=True)
             sys.exit(1)
         except QuitSignal:

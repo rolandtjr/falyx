@@ -191,7 +191,7 @@ class Command(BaseModel):
     spinner_type: str = "dots"
     spinner_style: Style | str = OneColors.CYAN
     spinner_speed: float = 1.0
-    hooks: "HookManager" = Field(default_factory=HookManager)
+    hooks: HookManager = Field(default_factory=HookManager)
     retry: bool = False
     retry_all: bool = False
     retry_policy: RetryPolicy = Field(default_factory=RetryPolicy)
@@ -307,6 +307,7 @@ class Command(BaseModel):
     @field_validator("action", mode="before")
     @classmethod
     def _wrap_callable_as_async(cls, action: Any) -> Any:
+        """Ensure the action is an async callable or a BaseAction instance."""
         if isinstance(action, BaseAction):
             return action
         elif callable(action):
@@ -314,6 +315,7 @@ class Command(BaseModel):
         raise TypeError("Action must be a callable or an instance of BaseAction")
 
     def _get_argument_definitions(self) -> list[dict[str, Any]]:
+        """Retrieve the argument definitions for the command."""
         if self.arguments:
             return self.arguments
         elif callable(self.argument_config) and isinstance(
@@ -382,6 +384,22 @@ class Command(BaseModel):
         if isinstance(self.action, BaseAction):
             self.action.set_options_manager(self.options_manager)
 
+    async def _handle_prompt_user(self) -> None:
+        """Handle user confirmation prompts based on command configuration and options."""
+        action_never_prompt = None
+        if isinstance(self.action, BaseAction):
+            action_never_prompt = self.action.local_never_prompt
+        if should_prompt_user(
+            confirm=self.confirm,
+            options=self.options_manager,
+            action_never_prompt=action_never_prompt,
+        ):
+            if self.preview_before_confirm:
+                await self.preview()
+            if not await confirm_async(self._confirmation_prompt):
+                logger.info("[Command:%s] Cancelled by user.", self.key)
+                raise CancelSignal(f"[Command:{self.key}] Cancelled by confirmation.")
+
     async def __call__(self, *args, **kwargs) -> Any:
         """Execute the command's underlying action with lifecycle management.
 
@@ -430,12 +448,7 @@ class Command(BaseModel):
         )
         self._context = context
 
-        if should_prompt_user(confirm=self.confirm, options=self.options_manager):
-            if self.preview_before_confirm:
-                await self.preview()
-            if not await confirm_async(self._confirmation_prompt):
-                logger.info("[Command:%s] Cancelled by user.", self.key)
-                raise CancelSignal(f"[Command:{self.key}] Cancelled by confirmation.")
+        await self._handle_prompt_user()
 
         context.start_timer()
 
@@ -485,6 +498,18 @@ class Command(BaseModel):
             )
 
         return FormattedText(prompt)
+
+    def get_option(
+        self,
+        option_name: str,
+        default: Any = None,
+        *,
+        namespace_name: str = "default",
+    ) -> Any:
+        """Resolve an option from the OptionsManager if present, else default."""
+        if self.options_manager:
+            return self.options_manager.get(option_name, default, namespace_name)
+        return default
 
     @property
     def primary_alias(self) -> str:
@@ -557,6 +582,7 @@ class Command(BaseModel):
         )
 
     def log_summary(self) -> None:
+        """Log a summary of the command execution if context is available."""
         if self._context:
             self._context.log_summary()
 
@@ -597,6 +623,7 @@ class Command(BaseModel):
         return False
 
     async def preview(self) -> None:
+        """Preview the command execution."""
         label = f"[{OneColors.GREEN_b}]Command:[/] '{self.key}' — {self.description}"
 
         if hasattr(self.action, "preview") and callable(self.action.preview):
@@ -855,3 +882,131 @@ class Command(BaseModel):
             command.hooks.register(HookType.ON_TEARDOWN, spinner_teardown_hook)
 
         return command
+
+    def clone_with_overrides(
+        self,
+        *,
+        key: str | None = None,
+        description: str | None = None,
+        action: BaseAction | Callable[..., Any] | None = None,
+        args: tuple | None = None,
+        kwargs: dict[str, Any] | None = None,
+        hidden: bool | None = None,
+        aliases: list[str] | None = None,
+        help_text: str | None = None,
+        help_epilog: str | None = None,
+        style: Style | str | None = None,
+        confirm: bool | None = None,
+        confirm_message: str | None = None,
+        preview_before_confirm: bool | None = None,
+        spinner: bool | None = None,
+        spinner_message: str | None = None,
+        spinner_type: str | None = None,
+        spinner_style: Style | str | None = None,
+        spinner_speed: float | None = None,
+        hooks: HookManager | None = None,
+        retry: bool | None = None,
+        retry_all: bool | None = None,
+        retry_policy: RetryPolicy | None = None,
+        tags: list[str] | None = None,
+        logging_hooks: bool | None = None,
+        options_manager: OptionsManager | None = None,
+        arg_parser: CommandArgumentParser | None = None,
+        execution_options: list[ExecutionOption | str] | None = None,
+        arguments: list[dict[str, Any]] | None = None,
+        argument_config: Callable[[CommandArgumentParser], None] | None = None,
+        custom_parser: ArgParserProtocol | None = None,
+        custom_help: Callable[[], str | None] | None = None,
+        custom_tldr: Callable[[], str | None] | None = None,
+        custom_usage: Callable[[], str | None] | None = None,
+        auto_args: bool | None = None,
+        arg_metadata: dict[str, str | dict[str, Any]] | None = None,
+        simple_help_signature: bool | None = None,
+        ignore_in_history: bool | None = None,
+        program: str | None = None,
+    ) -> Command:
+        """Create a clone of the command with specified overrides."""
+        if not arg_parser and self.arg_parser:
+            arg_parser = self.arg_parser.clone_with_overrides(
+                command_key=key or self.key,
+                command_description=description or self.description,
+                command_style=style or self.style,
+                help_text=help_text or self.help_text,
+                help_epilog=help_epilog or self.help_epilog,
+                aliases=aliases if aliases is not None else self.aliases,
+                program=program or self.program,
+                options_manager=options_manager or self.options_manager,
+            )
+        if not hooks and self.hooks:
+            hooks = self.hooks.copy()
+        if not action and self.action:
+            if isinstance(self.action, BaseAction):
+                cloned_action: (
+                    BaseAction | Callable[..., Any] | Callable[..., Awaitable[Any]]
+                ) = self.action.clone()
+            elif callable(self.action):
+                cloned_action = self.action
+            else:
+                raise NotAFalyxError("Action must be a BaseAction or callable to clone.")
+        return Command.build(
+            key=key or self.key,
+            description=description or self.description,
+            action=action or cloned_action,
+            args=args if args is not None else self.args,
+            kwargs=kwargs if kwargs is not None else self.kwargs,
+            hidden=hidden if hidden is not None else self.hidden,
+            aliases=aliases if aliases is not None else self.aliases,
+            help_text=help_text if help_text is not None else self.help_text,
+            help_epilog=help_epilog if help_epilog is not None else self.help_epilog,
+            style=style or self.style,
+            confirm=confirm if confirm is not None else self.confirm,
+            confirm_message=confirm_message or self.confirm_message,
+            preview_before_confirm=(
+                preview_before_confirm
+                if preview_before_confirm is not None
+                else self.preview_before_confirm
+            ),
+            spinner=spinner if spinner is not None else self.spinner,
+            spinner_message=spinner_message or self.spinner_message,
+            spinner_type=spinner_type or self.spinner_type,
+            spinner_style=spinner_style or self.spinner_style,
+            spinner_speed=(
+                spinner_speed if spinner_speed is not None else self.spinner_speed
+            ),
+            hooks=hooks or self.hooks,
+            retry=retry if retry is not None else self.retry,
+            retry_all=retry_all if retry_all is not None else self.retry_all,
+            retry_policy=retry_policy or self.retry_policy,
+            tags=tags if tags is not None else self.tags,
+            logging_hooks=(
+                logging_hooks if logging_hooks is not None else self.logging_hooks
+            ),
+            options_manager=options_manager or self.options_manager,
+            arg_parser=arg_parser or self.arg_parser,
+            execution_options=(
+                execution_options
+                if execution_options is not None
+                else (list(self.execution_options) if self.execution_options else [])
+            ),
+            arguments=arguments if arguments is not None else (self.arguments or []),
+            argument_config=argument_config or self.argument_config,
+            custom_parser=custom_parser or self.custom_parser,
+            custom_help=custom_help or self.custom_help,
+            custom_tldr=custom_tldr or self.custom_tldr,
+            custom_usage=custom_usage or self.custom_usage,
+            auto_args=auto_args if auto_args is not None else self.auto_args,
+            arg_metadata=(
+                arg_metadata if arg_metadata is not None else (self.arg_metadata or {})
+            ),
+            simple_help_signature=(
+                simple_help_signature
+                if simple_help_signature is not None
+                else self.simple_help_signature
+            ),
+            ignore_in_history=(
+                ignore_in_history
+                if ignore_in_history is not None
+                else self.ignore_in_history
+            ),
+            program=program or self.program,
+        )

@@ -30,6 +30,8 @@ Example:
         inject_last_result=True,
     )
 """
+from __future__ import annotations
+
 from typing import Any, Callable
 
 from rich.tree import Tree
@@ -173,4 +175,17 @@ class ActionFactory(BaseAction):
             f"inject_last_result={self.inject_last_result}, "
             f"factory={self._factory.__name__ if hasattr(self._factory, '__name__') else type(self._factory).__name__}, "
             f"args={self.args!r}, kwargs={self.kwargs!r})"
+        )
+
+    def clone(self) -> ActionFactory:
+        """Return a copy of this ActionFactory with the same configuration."""
+        return ActionFactory(
+            name=self.name,
+            factory=self._factory,
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
+            args=self.args,
+            kwargs=self.kwargs,
+            preview_args=self.preview_args,
+            preview_kwargs=self.preview_kwargs,
         )

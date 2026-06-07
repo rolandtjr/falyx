@@ -83,7 +83,7 @@ class FalyxCompleter(Completer):
             - Detects preview-mode input prefixed with `?`.
             - Separates committed tokens from the active stub under the cursor.
             - Resolves the partial route through `Falyx.resolve_completion_route()`.
-            - Suggests namespace entries and namespace help flags while routing.
+            - Suggests namespace entries and namespace flags while routing.
             - Delegates leaf-command completion to
               `CommandArgumentParser.suggest_next()` once a command is resolved.
             - Preserves shell-safe quoting for suggestions containing spaces.
@@ -137,14 +137,13 @@ class FalyxCompleter(Completer):
 
         # Still selecting an entry in the current namespace
         if route.expecting_entry:
+            namespace_suggestions, expecting_value = route.namespace.parser.suggest_next(
+                route.remaining_argv, route.cursor_at_end_of_token
+            )
+            yield from self._yield_completions(namespace_suggestions, route.stub)
+            if expecting_value:
+                return
             suggestions = self._suggest_namespace_entries(route.namespace, route.stub)
-
-            # Only here should namespace-level help/TLDR be suggested.
-            # TODO: better completer in FalyxParser
-            if not route.command:  # and (not route.stub or route.stub.startswith("-")):
-                for flag in route.namespace.parser._options_by_dest:
-                    if flag.startswith(route.stub):
-                        suggestions.append(flag)
 
             if route.is_preview:
                 suggestions = [f"?{s}" for s in suggestions]
@@ -171,7 +170,7 @@ class FalyxCompleter(Completer):
         except Exception:
             return
 
-        yield from self._yield_lcp_completions(suggestions, route.stub)
+        yield from self._yield_completions(suggestions, route.stub)
 
     def _suggest_namespace_entries(self, namespace: Falyx, prefix: str) -> list[str]:
         """Return matching visible entry names for a namespace prefix.
@@ -190,6 +189,7 @@ class FalyxCompleter(Completer):
         """
         results: list[str] = []
         for name in namespace.completion_names:
+            # results.append(name)
             if name.upper().startswith(prefix.upper()):
                 results.append(name.lower() if prefix.islower() else name)
         return results
@@ -207,7 +207,31 @@ class FalyxCompleter(Completer):
             return f'"{text}"'
         return text
 
-    def _yield_lcp_completions(self, suggestions, stub) -> Iterable[Completion]:
+    def _yield_completions(
+        self,
+        suggestions: list[str],
+        stub: str,
+    ) -> Iterable[Completion]:
+        """Yield Completion objects for a list of suggestion strings.
+
+        This helper converts raw suggestion strings into Prompt Toolkit `Completion`
+        instances with appropriate insertion behavior. It assumes that the caller
+        has already determined the correct start position for insertion.
+
+        Args:
+            suggestions (list[str]): Raw completion candidates to convert.
+            stub (str): The currently typed prefix (used to offset insertion).
+        """
+        for suggestion in suggestions:
+            yield Completion(
+                self._ensure_quote(suggestion),
+                start_position=-len(stub),
+                display=suggestion,
+            )
+
+    def _yield_lcp_completions(
+        self, suggestions: list[str], stub: str
+    ) -> Iterable[Completion]:
         """Yield completions for the current stub using longest-common-prefix logic.
 
         Behavior:

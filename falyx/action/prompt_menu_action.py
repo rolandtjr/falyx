@@ -10,6 +10,8 @@ or contextual user input flows.
 Key Components:
 - PromptMenuAction: Inline prompt-driven menu runner
 """
+from __future__ import annotations
+
 from typing import Any
 
 from prompt_toolkit import PromptSession
@@ -186,4 +188,18 @@ class PromptMenuAction(BaseAction):
             f"default_selection={self.default_selection!r}, "
             f"include_reserved={self.include_reserved}, "
             f"prompt={'off' if self.never_prompt else 'on'})"
+        )
+
+    def clone(self) -> PromptMenuAction:
+        """Create a copy of this PromptMenuAction with the same configuration."""
+        return PromptMenuAction(
+            name=self.name,
+            menu_options=self.menu_options.copy(),
+            prompt_message=self.prompt_message,
+            default_selection=self.default_selection,
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
+            prompt_session=self.prompt_session,
+            never_prompt=self.never_prompt,
+            include_reserved=self.include_reserved,
         )

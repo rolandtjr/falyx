@@ -7,7 +7,7 @@ maintaining a mutable list of named actions—such as adding, removing, or retri
 actions by name—without duplicating logic across composite action types.
 """
 
-from typing import Any, Sequence
+from typing import Sequence
 
 from falyx.action.base_action import BaseAction
 

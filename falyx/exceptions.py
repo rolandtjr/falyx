@@ -209,12 +209,38 @@ class MissingValueError(ArgumentParsingError):
     def __init__(
         self,
         dest: str,
-        expected_count: int | None = None,
+        expected_count: int | str | None = None,
         actual_count: int | None = None,
+        display_name: str | None = None,
+        show_short_usage: bool = True,
     ):
+        self.dest = dest
         self.expected_count = expected_count
         self.actual_count = actual_count
-        self.dest = dest
+        self.display_name = display_name or dest
+        super().__init__(
+            self.build_message(),
+            self.build_hint(),
+            show_short_usage=show_short_usage,
+            dest=dest,
+        )
+
+    def build_message(self) -> str:
+        if self.expected_count is None or self.expected_count in (1, "+"):
+            return f"missing value for '{self.display_name}'"
+
+        actual = 0 if self.actual_count is None else self.actual_count
+        return (
+            f"missing values for '{self.display_name}': "
+            f"expected {self.expected_count}, got {actual}"
+        )
+
+    def build_hint(self) -> str | None:
+        if self.expected_count is None or self.expected_count == 1:
+            return f"provide a value for '{self.display_name}'."
+        elif self.expected_count == "+":
+            return f"provide one or more values for '{self.display_name}'."
+        return f"provide {self.expected_count} values for '{self.display_name}'."
 
 
 class TokenizationError(UsageError):

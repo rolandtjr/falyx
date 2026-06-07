@@ -177,3 +177,21 @@ class ProcessAction(BaseAction):
             f"action={getattr(self.action, '__name__', repr(self.action))}, "
             f"args={self.args!r}, kwargs={self.kwargs!r})"
         )
+
+    def clone(self) -> ProcessAction:
+        """Create a copy of this ProcessAction with the same configuration."""
+        return ProcessAction(
+            name=self.name,
+            action=self.action,
+            args=self.args,
+            kwargs=self.kwargs,
+            hooks=self.hooks.copy(),
+            executor=None,
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
+            never_prompt=self.local_never_prompt,
+            spinner_message=self.spinner_message,
+            spinner_type=self.spinner_type,
+            spinner_style=self.spinner_style,
+            spinner_speed=self.spinner_speed,
+        )

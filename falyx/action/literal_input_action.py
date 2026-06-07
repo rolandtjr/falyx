@@ -76,3 +76,7 @@ class LiteralInputAction(Action):
 
     def __str__(self) -> str:
         return f"LiteralInputAction(value={self.value!r})"
+
+    def clone(self) -> LiteralInputAction:
+        """Create a copy of this LiteralInputAction with the same value."""
+        return LiteralInputAction(self.value)

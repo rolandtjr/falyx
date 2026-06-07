@@ -30,6 +30,8 @@ Example:
 This module is foundational to creating expressive, user-centered CLI experiences
 within Falyx while preserving reproducibility and automation friendliness.
 """
+from __future__ import annotations
+
 from typing import Any
 
 from prompt_toolkit import PromptSession
@@ -138,7 +140,7 @@ class SelectionAction(BaseAction):
         inject_into: str = "last_result",
         return_type: SelectionReturnType | str = "value",
         prompt_session: PromptSession | None = None,
-        never_prompt: bool = False,
+        never_prompt: bool | None = False,
         show_table: bool = True,
     ):
         super().__init__(
@@ -555,4 +557,24 @@ class SelectionAction(BaseAction):
             f"default_selection={self.default_selection!r}, "
             f"return_type={self.return_type!r}, "
             f"prompt={'off' if self.never_prompt else 'on'})"
+        )
+
+    def clone(self) -> SelectionAction:
+        """Create a copy of this SelectionAction with the same configuration."""
+        return SelectionAction(
+            name=self.name,
+            selections=self.selections.copy(),
+            title=self.title,
+            columns=self.columns,
+            prompt_message=self.prompt_message,
+            default_selection=self.default_selection,
+            number_selections=self.number_selections,
+            separator=self.separator,
+            allow_duplicates=self.allow_duplicates,
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
+            return_type=self.return_type,
+            prompt_session=self.prompt_session,
+            never_prompt=self.local_never_prompt,
+            show_table=self.show_table,
         )

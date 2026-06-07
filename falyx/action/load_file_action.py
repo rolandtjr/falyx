@@ -35,6 +35,8 @@ This module is a foundational building block for file-driven CLI workflows in Fa
 It is often paired with `SaveFileAction`, `SelectionAction`, or `ConfirmAction` for
 robust and interactive pipelines.
 """
+from __future__ import annotations
+
 import csv
 import json
 import xml.etree.ElementTree as ET
@@ -261,3 +263,14 @@ class LoadFileAction(BaseAction):
 
     def __str__(self) -> str:
         return f"LoadFileAction(file_path={self.file_path}, file_type={self.file_type})"
+
+    def clone(self) -> LoadFileAction:
+        """Create a copy of this LoadFileAction with the same configuration."""
+        return LoadFileAction(
+            name=self.name,
+            file_path=self.file_path,
+            file_type=self.file_type,
+            encoding=self.encoding,
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
+        )

@@ -46,7 +46,15 @@ class ArgumentGroup:
 
     name: str
     description: str = ""
-    dests: list[str] = field(default_factory=list)
+    dests: set[str] = field(default_factory=set)
+
+    def copy(self) -> ArgumentGroup:
+        """Create a copy of this ArgumentGroup."""
+        return ArgumentGroup(
+            name=self.name,
+            description=self.description,
+            dests=set(self.dests),
+        )
 
 
 @dataclass(slots=True)
@@ -73,4 +81,13 @@ class MutuallyExclusiveGroup:
     name: str
     required: bool = False
     description: str = ""
-    dests: list[str] = field(default_factory=list)
+    dests: set[str] = field(default_factory=set)
+
+    def copy(self) -> MutuallyExclusiveGroup:
+        """Create a copy of this MutuallyExclusiveGroup."""
+        return MutuallyExclusiveGroup(
+            name=self.name,
+            required=self.required,
+            description=self.description,
+            dests=set(self.dests),
+        )

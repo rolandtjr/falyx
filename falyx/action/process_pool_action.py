@@ -58,6 +58,14 @@ class ProcessTask:
         if not callable(self.task):
             raise TypeError(f"Expected a callable task, got {type(self.task).__name__}")
 
+    def copy(self) -> ProcessTask:
+        """Create a copy of this ProcessTask."""
+        return ProcessTask(
+            task=self.task,
+            args=self.args,
+            kwargs=self.kwargs.copy(),
+        )
+
 
 class ProcessPoolAction(BaseAction):
     """Executes a set of independent tasks in parallel using a process pool.
@@ -230,3 +238,15 @@ class ProcessPoolAction(BaseAction):
             f"inject_last_result={self.inject_last_result}, "
             f"inject_into={self.inject_into!r})"
         )
+
+    def clone(self) -> ProcessPoolAction:
+        """Create a copy of this ProcessPoolAction with the same configuration."""
+        cloned = ProcessPoolAction(
+            name=self.name,
+            actions=[action.copy() for action in self.actions],
+            hooks=self.hooks.copy(),
+            executor=None,
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
+        )
+        return cloned

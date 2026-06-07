@@ -44,6 +44,7 @@ def should_prompt_user(
     *,
     confirm: bool,
     options: OptionsManager,
+    action_never_prompt: bool | None = None,
     namespace: str = "root",
     override_namespace: str = "execution",
 ) -> bool:
@@ -57,26 +58,29 @@ def should_prompt_user(
     Args:
         confirm (bool): The initial confirmation flag (e.g., from a command argument).
         options (OptionsManager): The options manager to check for override flags.
-        namespace (str): The primary namespace to check for options (default: "root").
-        override_namespace (str): The secondary namespace for overrides (default: "execution").
+        namespace (str): The secondary namespace to check for options (default: "root").
+        override_namespace (str): The primary namespace for overrides (default: "execution").
 
     Returns:
         bool: True if the user should be prompted, False if confirmation can be bypassed.
     """
+    if action_never_prompt is True:
+        return False
+
+    skip_confirm = options.get("skip_confirm", None, override_namespace)
+    if skip_confirm:
+        return False
+
     never_prompt = options.get("never_prompt", None, override_namespace)
     if never_prompt is None:
         never_prompt = options.get("never_prompt", False, namespace)
 
+    if never_prompt:
+        return False
+
     force_confirm = options.get("force_confirm", None, override_namespace)
     if force_confirm is None:
         force_confirm = options.get("force_confirm", False, namespace)
-
-    skip_confirm = options.get("skip_confirm", None, override_namespace)
-    if skip_confirm is None:
-        skip_confirm = options.get("skip_confirm", False, namespace)
-
-    if never_prompt or skip_confirm:
-        return False
 
     return confirm or force_confirm
 

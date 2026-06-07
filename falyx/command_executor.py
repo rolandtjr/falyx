@@ -82,7 +82,7 @@ class CommandExecutor:
         - Emit optional execution summaries
 
     Attributes:
-        options (OptionsManager): Shared options manager used to apply scoped
+        options_manager (OptionsManager): Shared options manager used to apply scoped
             execution overrides.
         hooks (HookManager): Hook manager for executor-level lifecycle hooks.
     """
@@ -90,10 +90,10 @@ class CommandExecutor:
     def __init__(
         self,
         *,
-        options: OptionsManager,
+        options_manager: OptionsManager,
         hooks: HookManager,
     ) -> None:
-        self.options = options
+        self.options_manager = options_manager
         self.hooks = hooks
 
     def _debug_hooks(self, command: Command) -> None:
@@ -271,7 +271,7 @@ class CommandExecutor:
 
         try:
             await self.hooks.trigger(HookType.BEFORE, context)
-            with self.options.override_namespace(
+            with self.options_manager.override_namespace(
                 overrides=overrides,
                 namespace_name="execution",
             ):

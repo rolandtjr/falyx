@@ -1,18 +1,19 @@
 # Falyx CLI Framework — (c) 2026 rtj.dev LLC — MIT Licensed
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import Enum
+import re
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from falyx.console import console
 from falyx.exceptions import EntryNotFoundError, FalyxOptionError
 from falyx.mode import FalyxMode
-from falyx.options_manager import OptionsManager
+from falyx.parser.option import Option, OptionScope
+from falyx.parser.option_action import OptionAction
 from falyx.parser.parse_result import ParseResult
 from falyx.parser.parser_types import (
     FalyxTLDRExample,
     FalyxTLDRInput,
+    OptionState,
     false_none,
     true_none,
 )
@@ -24,79 +25,6 @@ if TYPE_CHECKING:
 builtin_type = type
 
 
-class OptionAction(Enum):
-    STORE = "store"
-    STORE_TRUE = "store_true"
-    STORE_FALSE = "store_false"
-    STORE_BOOL_OPTIONAL = "store_bool_optional"
-    COUNT = "count"
-    HELP = "help"
-    TLDR = "tldr"
-
-    @classmethod
-    def choices(cls) -> list[OptionAction]:
-        """Return a list of all argument actions."""
-        return list(cls)
-
-    @classmethod
-    def _get_alias(cls, value: str) -> str:
-        aliases = {
-            "optional": "store_bool_optional",
-            "true": "store_true",
-            "false": "store_false",
-        }
-        return aliases.get(value, value)
-
-    @classmethod
-    def _missing_(cls, value: object) -> OptionAction:
-        if not isinstance(value, str):
-            raise ValueError(f"Invalid {cls.__name__}: {value!r}")
-        normalized = value.strip().lower()
-        alias = cls._get_alias(normalized)
-        for member in cls:
-            if member.value == alias:
-                return member
-        valid = ", ".join(member.value for member in cls)
-        raise ValueError(f"Invalid {cls.__name__}: '{value}'. Must be one of: {valid}")
-
-    def __str__(self) -> str:
-        """Return the string representation of the argument action."""
-        return self.value
-
-
-class OptionScope(Enum):
-    ROOT = "root"
-    NAMESPACE = "namespace"
-
-    @classmethod
-    def _missing_(cls, value: object) -> OptionScope:
-        if not isinstance(value, str):
-            raise ValueError(f"Invalid {cls.__name__}: {value!r}")
-        normalized = value.strip().lower()
-        for member in cls:
-            if member.value == normalized:
-                return member
-        valid = ", ".join(member.value for member in cls)
-        raise ValueError(f"Invalid {cls.__name__}: '{value}'. Must be one of: {valid}")
-
-
-@dataclass(slots=True)
-class Option:
-    flags: tuple[str, ...]
-    dest: str
-    action: OptionAction = OptionAction.STORE
-    type: Any = str
-    default: Any = None
-    choices: list[str] | None = None
-    help: str = ""
-    suggestions: list[str] | None = None
-    scope: OptionScope = OptionScope.NAMESPACE
-
-    def format_for_help(self) -> str:
-        """Return a formatted string of the option's flags for help output."""
-        return ", ".join(self.flags)
-
-
 class FalyxParser:
     RESERVED_DESTS: set[str] = {"help", "tldr"}
 
@@ -106,9 +34,10 @@ class FalyxParser:
         self._options: list[Option] = []
         self._dest_set: set[str] = set()
         self._tldr_examples: list[FalyxTLDRExample] = []
-        self._add_reserved_options()
         self.help_option: Option | None = None
         self.tldr_option: Option | None = None
+        self._last_option_states: dict[str, OptionState] = {}
+        self._add_reserved_options()
 
     def get_flags(self) -> list[str]:
         """Return a list of the first flag for the registered options."""
@@ -119,7 +48,7 @@ class FalyxParser:
         return self._options
 
     def _add_tldr(self):
-        """Add TLDR argument to the parser."""
+        """Add TLDR option to the parser."""
         if "tldr" in self._dest_set:
             return None
         tldr = Option(
@@ -208,7 +137,7 @@ class FalyxParser:
 
     def _add_reserved_options(self) -> None:
         help = Option(
-            flags=("-h", "--help", "?"),
+            flags=("-h", "--help"),
             dest="help",
             action=OptionAction.HELP,
             help="Show root-level help output and exit.",
@@ -255,7 +184,7 @@ class FalyxParser:
         flags: tuple[str, ...],
         dest: str,
         help: str,
-    ) -> None:
+    ) -> Option:
         """Register a store_bool_optional action with the parser."""
         if len(flags) != 1:
             raise FalyxOptionError(
@@ -268,7 +197,7 @@ class FalyxParser:
         base_flag = flags[0]
         negated_flag = f"--no-{base_flag.lstrip('-')}"
 
-        argument = Option(
+        option = Option(
             flags=flags,
             dest=dest,
             action=OptionAction.STORE_BOOL_OPTIONAL,
@@ -277,7 +206,7 @@ class FalyxParser:
             help=help,
         )
 
-        negated_argument = Option(
+        negated_option = Option(
             flags=(negated_flag,),
             dest=dest,
             action=OptionAction.STORE_BOOL_OPTIONAL,
@@ -286,17 +215,19 @@ class FalyxParser:
             help=help,
         )
 
-        self._register_option(argument)
-        self._register_option(negated_argument, bypass_validation=True)
+        self._register_option(option)
+        self._register_option(negated_option, bypass_validation=True)
+        return option
 
     def _register_option(self, option: Option, bypass_validation: bool = False) -> None:
         self._dest_set.add(option.dest)
         self._options.append(option)
+        self._last_option_states[option.dest] = OptionState(option)
         for flag in option.flags:
-            if flag in self._options and not bypass_validation:
+            if flag in self._options_by_dest and not bypass_validation:
                 existing = self._options_by_dest[flag]
                 raise FalyxOptionError(
-                    f"flag '{flag}' is already used by argument '{existing.dest}'"
+                    f"flag '{flag}' is already used by option '{existing.dest}'"
                 )
             self._options_by_dest[flag] = option
 
@@ -319,7 +250,11 @@ class FalyxParser:
             if flag in self._options_by_dest:
                 existing = self._options_by_dest[flag]
                 raise FalyxOptionError(
-                    f"flag '{flag}' is already used by argument '{existing.dest}'"
+                    f"flag '{flag}' is already used by option '{existing.dest}'"
+                )
+            if not re.match(r"^[a-zA-Z0-9_-]+$", flag.lstrip("-")):
+                raise FalyxOptionError(
+                    f"invalid flag '{flag}': must only contain letters, digits, underscores, or hyphens"
                 )
 
     def _get_dest_from_flags(self, flags: tuple[str, ...], dest: str | None) -> str:
@@ -389,16 +324,16 @@ class FalyxParser:
             raise FalyxOptionError(f"default value cannot be set for action '{action}'.")
         return default
 
-    def _validate_default_type(
+    def _normalize_default_type(
         self,
         default: Any,
         expected_type: Any,
         dest: str,
-    ) -> None:
+    ) -> Any:
         if default is None:
             return None
         try:
-            coerce_value(default, expected_type)
+            return coerce_value(default, expected_type)
         except Exception as error:
             type_name = get_type_name(expected_type)
             raise FalyxOptionError(
@@ -408,7 +343,7 @@ class FalyxParser:
     def _normalize_choices(
         self,
         choices: list[str] | None,
-        expected_type: type,
+        expected_type: Callable[[Any], Any],
         action: OptionAction,
     ) -> list[Any]:
         if choices is None:
@@ -430,27 +365,28 @@ class FalyxParser:
                 raise FalyxOptionError(
                     "choices must be iterable (like list, tuple, or set)"
                 ) from error
+        normalized: list[Any] = []
         for choice in choices:
             try:
-                coerce_value(choice, expected_type)
+                normalized.append(coerce_value(choice, expected_type))
             except Exception as error:
                 type_name = get_type_name(expected_type)
                 raise FalyxOptionError(
                     f"invalid choice {choice!r} cannot be coerced to {type_name} error: {error}"
                 ) from error
-        return choices
+        return normalized
 
     def add_option(
         self,
-        flags: tuple[str, ...],
-        dest: str,
+        *flags: str,
         action: str | OptionAction = "store",
-        type: type = str,
         default: Any = None,
+        type: Callable[[Any], Any] = str,
         choices: list[str] | None = None,
         help: str = "",
+        dest: str | None = None,
         suggestions: list[str] | None = None,
-    ) -> None:
+    ) -> Option:
         self._validate_flags(flags)
         dest = self._get_dest_from_flags(flags, dest)
         if dest in self.RESERVED_DESTS:
@@ -461,7 +397,10 @@ class FalyxParser:
             raise FalyxOptionError(f"duplicate option dest '{dest}'")
         action = self._validate_action(action)
         default = self._resolve_default(default, action)
-        self._validate_default_type(default, type, dest)
+
+        if action is OptionAction.STORE:
+            default = self._normalize_default_type(default, type, dest)
+
         choices = self._normalize_choices(choices, type, action)
         if default is not None and choices and default not in choices:
             choices_str = ", ".join((str(choice) for choice in choices))
@@ -476,8 +415,7 @@ class FalyxParser:
         ):
             raise FalyxOptionError("suggestions must be a list of strings")
         if action is OptionAction.STORE_BOOL_OPTIONAL:
-            self._register_store_bool_optional(flags, dest, help)
-            return None
+            return self._register_store_bool_optional(flags, dest, help)
         option = Option(
             flags=flags,
             dest=dest,
@@ -489,16 +427,86 @@ class FalyxParser:
             suggestions=suggestions,
         )
         self._register_option(option)
+        return option
 
-    def apply_to_options(
+    def _filter_suggestions(
         self,
-        parse_result: ParseResult,
-        options: OptionsManager,
-    ) -> None:
-        for dest, value in parse_result.options.items():
-            options.set(dest, value, namespace_name=self_flx.namespace_name)
-        for dest, value in parse_result.root_options.items():
-            options.set(dest, value, namespace_name="root")
+        suggestion: str,
+        prefix: str,
+        cursor_at_end_of_token: bool,
+    ) -> bool:
+        if cursor_at_end_of_token:
+            return True
+        return suggestion.startswith(prefix)
+
+    def _value_suggestions_for_option(
+        self,
+        option: Option,
+        prefix: str,
+        cursor_at_end_of_token: bool,
+    ) -> list[str]:
+        if option.choices:
+            return [
+                str(choice)
+                for choice in option.choices
+                if self._filter_suggestions(str(choice), prefix, cursor_at_end_of_token)
+            ]
+        if option.suggestions:
+            return [
+                suggestion
+                for suggestion in option.suggestions
+                if self._filter_suggestions(suggestion, prefix, cursor_at_end_of_token)
+            ]
+        return []
+
+    def suggest_next(
+        self,
+        args: list[str],
+        cursor_at_end_of_token: bool,
+    ) -> tuple[list[str], bool]:
+        """Suggest the next possible flags based on the current input stub."""
+        expecting_value = False
+        if not args:
+            return [], expecting_value
+        options = self._resolve_posix_bundling(args)
+        consumed_dests = [
+            state.option.dest
+            for state in self._last_option_states.values()
+            if state.consumed
+        ]
+
+        remaining_flags = [
+            flag
+            for flag, option in self._options_by_dest.items()
+            if option.dest not in consumed_dests
+        ]
+
+        last = options[-1] if options else ""
+
+        last_option_in_options = None
+        for option in reversed(options):
+            if option in self._options_by_dest:
+                last_option_in_options = self._options_by_dest[option]
+                break
+
+        suggestions: list[str] = []
+        if last.startswith("-") and last not in self._options_by_dest:
+            suggestions.extend(flag for flag in remaining_flags if flag.startswith(last))
+        elif (
+            last_option_in_options
+            and not self._last_option_states[last_option_in_options.dest].consumed
+        ):
+            suggestions.extend(
+                self._value_suggestions_for_option(
+                    last_option_in_options,
+                    prefix=last,
+                    cursor_at_end_of_token=cursor_at_end_of_token,
+                )
+            )
+            if last_option_in_options.action is OptionAction.STORE:
+                expecting_value = True
+
+        return suggestions, expecting_value
 
     def _can_bundle_option(self, option: Option) -> bool:
         return option.action in {
@@ -510,7 +518,7 @@ class FalyxParser:
         }
 
     def _resolve_posix_bundling(self, tokens: list[str]) -> list[str]:
-        """Expand POSIX-style bundled arguments into separate arguments."""
+        """Expand POSIX-style bundled options into separate options."""
         expanded: list[str] = []
         for token in tokens:
             if not token.startswith("-") or token.startswith("--") or len(token) <= 2:
@@ -552,30 +560,37 @@ class FalyxParser:
         argv: list[str],
         index: int,
         values: dict[str, Any],
+        option_states: dict[str, OptionState],
     ) -> int:
         match option.action:
             case OptionAction.STORE_TRUE:
                 values[option.dest] = True
+                option_states[option.dest].set_consumed()
                 return index + 1
 
             case OptionAction.STORE_FALSE:
                 values[option.dest] = False
+                option_states[option.dest].set_consumed()
                 return index + 1
 
             case OptionAction.STORE_BOOL_OPTIONAL:
-                values[option.dest] = option.type(None)
+                values[option.dest] = option.type(True)
+                option_states[option.dest].set_consumed()
                 return index + 1
 
             case OptionAction.COUNT:
                 values[option.dest] = int(values.get(option.dest) or 0) + 1
+                option_states[option.dest].set_consumed()
                 return index + 1
 
             case OptionAction.HELP:
                 values[option.dest] = True
+                option_states[option.dest].set_consumed()
                 return index + 1
 
             case OptionAction.TLDR:
                 values[option.dest] = True
+                option_states[option.dest].set_consumed()
                 return index + 1
 
             case OptionAction.STORE:
@@ -598,6 +613,7 @@ class FalyxParser:
                     )
 
                 values[option.dest] = value
+                option_states[option.dest].set_consumed()
                 return index + 2
 
         raise FalyxOptionError(f"unsupported option action: {option.action}")
@@ -606,18 +622,16 @@ class FalyxParser:
         self,
         argv: list[str] | None = None,
     ) -> ParseResult:
+        option_states = {option.dest: OptionState(option) for option in self._options}
+        self._last_option_states = option_states
         raw_argv = argv or []
         arguments = self._resolve_posix_bundling(raw_argv)
-        values, root_values = self._default_values()
+        root_options: dict[str, Any] = {}
+        namespace_options: dict[str, Any] = {}
 
         index = 0
         while index < len(arguments):
             token = arguments[index]
-
-            # Explicit option terminator. Everything after belongs to routing/command.
-            if token == "--":
-                index += 1
-                break
 
             # First non-option is the route boundary.
             if not token.startswith("-"):
@@ -631,20 +645,33 @@ class FalyxParser:
                     f"unknown option '{token}' for '{self._flx.program or self._flx.title}'"
                 )
 
-            target_values = root_values if option.scope == OptionScope.ROOT else values
-            index = self._consume_option(option, arguments, index, target_values)
+            target_values = (
+                root_options if option.scope == OptionScope.ROOT else namespace_options
+            )
+            index = self._consume_option(
+                option,
+                arguments,
+                index,
+                target_values,
+                option_states,
+            )
 
         remaining_argv = arguments[index:]
 
-        help_requested = values.get("help", False) or values.get("tldr", False)
+        help_requested = namespace_options.get("help", False) or namespace_options.get(
+            "tldr", False
+        )
 
+        namespace_defaults, root_defaults = self._default_values()
         return ParseResult(
             mode=FalyxMode.HELP if help_requested else FalyxMode.COMMAND,
             raw_argv=raw_argv,
-            options=values,
-            root_options=root_values,
+            root_defaults=root_defaults,
+            root_options=root_options,
+            namespace_defaults=namespace_defaults,
+            namespace_options=namespace_options,
             remaining_argv=remaining_argv,
-            help=values.get("help", False),
-            tldr=values.get("tldr", False),
+            help=namespace_options.get("help", False),
+            tldr=namespace_options.get("tldr", False),
             current_head=remaining_argv[0] if remaining_argv else "",
         )

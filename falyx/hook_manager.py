@@ -179,3 +179,10 @@ class HookManager:
             hook_list = self._hooks.get(hook_type, [])
             lines.append(f"  {hook_type.value}: {format_hook_list(hook_list)}")
         return "\n".join(lines)
+
+    def copy(self) -> HookManager:
+        """Create a deep copy of this HookManager, including all registered hooks."""
+        new_manager = HookManager()
+        for hook_type, hooks in self._hooks.items():
+            new_manager._hooks[hook_type] = list(hooks)
+        return new_manager

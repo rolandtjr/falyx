@@ -25,6 +25,8 @@ Example:
         validator=Validator.from_callable(lambda s: len(s) > 0),
     )
 """
+from __future__ import annotations
+
 from prompt_toolkit import PromptSession
 from prompt_toolkit.validation import Validator
 from rich.tree import Tree
@@ -132,3 +134,15 @@ class UserInputAction(BaseAction):
 
     def __str__(self):
         return f"UserInputAction(name={self.name!r}, prompt={self.prompt!r})"
+
+    def clone(self) -> UserInputAction:
+        """Creates a copy of this UserInputAction with the same configuration."""
+        return UserInputAction(
+            name=self.name,
+            prompt_message=self.prompt_message,
+            default_text=self.default_text,
+            multiline=self.multiline,
+            validator=self.validator,
+            prompt_session=self.prompt_session,
+            inject_last_result=self.inject_last_result,
+        )

@@ -76,9 +76,10 @@ async def test_resolve_args_raises_on_conflicting_execution_option():
         )
 
     with pytest.raises(
-        CommandArgumentError, match="destination 'summary' is already defined"
+        CommandArgumentError,
+        match="destination 'summary' is already registered as an execution argument",
     ):
-        command.arg_parser.enable_execution_options(frozenset({ExecutionOption.SUMMARY}))
+        command.arg_parser._register_execution_dest("summary")
 
 
 @pytest.mark.asyncio

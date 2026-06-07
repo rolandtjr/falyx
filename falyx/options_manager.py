@@ -37,6 +37,7 @@ Attributes:
 """
 from collections import defaultdict
 from contextlib import contextmanager
+from copy import deepcopy
 from typing import Any, Callable, Iterator, Mapping
 
 from falyx.logger import logger
@@ -227,21 +228,50 @@ class OptionsManager:
 
         return _toggle
 
-    def get_namespace_dict(self, namespace_name: str) -> dict[str, Any]:
-        """Return a shallow copy of one namespace's option dictionary.
+    def get_namespace(self, namespace_name: str) -> dict[str, Any] | None:
+        """Return the option dictionary for a namespace.
+
+        Args:
+            namespace_name (str): Name of the namespace to retrieve.
+
+        Returns:
+            dict[str, Any]: The options stored in the requested namespace.
+        """
+        if namespace_name not in self.options:
+            return None
+        return self.options[namespace_name]
+
+    def get_namespace_copy(self, namespace_name: str) -> dict[str, Any] | None:
+        """Return a deep copy of one namespace's option dictionary.
 
         Args:
             namespace_name (str): Namespace to snapshot.
 
         Returns:
             dict[str, Any]: Copy of the namespace's stored options.
-
-        Raises:
-            ValueError: If the requested namespace does not exist.
         """
         if namespace_name not in self.options:
-            raise ValueError(f"Namespace '{namespace_name}' not found.")
-        return dict(self.options[namespace_name])
+            return None
+        return deepcopy(self.options[namespace_name])
+
+    def seed_missing(
+        self,
+        defaults: Mapping[str, Any],
+        namespace_name: str = "default",
+    ) -> None:
+        """Seed missing options in a namespace from a defaults mapping.
+
+        This method only sets options that are not already present in the target
+        namespace, allowing it to be used for layering default values without
+        overwriting existing settings.
+
+        Args:
+            defaults (Mapping[str, Any]): Default option values to seed.
+            namespace_name (str): Namespace to update. Defaults to `"default"`.
+        """
+        for key, value in defaults.items():
+            if key not in self.options[namespace_name]:
+                self.options[namespace_name][key] = value
 
     @contextmanager
     def override_namespace(
@@ -267,9 +297,16 @@ class OptionsManager:
         Raises:
             ValueError: If the namespace does not already exist.
         """
-        original = self.get_namespace_dict(namespace_name)
+        original = self.get_namespace_copy(namespace_name)
+        if original is None:
+            raise ValueError(
+                f"Cannot override non-existent namespace '{namespace_name}'."
+            )
         try:
             self.from_mapping(values=overrides, namespace_name=namespace_name)
             yield
         finally:
             self.options[namespace_name] = original
+
+    def __str__(self) -> str:
+        return f"OptionsManager(namespaces={list(self.options.keys())})"

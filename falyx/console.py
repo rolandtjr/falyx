@@ -2,6 +2,7 @@
 """Global console instance for Falyx CLI applications."""
 from rich.console import Console
 
+from falyx.exceptions import FalyxError
 from falyx.themes import OneColors, get_nord_theme
 
 console = Console(color_system="truecolor", theme=get_nord_theme())
@@ -13,6 +14,9 @@ def print_error(
     *,
     hint: str | None = None,
 ) -> None:
+    if hint is None and isinstance(message, FalyxError):
+        hint = message.hint
+
     error_console.print(f"[{OneColors.DARK_RED}]error:[/] {message}")
     if hint:
         error_console.print(f"[{OneColors.LIGHT_YELLOW}]hint:[/] {hint}")

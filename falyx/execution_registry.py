@@ -256,7 +256,7 @@ class ExecutionRegistry:
             if ctx.exception and status.lower() in ["all", "error"]:
                 final_status = f"[{OneColors.DARK_RED}]❌ Error"
                 final_result = repr(ctx.exception)
-            elif status.lower() in ["all", "success"]:
+            elif not ctx.exception and status.lower() in ["all", "success"]:
                 final_status = f"[{OneColors.GREEN}]✅ Success"
                 final_result = repr(ctx.result)
                 if len(final_result) > 50:

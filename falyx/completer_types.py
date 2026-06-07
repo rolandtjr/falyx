@@ -59,6 +59,9 @@ class CompletionRoute:
         leaf_argv (list[str]): Remaining command-local argv tokens that belong to
             the resolved leaf command. These are typically passed to the
             command's argument parser for completion.
+        remaining_argv (list[str]): Remaining argv tokens that have not yet been
+            consumed by routing or command resolution. These are typically passed
+            to the next routing or parsing stage for further resolution.
         stub (str): The current token fragment under the cursor. This is the
             partial text that completion candidates should replace or extend.
         cursor_at_end_of_token (bool): Whether the cursor is positioned at the
@@ -81,6 +84,7 @@ class CompletionRoute:
     context: InvocationContext
     command: Command | None = None
     leaf_argv: list[str] = field(default_factory=list)
+    remaining_argv: list[str] = field(default_factory=list)
     stub: str = ""
     cursor_at_end_of_token: bool = False
     expecting_entry: bool = False

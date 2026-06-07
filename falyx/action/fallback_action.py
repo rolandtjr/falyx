@@ -35,6 +35,8 @@ Example:
 The `FallbackAction` ensures that even if `MaybeFetchRemoteAction` fails or returns
 None, `ProcessDataAction` still receives a usable input.
 """
+from __future__ import annotations
+
 from functools import cached_property
 from typing import Any
 
@@ -83,3 +85,7 @@ class FallbackAction(Action):
 
     def __str__(self) -> str:
         return f"FallbackAction(fallback={self.fallback!r})"
+
+    def clone(self) -> FallbackAction:
+        """Return a copy of this FallbackAction with the same fallback value."""
+        return FallbackAction(fallback=self.fallback)

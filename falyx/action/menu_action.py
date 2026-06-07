@@ -36,6 +36,8 @@ Example:
 This module is ideal for enabling structured, discoverable, and declarative
 menus in both interactive and programmatic CLI automation.
 """
+from __future__ import annotations
+
 from typing import Any
 
 from prompt_toolkit import PromptSession
@@ -119,7 +121,7 @@ class MenuAction(BaseAction):
         inject_last_result: bool = False,
         inject_into: str = "last_result",
         prompt_session: PromptSession | None = None,
-        never_prompt: bool = False,
+        never_prompt: bool | None = False,
         include_reserved: bool = True,
         show_table: bool = True,
         custom_table: Table | None = None,
@@ -244,4 +246,22 @@ class MenuAction(BaseAction):
             f"default_selection={self.default_selection!r}, "
             f"include_reserved={self.include_reserved}, "
             f"prompt={'off' if self.never_prompt else 'on'})"
+        )
+
+    def clone(self) -> MenuAction:
+        """Create a copy of this MenuAction with the same configuration."""
+        return MenuAction(
+            name=self.name,
+            menu_options=self.menu_options.copy(),
+            title=self.title,
+            columns=self.columns,
+            prompt_message=self.prompt_message,
+            default_selection=self.default_selection,
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
+            prompt_session=self.prompt_session,
+            never_prompt=self.local_never_prompt,
+            include_reserved=self.include_reserved,
+            show_table=self.show_table,
+            custom_table=self.custom_table,
         )

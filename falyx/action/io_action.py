@@ -14,6 +14,8 @@ Features:
 Common usage includes shell-like filters, input transformers, or any tool that
 needs to consume input from another process or pipeline.
 """
+from __future__ import annotations
+
 import asyncio
 import sys
 from typing import Any, Callable
@@ -168,3 +170,12 @@ class BaseIOAction(BaseAction):
             parent.add("".join(label))
         else:
             self.console.print(Tree("".join(label)))
+
+    def clone(self) -> BaseIOAction:
+        """Create a copy of this BaseIOAction with the same configuration."""
+        return self.__class__(
+            name=self.name,
+            hooks=self.hooks.copy(),
+            mode=self.mode,
+            inject_last_result=self.inject_last_result,
+        )

@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from falyx.context import InvocationContext
 from falyx.namespace import FalyxNamespace
@@ -82,6 +82,8 @@ class RouteResult:
             generating suggestions.
         suggestions: Suggested entry names for unresolved input.
         is_preview: Whether the routed invocation is in preview mode.
+        root_overrides: Root-level option overrides to apply for this route.
+        namespace_overrides: Namespace-level option overrides to apply for this route.
     """
 
     kind: RouteKind
@@ -93,3 +95,7 @@ class RouteResult:
     current_head: str = ""
     suggestions: list[str] = field(default_factory=list)
     is_preview: bool = False
+    root_defaults: dict[str, Any] = field(default_factory=dict)
+    root_overrides: dict[str, Any] = field(default_factory=dict)
+    namespace_defaults: dict[str, Any] = field(default_factory=dict)
+    namespace_overrides: dict[str, Any] = field(default_factory=dict)

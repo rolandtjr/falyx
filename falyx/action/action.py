@@ -206,3 +206,34 @@ class Action(BaseAction):
             f"retry={self.retry_policy.enabled}, "
             f"rollback={self.rollback is not None})"
         )
+
+    def _copy_hooks_without_retry(self) -> HookManager:
+        """Create a copy of the current hooks, excluding any retry handlers."""
+        new_hooks = HookManager()
+        for hook_type, hooks in self.hooks._hooks.items():
+            for hook in hooks:
+                owner = getattr(hook, "__self__", None)
+                if not isinstance(owner, RetryHandler):
+                    new_hooks.register(hook_type, hook)
+        return new_hooks
+
+    def clone(self) -> Action:
+        """Create a copy of this Action with the same configuration."""
+        new_action = Action(
+            name=self.name,
+            action=self._action,
+            rollback=self._rollback,
+            args=self.args,
+            kwargs=self.kwargs,
+            hooks=self._copy_hooks_without_retry(),
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
+            never_prompt=self.local_never_prompt,
+            retry=self.retry_policy.enabled,
+            retry_policy=self.retry_policy.model_copy(deep=True),
+            spinner_message=self.spinner_message,
+            spinner_type=self.spinner_type,
+            spinner_style=self.spinner_style,
+            spinner_speed=self.spinner_speed,
+        )
+        return new_action

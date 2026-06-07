@@ -244,3 +244,24 @@ class ActionGroup(BaseAction, ActionListMixin):
             f"inject_last_result={self.inject_last_result}, "
             f"inject_into={self.inject_into})"
         )
+
+    def clone(self):
+        """Return a copy of this ActionGroup with the same configuration."""
+        cloned_actions = [
+            action.clone() if isinstance(action, BaseAction) else action
+            for action in self.actions
+        ]
+        return ActionGroup(
+            name=self.name,
+            actions=cloned_actions,
+            args=self.args,
+            kwargs=self.kwargs,
+            hooks=self.hooks.copy(),
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
+            never_prompt=self.local_never_prompt,
+            spinner_message=self.spinner_message,
+            spinner_type=self.spinner_type,
+            spinner_style=self.spinner_style,
+            spinner_speed=self.spinner_speed,
+        )

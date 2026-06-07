@@ -11,6 +11,8 @@ It supports:
 
 Used by `SelectionAction` and other prompt-driven workflows within Falyx.
 """
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any, Callable, KeysView, Sequence
 
@@ -42,6 +44,14 @@ class SelectionOption:
         """Render the selection option for display."""
         key = escape(f"[{key}]")
         return f"[{OneColors.WHITE}]{key}[/] [{self.style}]{self.description}[/]"
+
+    def copy(self) -> SelectionOption:
+        """Create a copy of the SelectionOption."""
+        return SelectionOption(
+            description=self.description,
+            value=self.value,
+            style=self.style,
+        )
 
 
 class SelectionOptionMap(CaseInsensitiveDict):
@@ -96,6 +106,13 @@ class SelectionOptionMap(CaseInsensitiveDict):
             if not include_reserved and k in self.RESERVED_KEYS:
                 continue
             yield k, v
+
+    def copy(self) -> SelectionOptionMap:
+        """Create a copy of the SelectionOptionMap."""
+        new_map = SelectionOptionMap(allow_reserved=self.allow_reserved)
+        for key, option in self.items():
+            new_map[key] = option.copy()
+        return new_map
 
 
 def render_table_base(

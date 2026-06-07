@@ -89,7 +89,7 @@ class ConfirmAction(BaseAction):
         prompt_message: str = "Confirm?",
         confirm_type: ConfirmType | str = ConfirmType.YES_NO,
         prompt_session: PromptSession | None = None,
-        never_prompt: bool = False,
+        never_prompt: bool | None = False,
         word: str = "CONFIRM",
         return_last_result: bool = False,
         inject_last_result: bool = True,
@@ -266,4 +266,18 @@ class ConfirmAction(BaseAction):
         return (
             f"ConfirmAction(name={self.name}, message={self.prompt_message}, "
             f"confirm_type={self.confirm_type}, return_last_result={self.return_last_result})"
+        )
+
+    def clone(self) -> ConfirmAction:
+        """Return a copy of this ConfirmAction with the same configuration."""
+        return ConfirmAction(
+            name=self.name,
+            prompt_message=self.prompt_message,
+            confirm_type=self.confirm_type,
+            prompt_session=self.prompt_session,
+            never_prompt=self.local_never_prompt,
+            word=self.word,
+            return_last_result=self.return_last_result,
+            inject_last_result=self.inject_last_result,
+            inject_into=self.inject_into,
         )
